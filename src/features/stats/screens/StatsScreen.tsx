@@ -1,8 +1,9 @@
 // src/features/stats/screens/StatsScreen.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { ActivityIndicator, Card, Text, useTheme, IconButton } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
 
 import Screen from '@src/components/common/Screen';
 import { readableRepository } from '@src/features/readables/services/readableRepository';
@@ -210,12 +211,18 @@ function computeMonthlyCompletionGroups(readables: ReadableItem[]): MonthlyCompl
 export function StatsScreen() {
   const theme = useTheme();
 
-  const { data: readables, isLoading: readablesLoading, error: readablesError } = useAllReadables();
+  const {
+    data: readables,
+    isLoading: readablesLoading,
+    error: readablesError,
+    refetch: refetchReadables,
+  } = useAllReadables();
 
   const {
     data: overviewData,
     isLoading: overviewLoading,
     isError: overviewError,
+    refetch: refetchOverview,
   } = useStatsOverview();
 
   const stats = useMemo(() => computeStats(readables ?? []), [readables]);
@@ -223,6 +230,14 @@ export function StatsScreen() {
   const monthlyCompletionGroups = useMemo(
     () => computeMonthlyCompletionGroups(readables ?? []),
     [readables],
+  );
+
+  // 🔁 Refetch whenever the Stats tab gains focus
+  useFocusEffect(
+    useCallback(() => {
+      refetchReadables();
+      refetchOverview();
+    }, [refetchReadables, refetchOverview]),
   );
 
   if (readablesLoading) {
