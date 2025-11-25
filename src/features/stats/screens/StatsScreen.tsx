@@ -11,7 +11,8 @@ import { ReadableItem, ReadableStatus, ReadableType } from '@src/features/readab
 function useAllReadables() {
   return useQuery({
     queryKey: ['readables', 'all'],
-    queryFn: () => readableRepository.getAllToRead(),
+    // IMPORTANT: use all readables, not just "to-read"
+    queryFn: () => readableRepository.getAll(),
   });
 }
 
@@ -32,6 +33,12 @@ interface MonthlyCompletionStat {
   monthKey: string; // e.g. '2025-03'
   label: string; // e.g. 'Mar 2025'
   count: number;
+}
+
+interface MonthlyCompletionGroup {
+  monthKey: string;
+  label: string;
+  items: ReadableItem[];
 }
 
 function computeStats(readables: ReadableItem[]): StatsSummary {
@@ -64,7 +71,8 @@ function computeStats(readables: ReadableItem[]): StatsSummary {
 }
 
 /**
- * Group completed items by month, using `updatedAt` as the "finished at" date.
+ * Group completed items by month, using `updatedAt` as the "finished at" date,
+ * and return just counts per month.
  */
 function computeMonthlyCompletions(readables: ReadableItem[]): MonthlyCompletionStat[] {
   const map = new Map<string, { count: number; sampleDate: Date }>();
@@ -103,12 +111,64 @@ function computeMonthlyCompletions(readables: ReadableItem[]): MonthlyCompletion
   return stats;
 }
 
+/**
+ * Group completed items by month, returning the actual items per month.
+ * This is what lets you see *which* books/fics were finished in each month.
+ */
+function computeMonthlyCompletionGroups(readables: ReadableItem[]): MonthlyCompletionGroup[] {
+  const map = new Map<string, { items: ReadableItem[]; sampleDate: Date }>();
+
+  for (const r of readables) {
+    if (r.status !== 'finished') continue;
+
+    const dateString = r.updatedAt ?? r.createdAt;
+    const d = new Date(dateString);
+    if (Number.isNaN(d.getTime())) continue;
+
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+
+    const existing = map.get(monthKey);
+    if (existing) {
+      existing.items.push(r);
+      // Keep the latest date as the sample date for label formatting.
+      if (d > existing.sampleDate) {
+        existing.sampleDate = d;
+      }
+    } else {
+      map.set(monthKey, { items: [r], sampleDate: d });
+    }
+  }
+
+  const groups: MonthlyCompletionGroup[] = Array.from(map.entries())
+    .map(([monthKey, { items, sampleDate }]) => ({
+      monthKey,
+      label: sampleDate.toLocaleDateString(undefined, {
+        month: 'short',
+        year: 'numeric',
+      }),
+      items: items.slice().sort((a, b) => {
+        const da = new Date(a.updatedAt ?? a.createdAt).getTime();
+        const db = new Date(b.updatedAt ?? b.createdAt).getTime();
+        return db - da; // newest finished first within the month
+      }),
+    }))
+    .sort((a, b) => (a.monthKey < b.monthKey ? 1 : -1)); // newest month first
+
+  return groups;
+}
+
 export function StatsScreen() {
   const theme = useTheme();
   const { data: readables, isLoading, error } = useAllReadables();
 
   const stats = useMemo(() => computeStats(readables ?? []), [readables]);
   const monthlyCompletions = useMemo(() => computeMonthlyCompletions(readables ?? []), [readables]);
+  const monthlyCompletionGroups = useMemo(
+    () => computeMonthlyCompletionGroups(readables ?? []),
+    [readables],
+  );
 
   if (isLoading) {
     return (
@@ -190,6 +250,29 @@ export function StatsScreen() {
             </Card.Content>
           </Card>
         )}
+
+        {monthlyCompletionGroups.length > 0 && (
+          <Card style={styles.card}>
+            <Card.Title title="What you finished by month" />
+            <Card.Content>
+              {monthlyCompletionGroups.map((group) => (
+                <View key={group.monthKey} style={styles.monthGroup}>
+                  <Text style={styles.monthTitle}>
+                    {group.label} ({group.items.length})
+                  </Text>
+                  {group.items.map((item) => (
+                    <View key={item.id} style={styles.finishedItemRow}>
+                      <Text style={styles.finishedItemTitle}>{item.title}</Text>
+                      <Text style={styles.finishedItemMeta}>
+                        {item.type === 'book' ? 'Book' : 'Fanfic'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </Card.Content>
+          </Card>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -219,6 +302,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 4,
+  },
+  monthGroup: {
+    marginTop: 12,
+  },
+  monthTitle: {
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  finishedItemRow: {
+    marginLeft: 8,
+    marginBottom: 2,
+  },
+  finishedItemTitle: {
+    fontSize: 14,
+  },
+  finishedItemMeta: {
+    fontSize: 12,
+    opacity: 0.7,
   },
 });
 

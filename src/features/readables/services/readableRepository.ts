@@ -142,6 +142,10 @@ function buildRowFromNewReadable(
 /**
  * Repository interface and implementation.
  */
+
+/**
+ * Items still in the queue (to-read only), ordered by priority and recency.
+ */
 async function getAllToRead(): Promise<ReadableItem[]> {
   const rows = await getAllAsync<ReadableRow>(
     `
@@ -151,6 +155,39 @@ async function getAllToRead(): Promise<ReadableItem[]> {
     ORDER BY priority DESC, created_at DESC;
   `,
     ['to-read'],
+  );
+
+  return rows.map(mapRowToReadable);
+}
+
+/**
+ * All readables, regardless of status.
+ */
+async function getAll(): Promise<ReadableItem[]> {
+  const rows = await getAllAsync<ReadableRow>(
+    `
+    SELECT *
+    FROM readables
+    ORDER BY created_at DESC;
+  `,
+  );
+
+  return rows.map(mapRowToReadable);
+}
+
+/**
+ * Only finished readables, newest completions first.
+ * We treat updated_at as "finished at" because status is changed when you finish.
+ */
+async function getAllFinished(): Promise<ReadableItem[]> {
+  const rows = await getAllAsync<ReadableRow>(
+    `
+    SELECT *
+    FROM readables
+    WHERE status = ?
+    ORDER BY updated_at DESC;
+  `,
+    ['finished'],
   );
 
   return rows.map(mapRowToReadable);
@@ -324,6 +361,10 @@ async function remove(id: string): Promise<void> {
   );
 }
 
+/**
+ * Simple status update helper, also bumps updated_at.
+ * When you mark as finished, this timestamp becomes your "finished at" date.
+ */
 async function updateStatus(id: string, status: ReadableStatus): Promise<void> {
   const now = new Date().toISOString();
 
@@ -339,6 +380,8 @@ async function updateStatus(id: string, status: ReadableStatus): Promise<void> {
 
 export const readableRepository = {
   getAllToRead,
+  getAll,
+  getAllFinished,
   getById,
   insert,
   update,
