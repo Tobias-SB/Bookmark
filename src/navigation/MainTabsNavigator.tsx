@@ -5,7 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainTabsParamList } from './types';
 import ReadableListScreen from '@src/features/readables/screens/ReadableListScreen';
 import MoodSelectScreen from '@src/features/moods/screens/MoodSelectScreen';
-import StatsOverviewScreen from '@src/features/stats/screens/StatsOverviewScreen';
+import StatsScreen from '@src/features/stats/screens/StatsScreen';
 import SettingsScreen from '@src/features/settings/screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
@@ -55,7 +55,7 @@ const MainTabsNavigator: React.FC = () => {
     >
       <Tab.Screen name="Queue" component={ReadableListScreen} options={{ title: 'Queue' }} />
       <Tab.Screen name="Discover" component={MoodSelectScreen} options={{ title: 'Discover' }} />
-      <Tab.Screen name="Stats" component={StatsOverviewScreen} options={{ title: 'Stats' }} />
+      <Tab.Screen name="Stats" component={StatsScreen} options={{ title: 'Stats' }} />
       <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
     </Tab.Navigator>
   );

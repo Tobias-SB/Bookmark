@@ -1,20 +1,68 @@
 // src/features/stats/screens/StatsScreen.tsx
-import React, { useMemo } from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
-import { ActivityIndicator, Card, Text, useTheme } from 'react-native-paper';
+import React, { useMemo, useState } from 'react';
+import { View, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { ActivityIndicator, Card, Text, useTheme, IconButton } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
 
 import Screen from '@src/components/common/Screen';
 import { readableRepository } from '@src/features/readables/services/readableRepository';
 import { ReadableItem, ReadableStatus, ReadableType } from '@src/features/readables/types';
 
+// Stats overview service + charts
+import { getStatsOverview } from '../services/statsService';
+import ReadingByMoodChart from '../components/ReadingByMoodChart';
+import ReadingByTypeChart from '../components/ReadingByTypeChart';
+
+// ---------- Collapsible Card component ----------
+
+type CollapsibleCardProps = {
+  title: string;
+  children: React.ReactNode;
+  initiallyCollapsed?: boolean;
+};
+
+const CollapsibleCard: React.FC<CollapsibleCardProps> = ({
+  title,
+  children,
+  initiallyCollapsed = false,
+}) => {
+  const [collapsed, setCollapsed] = useState(initiallyCollapsed);
+
+  const toggle = () => setCollapsed((prev) => !prev);
+
+  return (
+    <Card style={styles.card}>
+      <Pressable onPress={toggle}>
+        <View style={styles.cardHeader}>
+          <Text variant="titleMedium">{title}</Text>
+          <IconButton icon={collapsed ? 'chevron-down' : 'chevron-up'} onPress={toggle} />
+        </View>
+      </Pressable>
+      {!collapsed && <Card.Content>{children}</Card.Content>}
+    </Card>
+  );
+};
+
+// ---------- Data hooks ----------
+
 function useAllReadables() {
   return useQuery({
     queryKey: ['readables', 'all'],
-    // IMPORTANT: use all readables, not just "to-read"
-    queryFn: () => readableRepository.getAll(),
+    queryFn: () => readableRepository.getAll(), // all items, any status
   });
 }
+
+// We don't need strict typing for the overview shape here
+type StatsOverviewData = any;
+
+function useStatsOverview() {
+  return useQuery<StatsOverviewData>({
+    queryKey: ['stats', 'overview'],
+    queryFn: getStatsOverview,
+  });
+}
+
+// ---------- Stats helpers ----------
 
 type StatusCounts = Record<ReadableStatus, number>;
 type TypeCounts = Record<ReadableType, number>;
@@ -71,8 +119,8 @@ function computeStats(readables: ReadableItem[]): StatsSummary {
 }
 
 /**
- * Group completed items by month, using `updatedAt` as the "finished at" date,
- * and return just counts per month.
+ * Completed counts per month (for the "Completed per month" list).
+ * Uses updatedAt as "finished at", since that changes when status goes to 'finished'.
  */
 function computeMonthlyCompletions(readables: ReadableItem[]): MonthlyCompletionStat[] {
   const map = new Map<string, { count: number; sampleDate: Date }>();
@@ -85,7 +133,7 @@ function computeMonthlyCompletions(readables: ReadableItem[]): MonthlyCompletion
     if (Number.isNaN(d.getTime())) continue;
 
     const year = d.getFullYear();
-    const month = d.getMonth() + 1; // 0-based
+    const month = d.getMonth() + 1;
     const monthKey = `${year}-${String(month).padStart(2, '0')}`;
 
     const existing = map.get(monthKey);
@@ -96,7 +144,6 @@ function computeMonthlyCompletions(readables: ReadableItem[]): MonthlyCompletion
     }
   }
 
-  // Sort newest first
   const stats: MonthlyCompletionStat[] = Array.from(map.entries())
     .map(([monthKey, { count, sampleDate }]) => ({
       monthKey,
@@ -106,14 +153,14 @@ function computeMonthlyCompletions(readables: ReadableItem[]): MonthlyCompletion
         year: 'numeric',
       }),
     }))
-    .sort((a, b) => (a.monthKey < b.monthKey ? 1 : -1));
+    .sort((a, b) => (a.monthKey < b.monthKey ? 1 : -1)); // newest first
 
   return stats;
 }
 
 /**
- * Group completed items by month, returning the actual items per month.
- * This is what lets you see *which* books/fics were finished in each month.
+ * Group actual finished items by month so you can see
+ * "which titles did I finish in March 2025?".
  */
 function computeMonthlyCompletionGroups(readables: ReadableItem[]): MonthlyCompletionGroup[] {
   const map = new Map<string, { items: ReadableItem[]; sampleDate: Date }>();
@@ -132,7 +179,6 @@ function computeMonthlyCompletionGroups(readables: ReadableItem[]): MonthlyCompl
     const existing = map.get(monthKey);
     if (existing) {
       existing.items.push(r);
-      // Keep the latest date as the sample date for label formatting.
       if (d > existing.sampleDate) {
         existing.sampleDate = d;
       }
@@ -159,9 +205,18 @@ function computeMonthlyCompletionGroups(readables: ReadableItem[]): MonthlyCompl
   return groups;
 }
 
+// ---------- Screen component ----------
+
 export function StatsScreen() {
   const theme = useTheme();
-  const { data: readables, isLoading, error } = useAllReadables();
+
+  const { data: readables, isLoading: readablesLoading, error: readablesError } = useAllReadables();
+
+  const {
+    data: overviewData,
+    isLoading: overviewLoading,
+    isError: overviewError,
+  } = useStatsOverview();
 
   const stats = useMemo(() => computeStats(readables ?? []), [readables]);
   const monthlyCompletions = useMemo(() => computeMonthlyCompletions(readables ?? []), [readables]);
@@ -170,7 +225,7 @@ export function StatsScreen() {
     [readables],
   );
 
-  if (isLoading) {
+  if (readablesLoading) {
     return (
       <Screen>
         <View style={styles.center}>
@@ -181,11 +236,13 @@ export function StatsScreen() {
     );
   }
 
-  if (error) {
+  if (readablesError) {
     return (
       <Screen>
         <View style={styles.center}>
-          <Text style={styles.errorText}>Failed to load stats: {(error as Error).message}</Text>
+          <Text style={styles.errorText}>
+            Failed to load stats: {(readablesError as Error).message}
+          </Text>
         </View>
       </Screen>
     );
@@ -208,75 +265,96 @@ export function StatsScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { backgroundColor: theme.colors.background }]}
       >
-        <Card style={styles.card}>
-          <Card.Title title="Overview" />
-          <Card.Content>
-            <Text>Total items: {stats.total}</Text>
-            <Text>In queue: {stats.inQueueCount}</Text>
-            <Text>Currently reading: {stats.readingCount}</Text>
-            <Text>Completed: {stats.completedCount}</Text>
-            <Text>Abandoned: {stats.abandonedCount}</Text>
-          </Card.Content>
-        </Card>
+        {/* ---------- QUEUE OVERVIEW + CHARTS ---------- */}
+        {overviewData && !overviewError && (
+          <>
+            <CollapsibleCard title="Queue overview">
+              <Text>Total in queue: {overviewData.totalInQueue}</Text>
+            </CollapsibleCard>
 
-        <Card style={styles.card}>
-          <Card.Title title="By Type" />
-          <Card.Content>
-            <Text>Books: {stats.byType.book}</Text>
-            <Text>Fanfic: {stats.byType.fanfic}</Text>
-          </Card.Content>
-        </Card>
+            <CollapsibleCard title="Reading by mood">
+              <ReadingByMoodChart data={overviewData.byMood} />
+            </CollapsibleCard>
 
-        <Card style={styles.card}>
-          <Card.Title title="By Status" />
-          <Card.Content>
-            <Text>Queued: {stats.byStatus['to-read']}</Text>
-            <Text>Reading: {stats.byStatus.reading}</Text>
-            <Text>Completed: {stats.byStatus.finished}</Text>
-            <Text>Abandoned: {stats.byStatus.abandoned}</Text>
-          </Card.Content>
-        </Card>
+            <CollapsibleCard title="Reading by type">
+              <ReadingByTypeChart data={overviewData.byType} />
+            </CollapsibleCard>
+          </>
+        )}
 
+        {overviewLoading && !overviewData && (
+          <CollapsibleCard title="Queue overview">
+            <ActivityIndicator />
+            <Text style={styles.centerText}>Loading charts…</Text>
+          </CollapsibleCard>
+        )}
+
+        {overviewError && (
+          <CollapsibleCard title="Queue overview">
+            <Text style={styles.errorText}>
+              Failed to load overview charts. Other stats are still available.
+            </Text>
+          </CollapsibleCard>
+        )}
+
+        {/* ---------- OVERVIEW COUNTS FROM ALL READABLES ---------- */}
+        <CollapsibleCard title="Overview">
+          <Text>Total items: {stats.total}</Text>
+          <Text>In queue: {stats.inQueueCount}</Text>
+          <Text>Currently reading: {stats.readingCount}</Text>
+          <Text>Completed: {stats.completedCount}</Text>
+          <Text>Abandoned: {stats.abandonedCount}</Text>
+        </CollapsibleCard>
+
+        <CollapsibleCard title="By type">
+          <Text>Books: {stats.byType.book}</Text>
+          <Text>Fanfic: {stats.byType.fanfic}</Text>
+        </CollapsibleCard>
+
+        <CollapsibleCard title="By status">
+          <Text>Queued: {stats.byStatus['to-read']}</Text>
+          <Text>Reading: {stats.byStatus.reading}</Text>
+          <Text>Completed: {stats.byStatus.finished}</Text>
+          <Text>Abandoned: {stats.byStatus.abandoned}</Text>
+        </CollapsibleCard>
+
+        {/* ---------- COMPLETIONS OVER TIME ---------- */}
         {monthlyCompletions.length > 0 && (
-          <Card style={styles.card}>
-            <Card.Title title="Completed per month" />
-            <Card.Content>
-              {monthlyCompletions.map((m) => (
-                <View key={m.monthKey} style={styles.rowBetween}>
-                  <Text>{m.label}</Text>
-                  <Text>{m.count}</Text>
-                </View>
-              ))}
-            </Card.Content>
-          </Card>
+          <CollapsibleCard title="Completed per month">
+            {monthlyCompletions.map((m) => (
+              <View key={m.monthKey} style={styles.rowBetween}>
+                <Text>{m.label}</Text>
+                <Text>{m.count}</Text>
+              </View>
+            ))}
+          </CollapsibleCard>
         )}
 
         {monthlyCompletionGroups.length > 0 && (
-          <Card style={styles.card}>
-            <Card.Title title="What you finished by month" />
-            <Card.Content>
-              {monthlyCompletionGroups.map((group) => (
-                <View key={group.monthKey} style={styles.monthGroup}>
-                  <Text style={styles.monthTitle}>
-                    {group.label} ({group.items.length})
-                  </Text>
-                  {group.items.map((item) => (
-                    <View key={item.id} style={styles.finishedItemRow}>
-                      <Text style={styles.finishedItemTitle}>{item.title}</Text>
-                      <Text style={styles.finishedItemMeta}>
-                        {item.type === 'book' ? 'Book' : 'Fanfic'}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </Card.Content>
-          </Card>
+          <CollapsibleCard title="What you finished by month">
+            {monthlyCompletionGroups.map((group) => (
+              <View key={group.monthKey} style={styles.monthGroup}>
+                <Text style={styles.monthTitle}>
+                  {group.label} ({group.items.length})
+                </Text>
+                {group.items.map((item) => (
+                  <View key={item.id} style={styles.finishedItemRow}>
+                    <Text style={styles.finishedItemTitle}>{item.title}</Text>
+                    <Text style={styles.finishedItemMeta}>
+                      {item.type === 'book' ? 'Book' : 'Fanfic'}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </CollapsibleCard>
         )}
       </ScrollView>
     </Screen>
   );
 }
+
+// ---------- Styles ----------
 
 const styles = StyleSheet.create({
   center: {
@@ -297,6 +375,13 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: 16,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   rowBetween: {
     flexDirection: 'row',
