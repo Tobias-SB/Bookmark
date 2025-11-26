@@ -35,6 +35,7 @@ export function mapReadableRowToDomain(row: ReadableRow): ReadableItem {
     moodTags: parseMoodTags(row.mood_tags_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    progressPercent: row.progress_percent,
   } as const;
 
   if (row.type === 'book') {
@@ -107,6 +108,7 @@ export function buildReadableRowFromDomain(
     mood_tags_json: stringifyJsonArray(readable.moodTags),
     created_at: readable.createdAt || now,
     updated_at: now,
+    progress_percent: readable.progressPercent,
   };
 
   if (readable.type === 'book') {

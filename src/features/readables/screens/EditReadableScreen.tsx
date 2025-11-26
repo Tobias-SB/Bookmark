@@ -75,6 +75,7 @@ const EditReadableScreen: React.FC = () => {
   const queryClient = useQueryClient();
 
   const id = route.params?.id;
+  const draft = route.params?.draft as Partial<ReadableItem> | undefined;
   const isEditing = !!id;
 
   const { data, isLoading } = useReadableById(id);
@@ -82,22 +83,24 @@ const EditReadableScreen: React.FC = () => {
   const { control, handleSubmit, reset, watch, setValue } = useForm<EditReadableFormValues>({
     resolver: yupResolver(schema),
     defaultValues: {
-      type: 'book',
-      title: '',
-      author: '',
-      description: '',
-      priority: '3',
-      source: 'manual',
+      type: draft?.type ?? 'book',
+      title: draft?.title ?? '',
+      author: draft?.author ?? '',
+      description: (draft?.description as string | undefined) ?? '',
+      priority: draft?.priority != null ? String(draft.priority) : '3',
+      source: draft?.type === 'fanfic' ? 'ao3' : 'manual',
       pageCount: '',
-      wordCount: '',
-      ao3Url: '',
-      moodTags: [],
+      wordCount:
+        draft && draft.type === 'fanfic' && draft.wordCount != null ? String(draft.wordCount) : '',
+      ao3Url: draft && draft.type === 'fanfic' ? ((draft as FanficReadable).ao3Url ?? '') : '',
+      moodTags: draft?.moodTags ?? [],
     },
   });
 
   const currentType = watch('type');
   const selectedMoodTags = watch('moodTags');
 
+  // Editing existing readable → hydrate from DB
   useEffect(() => {
     if (data && isEditing) {
       const readable = data;
@@ -129,6 +132,39 @@ const EditReadableScreen: React.FC = () => {
       }
     }
   }, [data, isEditing, reset]);
+
+  // Create mode with draft (from QuickAdd fallback) → hydrate from draft
+  useEffect(() => {
+    if (!isEditing && draft) {
+      const baseDefaults: Partial<EditReadableFormValues> = {
+        type: draft.type ?? 'book',
+        title: draft.title ?? '',
+        author: draft.author ?? '',
+        description: (draft.description as string | undefined) ?? '',
+        priority: draft.priority != null ? String(draft.priority) : '3',
+        moodTags: draft.moodTags ?? [],
+      };
+
+      if (draft.type === 'fanfic') {
+        const fanficDraft = draft as Partial<FanficReadable>;
+        reset({
+          ...baseDefaults,
+          source: 'ao3',
+          pageCount: '',
+          wordCount: fanficDraft.wordCount != null ? String(fanficDraft.wordCount) : '',
+          ao3Url: fanficDraft.ao3Url ?? '',
+        } as EditReadableFormValues);
+      } else {
+        reset({
+          ...baseDefaults,
+          source: 'manual',
+          pageCount: '',
+          wordCount: '',
+          ao3Url: '',
+        } as EditReadableFormValues);
+      }
+    }
+  }, [draft, isEditing, reset]);
 
   if (isEditing && isLoading && !data) {
     return (
@@ -263,12 +299,15 @@ const EditReadableScreen: React.FC = () => {
         }
       }
 
-      // Make sure the library and stats refresh
       await queryClient.invalidateQueries({ queryKey: ['readables'] });
       await queryClient.invalidateQueries({ queryKey: ['stats'] });
 
-      // For now, just go back to where we came from
-      navigation.goBack();
+      if (isEditing) {
+        navigation.goBack();
+      } else {
+        // NavigationProp doesn't guarantee `replace`, so use navigate here.
+        navigation.navigate('ReadableDetail', { id: result.id });
+      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to save readable', error);
