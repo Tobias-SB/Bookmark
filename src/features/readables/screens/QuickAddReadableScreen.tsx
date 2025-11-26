@@ -68,168 +68,201 @@ const QuickAddReadableScreen: React.FC = () => {
     );
   };
 
+  function showAo3ErrorDialog(priority: number, moodTags: MoodTag[]) {
+    const now = new Date().toISOString();
+    const ao3Url = form.ao3Url.trim();
+
+    const message =
+      'This AO3 work could not be fetched. It may be locked and only available to logged-in members, so Bookmark cannot pull the details automatically.';
+
+    setError(message);
+
+    Alert.alert(
+      'Could not fetch from AO3',
+      `${message}\n\nDo you want to add it manually instead?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add manually',
+          onPress: () => {
+            navigation.replace('EditReadable', {
+              draft: {
+                type: 'fanfic',
+                // We don’t have title/author because AO3 blocked us
+                title: '',
+                author: '',
+                priority,
+                status: DEFAULT_STATUS,
+                createdAt: now,
+                updatedAt: now,
+                progressPercent: 0,
+                moodTags,
+                ao3Url,
+              } as Partial<FanficReadable>,
+            });
+          },
+        },
+      ],
+    );
+  }
+
+  function showBookNoMatchDialog(priority: number, moodTags: MoodTag[]) {
+    const now = new Date().toISOString();
+
+    const message =
+      'No matching book could be found from metadata. Please check the spelling of the title and author and try again, or add the details manually.';
+
+    setError(message);
+
+    Alert.alert('Book not found', message, [
+      {
+        text: 'Check spelling',
+        style: 'cancel',
+      },
+      {
+        text: 'Add manually',
+        onPress: () => {
+          navigation.replace('EditReadable', {
+            draft: {
+              type: 'book',
+              title: form.title.trim(),
+              author: form.author.trim(),
+              priority,
+              status: DEFAULT_STATUS,
+              createdAt: now,
+              updatedAt: now,
+              progressPercent: 0,
+              moodTags,
+            } as Partial<BookReadable>,
+          });
+        },
+      },
+    ]);
+  }
+
   async function handleSubmit() {
     if (!canSubmit || submitting) return;
 
     setSubmitting(true);
     setError(null);
 
-    const now = new Date().toISOString();
     const priority = priorityNumber;
     const moodTags = form.moodTags;
 
     try {
-      if (form.type === 'book') {
+      if (isBook) {
         // BOOK FLOW
         let metadata: Awaited<ReturnType<typeof fetchBookMetadata>> | null = null;
+        let metadataNotImplemented = false;
+
         try {
           metadata = await fetchBookMetadata(form.title.trim(), form.author.trim());
-        } catch {
-          // metadata lookup failed or not implemented → manual fallback
+        } catch (err: any) {
+          const msg = err?.message ?? '';
+          // Current behaviour: stub always throws "not implemented" → treat as "just insert manual"
+          if (msg.toLowerCase().includes('not implemented')) {
+            metadataNotImplemented = true;
+          } else {
+            // Future: real API error / no match / etc.
+            metadataNotImplemented = false;
+          }
         }
 
-        if (metadata) {
-          const book: Omit<BookReadable, 'id' | 'createdAt' | 'updatedAt'> = {
-            type: 'book',
-            title: metadata.title ?? form.title.trim(),
-            author: metadata.author ?? form.author.trim(),
-            description: metadata.description ?? null,
-            status: DEFAULT_STATUS,
-            priority,
-            progressPercent: 0,
-            moodTags,
-            // still default to manual until external sources are wired in
-            source: 'manual',
-            sourceId: null,
-            pageCount: metadata.pageCount,
-            genres: metadata.genres ?? [],
-          };
-
-          const inserted = await readableRepository.insert(book);
-
-          await queryClient.invalidateQueries({ queryKey: ['readables'] });
-          await queryClient.invalidateQueries({ queryKey: ['stats'] });
-
-          navigation.replace('ReadableDetail', { id: inserted.id });
+        if (!metadata && !metadataNotImplemented) {
+          // Real metadata path, but no match / failure → ask user what to do
+          showBookNoMatchDialog(priority, moodTags);
+          setSubmitting(false);
           return;
         }
 
-        // Manual fallback: go to full edit screen with a draft
-        navigation.replace('EditReadable', {
-          draft: {
-            type: 'book',
-            title: form.title.trim(),
-            author: form.author.trim(),
-            priority,
-            status: DEFAULT_STATUS,
-            createdAt: now,
-            updatedAt: now,
-            progressPercent: 0,
-            moodTags,
-          } as Partial<BookReadable>,
-        });
+        const book: Omit<BookReadable, 'id' | 'createdAt' | 'updatedAt'> = {
+          type: 'book',
+          title: metadata?.title ?? form.title.trim(),
+          author: metadata?.author ?? form.author.trim(),
+          description: metadata?.description ?? null,
+          status: DEFAULT_STATUS,
+          priority,
+          progressPercent: 0,
+          moodTags,
+          source: 'manual',
+          sourceId: null,
+          pageCount: metadata?.pageCount ?? null,
+          genres: metadata?.genres ?? [],
+        };
+
+        const inserted = await readableRepository.insert(book);
+
+        await queryClient.invalidateQueries({ queryKey: ['readables'] });
+        await queryClient.invalidateQueries({ queryKey: ['stats'] });
+
+        navigation.replace('ReadableDetail', { id: inserted.id });
         return;
       }
 
       // FANFIC FLOW
-      let metadata = null;
       try {
-        metadata = await fetchAo3Metadata(form.ao3Url.trim());
-      } catch (err: any) {
-        const message = err?.message ?? 'Failed to fetch metadata from AO3.';
-        setError(message);
-        Alert.alert('Could not fetch from AO3', message, [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Add manually',
-            onPress: () => {
-              const ao3Url = form.ao3Url.trim();
-              navigation.replace('EditReadable', {
-                draft: {
-                  type: 'fanfic',
-                  // title/author unknown because we only asked for URL
-                  title: '',
-                  author: '',
-                  priority,
-                  status: DEFAULT_STATUS,
-                  createdAt: now,
-                  updatedAt: now,
-                  progressPercent: 0,
-                  moodTags,
-                  ao3Url,
-                } as Partial<FanficReadable>,
-              });
-            },
-          },
-        ]);
+        const metadata = await fetchAo3Metadata(form.ao3Url.trim());
+
+        // Treat "metadata with no title and no author" as failure too
+        const looksEmpty =
+          !metadata ||
+          ((metadata.title == null || metadata.title.trim() === '') &&
+            (metadata.author == null || metadata.author.trim() === ''));
+
+        if (!metadata || looksEmpty) {
+          showAo3ErrorDialog(priority, moodTags);
+          setSubmitting(false);
+          return;
+        }
+
+        const ao3Url = form.ao3Url.trim();
+        const ao3WorkId = extractAo3WorkIdFromUrl(ao3Url) ?? `manual-${Date.now().toString()}`;
+
+        const fanfic: Omit<FanficReadable, 'id' | 'createdAt' | 'updatedAt'> = {
+          type: 'fanfic',
+          title: metadata.title ?? '',
+          author: metadata.author ?? '',
+          description: metadata.summary ?? null,
+          status: DEFAULT_STATUS,
+          priority,
+          progressPercent: 0,
+          moodTags,
+          source: 'ao3',
+          ao3WorkId,
+          ao3Url,
+          fandoms: metadata.fandoms,
+          relationships: metadata.relationships,
+          characters: metadata.characters,
+          ao3Tags: metadata.tags,
+          rating: metadata.rating,
+          warnings: metadata.warnings,
+          chapterCount: metadata.chapterCount,
+          complete: metadata.complete,
+          wordCount: metadata.wordCount,
+        };
+
+        const inserted = await readableRepository.insert(fanfic);
+
+        await queryClient.invalidateQueries({ queryKey: ['readables'] });
+        await queryClient.invalidateQueries({ queryKey: ['stats'] });
+
+        navigation.replace('ReadableDetail', { id: inserted.id });
+        return;
+      } catch (err) {
+        // Any error from AO3 → treat as locked / unavailable
+        // eslint-disable-next-line no-console
+        console.error('fetchAo3Metadata failed', err);
+        showAo3ErrorDialog(priority, moodTags);
+        setSubmitting(false);
         return;
       }
-
-      if (!metadata) {
-        const message = 'No metadata returned from AO3.';
-        setError(message);
-        Alert.alert('Could not fetch from AO3', message, [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Add manually',
-            onPress: () => {
-              const ao3Url = form.ao3Url.trim();
-              navigation.replace('EditReadable', {
-                draft: {
-                  type: 'fanfic',
-                  title: '',
-                  author: '',
-                  priority,
-                  status: DEFAULT_STATUS,
-                  createdAt: now,
-                  updatedAt: now,
-                  progressPercent: 0,
-                  moodTags,
-                  ao3Url,
-                } as Partial<FanficReadable>,
-              });
-            },
-          },
-        ]);
-        return;
-      }
-
-      const ao3Url = form.ao3Url.trim();
-      const ao3WorkId = extractAo3WorkIdFromUrl(ao3Url) ?? `manual-${Date.now().toString()}`;
-
-      const fanfic: Omit<FanficReadable, 'id' | 'createdAt' | 'updatedAt'> = {
-        type: 'fanfic',
-        title: metadata.title ?? '',
-        author: metadata.author ?? '',
-        description: metadata.summary ?? null,
-        status: DEFAULT_STATUS,
-        priority,
-        progressPercent: 0,
-        moodTags,
-        source: 'ao3',
-        ao3WorkId,
-        ao3Url,
-        fandoms: metadata.fandoms,
-        relationships: metadata.relationships,
-        characters: metadata.characters,
-        ao3Tags: metadata.tags,
-        rating: metadata.rating,
-        warnings: metadata.warnings,
-        chapterCount: metadata.chapterCount,
-        complete: metadata.complete,
-        wordCount: metadata.wordCount,
-      };
-
-      const inserted = await readableRepository.insert(fanfic);
-
-      await queryClient.invalidateQueries({ queryKey: ['readables'] });
-      await queryClient.invalidateQueries({ queryKey: ['stats'] });
-
-      navigation.replace('ReadableDetail', { id: inserted.id });
     } catch (err: any) {
       setError(err?.message ?? 'Failed to add readable.');
     } finally {
-      setSubmitting(false);
+      // We also early-return with setSubmitting(false) in some branches
+      if (submitting) {
+        setSubmitting(false);
+      }
     }
   }
 
