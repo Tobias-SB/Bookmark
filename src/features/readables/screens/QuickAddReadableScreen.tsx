@@ -1,6 +1,6 @@
 // src/features/readables/screens/QuickAddReadableScreen.tsx
 import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Button, HelperText, RadioButton, TextInput, Text } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,6 +13,8 @@ import { readableRepository } from '../services/readableRepository';
 import { fetchAo3Metadata } from '../services/ao3MetadataService';
 import { fetchBookMetadata } from '../services/bookMetadataService';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
+import { ALL_MOOD_TAGS, type MoodTag } from '@src/features/moods/types';
+import MoodChip from '@src/features/moods/components/MoodChip';
 
 type Navigation = NativeStackNavigationProp<RootStackParamList, 'QuickAddReadable'>;
 
@@ -22,6 +24,7 @@ interface FormState {
   author: string;
   priority: string; // keep as string for TextInput
   ao3Url: string;
+  moodTags: MoodTag[];
 }
 
 const DEFAULT_STATUS: ReadableStatus = 'to-read';
@@ -36,12 +39,14 @@ const QuickAddReadableScreen: React.FC = () => {
     author: '',
     priority: '3',
     ao3Url: '',
+    moodTags: [],
   });
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isFanfic = form.type === 'fanfic';
+  const isBook = form.type === 'book';
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -51,10 +56,17 @@ const QuickAddReadableScreen: React.FC = () => {
   const priorityValid = !Number.isNaN(priorityNumber) && priorityNumber >= 1 && priorityNumber <= 5;
 
   const canSubmit =
-    form.title.trim().length > 0 &&
-    form.author.trim().length > 0 &&
     priorityValid &&
-    (!isFanfic || form.ao3Url.trim().length > 0);
+    ((isBook && form.title.trim().length > 0 && form.author.trim().length > 0) ||
+      (isFanfic && form.ao3Url.trim().length > 0));
+
+  const toggleMoodTag = (tag: MoodTag) => {
+    const hasTag = form.moodTags.includes(tag);
+    updateField(
+      'moodTags',
+      hasTag ? form.moodTags.filter((t) => t !== tag) : [...form.moodTags, tag],
+    );
+  };
 
   async function handleSubmit() {
     if (!canSubmit || submitting) return;
@@ -64,11 +76,12 @@ const QuickAddReadableScreen: React.FC = () => {
 
     const now = new Date().toISOString();
     const priority = priorityNumber;
+    const moodTags = form.moodTags;
 
     try {
       if (form.type === 'book') {
         // BOOK FLOW
-        let metadata = null;
+        let metadata: Awaited<ReturnType<typeof fetchBookMetadata>> | null = null;
         try {
           metadata = await fetchBookMetadata(form.title.trim(), form.author.trim());
         } catch {
@@ -80,12 +93,13 @@ const QuickAddReadableScreen: React.FC = () => {
             type: 'book',
             title: metadata.title ?? form.title.trim(),
             author: metadata.author ?? form.author.trim(),
-            description: null,
+            description: metadata.description ?? null,
             status: DEFAULT_STATUS,
             priority,
             progressPercent: 0,
-            moodTags: [],
-            source: 'manual', // swap to googleBooks/openLibrary later if you like
+            moodTags,
+            // still default to manual until external sources are wired in
+            source: 'manual',
             sourceId: null,
             pageCount: metadata.pageCount,
             genres: metadata.genres ?? [],
@@ -111,7 +125,7 @@ const QuickAddReadableScreen: React.FC = () => {
             createdAt: now,
             updatedAt: now,
             progressPercent: 0,
-            moodTags: [],
+            moodTags,
           } as Partial<BookReadable>,
         });
         return;
@@ -122,60 +136,96 @@ const QuickAddReadableScreen: React.FC = () => {
       try {
         metadata = await fetchAo3Metadata(form.ao3Url.trim());
       } catch (err: any) {
-        setError(err?.message ?? 'Failed to fetch metadata from AO3.');
-      }
-
-      if (metadata) {
-        const ao3Url = form.ao3Url.trim();
-        const ao3WorkId = extractAo3WorkIdFromUrl(ao3Url) ?? `manual-${Date.now().toString()}`;
-
-        const fanfic: Omit<FanficReadable, 'id' | 'createdAt' | 'updatedAt'> = {
-          type: 'fanfic',
-          title: metadata.title ?? form.title.trim(),
-          author: metadata.author ?? form.author.trim(),
-          description: metadata.summary ?? null,
-          status: DEFAULT_STATUS,
-          priority,
-          progressPercent: 0,
-          moodTags: [],
-          source: 'ao3',
-          ao3WorkId,
-          ao3Url,
-          fandoms: metadata.fandoms,
-          relationships: metadata.relationships,
-          characters: metadata.characters,
-          ao3Tags: metadata.tags,
-          rating: metadata.rating,
-          warnings: metadata.warnings,
-          chapterCount: metadata.chapterCount,
-          complete: metadata.complete,
-          wordCount: metadata.wordCount,
-        };
-
-        const inserted = await readableRepository.insert(fanfic);
-
-        await queryClient.invalidateQueries({ queryKey: ['readables'] });
-        await queryClient.invalidateQueries({ queryKey: ['stats'] });
-
-        navigation.replace('ReadableDetail', { id: inserted.id });
+        const message = err?.message ?? 'Failed to fetch metadata from AO3.';
+        setError(message);
+        Alert.alert('Could not fetch from AO3', message, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add manually',
+            onPress: () => {
+              const ao3Url = form.ao3Url.trim();
+              navigation.replace('EditReadable', {
+                draft: {
+                  type: 'fanfic',
+                  // title/author unknown because we only asked for URL
+                  title: '',
+                  author: '',
+                  priority,
+                  status: DEFAULT_STATUS,
+                  createdAt: now,
+                  updatedAt: now,
+                  progressPercent: 0,
+                  moodTags,
+                  ao3Url,
+                } as Partial<FanficReadable>,
+              });
+            },
+          },
+        ]);
         return;
       }
 
-      // Manual fallback for fanfic: go to full edit screen with draft
-      navigation.replace('EditReadable', {
-        draft: {
-          type: 'fanfic',
-          title: form.title.trim(),
-          author: form.author.trim(),
-          priority,
-          status: DEFAULT_STATUS,
-          createdAt: now,
-          updatedAt: now,
-          progressPercent: 0,
-          moodTags: [],
-          ao3Url: form.ao3Url.trim(),
-        } as Partial<FanficReadable>,
-      });
+      if (!metadata) {
+        const message = 'No metadata returned from AO3.';
+        setError(message);
+        Alert.alert('Could not fetch from AO3', message, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add manually',
+            onPress: () => {
+              const ao3Url = form.ao3Url.trim();
+              navigation.replace('EditReadable', {
+                draft: {
+                  type: 'fanfic',
+                  title: '',
+                  author: '',
+                  priority,
+                  status: DEFAULT_STATUS,
+                  createdAt: now,
+                  updatedAt: now,
+                  progressPercent: 0,
+                  moodTags,
+                  ao3Url,
+                } as Partial<FanficReadable>,
+              });
+            },
+          },
+        ]);
+        return;
+      }
+
+      const ao3Url = form.ao3Url.trim();
+      const ao3WorkId = extractAo3WorkIdFromUrl(ao3Url) ?? `manual-${Date.now().toString()}`;
+
+      const fanfic: Omit<FanficReadable, 'id' | 'createdAt' | 'updatedAt'> = {
+        type: 'fanfic',
+        title: metadata.title ?? '',
+        author: metadata.author ?? '',
+        description: metadata.summary ?? null,
+        status: DEFAULT_STATUS,
+        priority,
+        progressPercent: 0,
+        moodTags,
+        source: 'ao3',
+        ao3WorkId,
+        ao3Url,
+        fandoms: metadata.fandoms,
+        relationships: metadata.relationships,
+        characters: metadata.characters,
+        ao3Tags: metadata.tags,
+        rating: metadata.rating,
+        warnings: metadata.warnings,
+        chapterCount: metadata.chapterCount,
+        complete: metadata.complete,
+        wordCount: metadata.wordCount,
+      };
+
+      const inserted = await readableRepository.insert(fanfic);
+
+      await queryClient.invalidateQueries({ queryKey: ['readables'] });
+      await queryClient.invalidateQueries({ queryKey: ['stats'] });
+
+      navigation.replace('ReadableDetail', { id: inserted.id });
     } catch (err: any) {
       setError(err?.message ?? 'Failed to add readable.');
     } finally {
@@ -187,7 +237,7 @@ const QuickAddReadableScreen: React.FC = () => {
     <Screen>
       <ScrollView contentContainerStyle={styles.container}>
         <Text variant="titleLarge" style={styles.title}>
-          Add to library
+          Quick add to library
         </Text>
 
         <Text style={styles.label}>Type</Text>
@@ -205,19 +255,23 @@ const QuickAddReadableScreen: React.FC = () => {
           </View>
         </RadioButton.Group>
 
-        <TextInput
-          label="Title"
-          value={form.title}
-          onChangeText={(text) => updateField('title', text)}
-          style={styles.input}
-        />
+        {isBook && (
+          <>
+            <TextInput
+              label="Title"
+              value={form.title}
+              onChangeText={(text) => updateField('title', text)}
+              style={styles.input}
+            />
 
-        <TextInput
-          label="Author"
-          value={form.author}
-          onChangeText={(text) => updateField('author', text)}
-          style={styles.input}
-        />
+            <TextInput
+              label="Author"
+              value={form.author}
+              onChangeText={(text) => updateField('author', text)}
+              style={styles.input}
+            />
+          </>
+        )}
 
         {isFanfic && (
           <TextInput
@@ -242,6 +296,22 @@ const QuickAddReadableScreen: React.FC = () => {
             Priority must be between 1 and 5
           </HelperText>
         )}
+
+        <View style={styles.moodsSection}>
+          <Text variant="titleMedium" style={styles.sectionTitle}>
+            Mood tags
+          </Text>
+          <View style={styles.moodChips}>
+            {ALL_MOOD_TAGS.map((tag) => (
+              <MoodChip
+                key={tag}
+                tag={tag}
+                selected={form.moodTags.includes(tag)}
+                onToggle={toggleMoodTag}
+              />
+            ))}
+          </View>
+        </View>
 
         {error && (
           <HelperText type="error" visible={true}>
@@ -281,6 +351,16 @@ const styles = StyleSheet.create({
   },
   input: {
     marginTop: 12,
+  },
+  moodsSection: {
+    marginTop: 16,
+  },
+  sectionTitle: {
+    marginBottom: 4,
+  },
+  moodChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   submitButton: {
     marginTop: 24,

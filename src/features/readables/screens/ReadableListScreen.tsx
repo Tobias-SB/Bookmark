@@ -1,6 +1,6 @@
 // src/features/readables/screens/ReadableListScreen.tsx
 import React, { useMemo, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View, Text } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View, Text, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { FAB, Chip } from 'react-native-paper';
@@ -56,8 +56,23 @@ const ReadableListScreen: React.FC = () => {
   }
 
   const handleAdd = () => {
-    // ✅ NEW: go to QuickAddReadable, not EditReadable
-    navigation.navigate('QuickAddReadable');
+    Alert.alert('Add to library', 'How would you like to add a readable?', [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Quick add',
+        onPress: () => navigation.navigate('QuickAddReadable'),
+      },
+      {
+        text: 'Manual',
+        onPress: () => {
+          // Manual add: go straight to full edit in "create" mode
+          navigation.navigate('EditReadable', {} as RootStackParamList['EditReadable']);
+        },
+      },
+    ]);
   };
 
   return (
@@ -86,7 +101,6 @@ const ReadableListScreen: React.FC = () => {
             renderItem={({ item }) => (
               <ReadableCard
                 item={item}
-                // ✅ This should open the detail screen
                 onPress={() => navigation.navigate('ReadableDetail', { id: item.id })}
               />
             )}

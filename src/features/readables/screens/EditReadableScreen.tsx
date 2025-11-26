@@ -6,14 +6,14 @@ import { ScrollView, StyleSheet, View, Alert } from 'react-native';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { Button, SegmentedButtons, Text, Chip } from 'react-native-paper';
+import { Button, SegmentedButtons, Text, Chip, Switch } from 'react-native-paper';
 import { useQueryClient } from '@tanstack/react-query';
 import Screen from '@src/components/common/Screen';
 import LoadingState from '@src/components/common/LoadingState';
 import TextInputField from '@src/components/common/TextInputField';
 import { useReadableById } from '../hooks/useReadableById';
 import type { RootStackParamList } from '@src/navigation/types';
-import type { BookSource, ReadableItem, BookReadable, FanficReadable } from '../types';
+import type { BookSource, ReadableItem, BookReadable, FanficReadable, Ao3Rating } from '../types';
 import { readableRepository } from '../services/readableRepository';
 import { ALL_MOOD_TAGS, MoodTag } from '@src/features/moods/types';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
@@ -32,6 +32,19 @@ interface EditReadableFormValues {
   wordCount?: string;
   ao3Url?: string;
   moodTags: MoodTag[];
+
+  // Book-only (form side)
+  genresText?: string;
+
+  // Fanfic-only (form side)
+  fandomsText?: string;
+  relationshipsText?: string;
+  charactersText?: string;
+  ao3TagsText?: string;
+  warningsText?: string;
+  chapterCount?: string;
+  complete: boolean;
+  rating?: Ao3Rating | null;
 }
 
 // Schema: no SchemaOf, to keep it compatible with your yup version.
@@ -66,8 +79,35 @@ const schema = yup
       .transform((value) => (value === '' ? null : value))
       .optional(),
     moodTags: yup.array(yup.mixed<MoodTag>().oneOf(ALL_MOOD_TAGS as MoodTag[])).required(),
+
+    genresText: yup.string().optional(),
+
+    fandomsText: yup.string().optional(),
+    relationshipsText: yup.string().optional(),
+    charactersText: yup.string().optional(),
+    ao3TagsText: yup.string().optional(),
+    warningsText: yup.string().optional(),
+    chapterCount: yup
+      .string()
+      .nullable()
+      .transform((value) => (value === '' ? null : value))
+      .optional(),
+    complete: yup.boolean().required(),
+    rating: yup
+      .mixed<Ao3Rating>()
+      .oneOf(['G', 'T', 'M', 'E', 'NR'] as const)
+      .nullable()
+      .optional(),
   })
   .required() as yup.ObjectSchema<EditReadableFormValues>;
+
+const splitCommaList = (value?: string | null): string[] => {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+};
 
 const EditReadableScreen: React.FC = () => {
   const route = useRoute<EditRoute>();
@@ -91,14 +131,30 @@ const EditReadableScreen: React.FC = () => {
       source: draft?.type === 'fanfic' ? 'ao3' : 'manual',
       pageCount: '',
       wordCount:
-        draft && draft.type === 'fanfic' && draft.wordCount != null ? String(draft.wordCount) : '',
-      ao3Url: draft && draft.type === 'fanfic' ? ((draft as FanficReadable).ao3Url ?? '') : '',
+        draft && draft.type === 'fanfic' && (draft as Partial<FanficReadable>).wordCount != null
+          ? String((draft as Partial<FanficReadable>).wordCount)
+          : '',
+      ao3Url:
+        draft && draft.type === 'fanfic' ? ((draft as Partial<FanficReadable>).ao3Url ?? '') : '',
       moodTags: draft?.moodTags ?? [],
+
+      genresText: '',
+
+      fandomsText: '',
+      relationshipsText: '',
+      charactersText: '',
+      ao3TagsText: '',
+      warningsText: '',
+      chapterCount: '',
+      complete: false,
+      rating: null,
     },
   });
 
   const currentType = watch('type');
   const selectedMoodTags = watch('moodTags');
+  const currentRating = watch('rating');
+  const completeValue = watch('complete');
 
   // Editing existing readable → hydrate from DB
   useEffect(() => {
@@ -120,6 +176,16 @@ const EditReadableScreen: React.FC = () => {
           pageCount: readable.pageCount ? String(readable.pageCount) : '',
           wordCount: '',
           ao3Url: '',
+          genresText: readable.genres.join(', '),
+
+          fandomsText: '',
+          relationshipsText: '',
+          charactersText: '',
+          ao3TagsText: '',
+          warningsText: '',
+          chapterCount: '',
+          complete: false,
+          rating: null,
         } as EditReadableFormValues);
       } else {
         reset({
@@ -128,6 +194,17 @@ const EditReadableScreen: React.FC = () => {
           pageCount: '',
           wordCount: readable.wordCount ? String(readable.wordCount) : '',
           ao3Url: readable.ao3Url,
+
+          genresText: '',
+
+          fandomsText: readable.fandoms.join(', '),
+          relationshipsText: readable.relationships.join(', '),
+          charactersText: readable.characters.join(', '),
+          ao3TagsText: readable.ao3Tags.join(', '),
+          warningsText: readable.warnings.join(', '),
+          chapterCount: readable.chapterCount ? String(readable.chapterCount) : '',
+          complete: readable.complete ?? false,
+          rating: readable.rating ?? null,
         } as EditReadableFormValues);
       }
     }
@@ -153,14 +230,36 @@ const EditReadableScreen: React.FC = () => {
           pageCount: '',
           wordCount: fanficDraft.wordCount != null ? String(fanficDraft.wordCount) : '',
           ao3Url: fanficDraft.ao3Url ?? '',
+
+          genresText: '',
+
+          fandomsText: (fanficDraft.fandoms ?? []).join(', '),
+          relationshipsText: (fanficDraft.relationships ?? []).join(', '),
+          charactersText: (fanficDraft.characters ?? []).join(', '),
+          ao3TagsText: (fanficDraft.ao3Tags ?? []).join(', '),
+          warningsText: (fanficDraft.warnings ?? []).join(', '),
+          chapterCount: fanficDraft.chapterCount != null ? String(fanficDraft.chapterCount) : '',
+          complete: fanficDraft.complete ?? false,
+          rating: fanficDraft.rating ?? null,
         } as EditReadableFormValues);
       } else {
+        const bookDraft = draft as Partial<BookReadable>;
         reset({
           ...baseDefaults,
           source: 'manual',
-          pageCount: '',
+          pageCount: bookDraft.pageCount != null ? String(bookDraft.pageCount) : '',
           wordCount: '',
           ao3Url: '',
+          genresText: (bookDraft.genres ?? []).join(', '),
+
+          fandomsText: '',
+          relationshipsText: '',
+          charactersText: '',
+          ao3TagsText: '',
+          warningsText: '',
+          chapterCount: '',
+          complete: false,
+          rating: null,
         } as EditReadableFormValues);
       }
     }
@@ -193,8 +292,20 @@ const EditReadableScreen: React.FC = () => {
         values.pageCount != null ? parseInt(values.pageCount, 10) || undefined : undefined;
       const wordCountNumber =
         values.wordCount != null ? parseInt(values.wordCount, 10) || undefined : undefined;
+      const chapterCountNumber =
+        values.chapterCount != null ? parseInt(values.chapterCount, 10) || undefined : undefined;
 
       const moodTags = values.moodTags;
+
+      const genres = splitCommaList(values.genresText);
+
+      const fandoms = splitCommaList(values.fandomsText);
+      const relationships = splitCommaList(values.relationshipsText);
+      const characters = splitCommaList(values.charactersText);
+      const ao3Tags = splitCommaList(values.ao3TagsText);
+      const warnings = splitCommaList(values.warningsText);
+      const complete = values.complete ?? false;
+      const rating = values.rating ?? null;
 
       let result: ReadableItem;
 
@@ -211,10 +322,11 @@ const EditReadableScreen: React.FC = () => {
             priority: priorityNumber,
             status: existing.status,
             moodTags,
-            source: (values.source as BookSource) ?? 'manual',
-            sourceId: existing.type === 'book' ? existing.sourceId : null,
+            // Preserve existing source/sourceId for books
+            source: existing.type === 'book' ? existing.source : 'manual',
+            sourceId: existing.type === 'book' ? (existing.sourceId ?? null) : null,
             pageCount: pageCountNumber ?? null,
-            genres: existing.type === 'book' ? existing.genres : [],
+            genres,
           };
 
           result = await readableRepository.update(updatedBook);
@@ -236,14 +348,14 @@ const EditReadableScreen: React.FC = () => {
             source: 'ao3',
             ao3Url,
             ao3WorkId,
-            fandoms: existing.type === 'fanfic' ? existing.fandoms : [],
-            relationships: existing.type === 'fanfic' ? existing.relationships : [],
-            characters: existing.type === 'fanfic' ? existing.characters : [],
-            ao3Tags: existing.type === 'fanfic' ? existing.ao3Tags : [],
-            rating: existing.type === 'fanfic' ? existing.rating : null,
-            warnings: existing.type === 'fanfic' ? existing.warnings : [],
-            chapterCount: existing.type === 'fanfic' ? existing.chapterCount : null,
-            complete: existing.type === 'fanfic' ? existing.complete : null,
+            fandoms,
+            relationships,
+            characters,
+            ao3Tags,
+            rating,
+            warnings,
+            chapterCount: chapterCountNumber ?? null,
+            complete,
             wordCount: wordCountNumber ?? null,
           };
 
@@ -261,10 +373,10 @@ const EditReadableScreen: React.FC = () => {
             priority: priorityNumber,
             progressPercent: 0,
             moodTags,
-            source: (values.source as BookSource) ?? 'manual',
+            source: 'manual',
             sourceId: null,
             pageCount: pageCountNumber ?? null,
-            genres: [],
+            genres,
           };
 
           result = await readableRepository.insert(newBook);
@@ -284,14 +396,14 @@ const EditReadableScreen: React.FC = () => {
             source: 'ao3',
             ao3WorkId,
             ao3Url,
-            fandoms: [],
-            relationships: [],
-            characters: [],
-            ao3Tags: [],
-            rating: null,
-            warnings: [],
-            chapterCount: null,
-            complete: null,
+            fandoms,
+            relationships,
+            characters,
+            ao3Tags,
+            rating,
+            warnings,
+            chapterCount: chapterCountNumber ?? null,
+            complete,
             wordCount: wordCountNumber ?? null,
           };
 
@@ -305,7 +417,6 @@ const EditReadableScreen: React.FC = () => {
       if (isEditing) {
         navigation.goBack();
       } else {
-        // NavigationProp doesn't guarantee `replace`, so use navigate here.
         navigation.navigate('ReadableDetail', { id: result.id });
       }
     } catch (error) {
@@ -349,14 +460,23 @@ const EditReadableScreen: React.FC = () => {
         </View>
 
         {currentType === 'book' ? (
-          <View style={styles.field}>
-            <TextInputField
-              control={control}
-              name="pageCount"
-              label="Page count"
-              keyboardType="numeric"
-            />
-          </View>
+          <>
+            <View style={styles.field}>
+              <TextInputField
+                control={control}
+                name="pageCount"
+                label="Page count"
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={styles.field}>
+              <TextInputField
+                control={control}
+                name="genresText"
+                label="Genres (comma-separated)"
+              />
+            </View>
+          </>
         ) : (
           <>
             <View style={styles.field}>
@@ -370,6 +490,69 @@ const EditReadableScreen: React.FC = () => {
                 keyboardType="numeric"
               />
             </View>
+
+            <Text variant="titleMedium" style={styles.sectionTitle}>
+              Fanfic metadata
+            </Text>
+            <View style={styles.field}>
+              <TextInputField
+                control={control}
+                name="fandomsText"
+                label="Fandoms (comma-separated)"
+              />
+            </View>
+            <View style={styles.field}>
+              <TextInputField
+                control={control}
+                name="relationshipsText"
+                label="Relationships (comma-separated)"
+              />
+            </View>
+            <View style={styles.field}>
+              <TextInputField
+                control={control}
+                name="charactersText"
+                label="Characters (comma-separated)"
+              />
+            </View>
+            <View style={styles.field}>
+              <TextInputField control={control} name="ao3TagsText" label="Tags (comma-separated)" />
+            </View>
+            <View style={styles.field}>
+              <TextInputField
+                control={control}
+                name="warningsText"
+                label="Warnings (comma-separated)"
+              />
+            </View>
+            <View style={styles.field}>
+              <TextInputField
+                control={control}
+                name="chapterCount"
+                label="Chapter count"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.toggleRow}>
+              <Text>Marked complete</Text>
+              <Switch value={completeValue} onValueChange={(val) => setValue('complete', val)} />
+            </View>
+
+            <Text variant="titleMedium" style={styles.sectionTitle}>
+              AO3 rating
+            </Text>
+            <SegmentedButtons
+              value={currentRating ?? ''}
+              onValueChange={(value) => setValue('rating', (value || null) as Ao3Rating | null)}
+              buttons={[
+                { value: 'G', label: 'G' },
+                { value: 'T', label: 'T' },
+                { value: 'M', label: 'M' },
+                { value: 'E', label: 'E' },
+                { value: 'NR', label: 'NR' },
+              ]}
+            />
           </>
         )}
 
@@ -412,7 +595,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   sectionTitle: {
-    marginTop: 8,
+    marginTop: 16,
     marginBottom: 4,
   },
   moodsSection: {
@@ -425,6 +608,12 @@ const styles = StyleSheet.create({
   moodChip: {
     marginRight: 6,
     marginBottom: 6,
+  },
+  toggleRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   footer: {
     marginTop: 24,
