@@ -15,6 +15,7 @@ export interface Ao3WorkMetadata {
   wordCount: number | null;
   chapterCount: number | null;
   complete: boolean | null;
+  summary: string | null; // NEW: AO3 "Summary" block
 }
 
 export function extractAo3WorkId(url: string): string | null {
@@ -138,6 +139,15 @@ export async function fetchAo3Metadata(rawUrl: string): Promise<Ao3WorkMetadata>
   const chaptersText = $('dd.chapters').first().text().trim() || null;
   const { chapterCount, complete } = parseChapters(chaptersText);
 
+  // AO3 "Summary" block:
+  // <div class="summary module">
+  //   <h3>Summary:</h3>
+  //   <blockquote class="userstuff">
+  //     <p>...</p>
+  //   </blockquote>
+  // </div>
+  const summaryText = $('div.summary.module blockquote.userstuff').first().text().trim() || null;
+
   return {
     title,
     author,
@@ -150,5 +160,6 @@ export async function fetchAo3Metadata(rawUrl: string): Promise<Ao3WorkMetadata>
     wordCount,
     chapterCount,
     complete,
+    summary: summaryText,
   };
 }

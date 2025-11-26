@@ -5,6 +5,11 @@ export interface BookMetadata {
   author: string | null;
   pageCount: number | null;
   genres: string[];
+  /**
+   * Short description / summary of the book, if available from the source API.
+   * This will be mapped into the Readable's `description` field.
+   */
+  description: string | null;
 }
 
 /**

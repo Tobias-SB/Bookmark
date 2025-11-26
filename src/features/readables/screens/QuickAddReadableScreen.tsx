@@ -133,7 +133,7 @@ const QuickAddReadableScreen: React.FC = () => {
           type: 'fanfic',
           title: metadata.title ?? form.title.trim(),
           author: metadata.author ?? form.author.trim(),
-          description: null,
+          description: metadata.summary ?? null,
           status: DEFAULT_STATUS,
           priority,
           progressPercent: 0,
