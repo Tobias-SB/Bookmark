@@ -32,6 +32,9 @@ export interface ReadableRow {
 
   created_at: string;
   updated_at: string;
+
+  // New: progress in percent (0–100)
+  progress_percent: number;
 }
 
 export interface ReadableMoodTagRow {

@@ -20,6 +20,14 @@ export interface BaseReadableItem {
   description?: string | null;
   status: ReadableStatus;
   priority: number; // 1–5
+  /**
+   * Reading progress in percent (0–100).
+   * - to-read: usually 0
+   * - reading: 1–99
+   * - finished: 100
+   * - DNF: how far you got when you stopped
+   */
+  progressPercent: number;
   moodTags: MoodTag[];
   createdAt: string;
   updatedAt: string;

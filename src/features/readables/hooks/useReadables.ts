@@ -5,7 +5,7 @@ import type { ReadableItem } from '@src/features/readables/types';
 
 export function useReadables() {
   return useQuery<ReadableItem[]>({
-    queryKey: ['readables', 'to-read'],
-    queryFn: () => readableRepository.getAllToRead(),
+    queryKey: ['readables', 'all'],
+    queryFn: () => readableRepository.getAll(),
   });
 }

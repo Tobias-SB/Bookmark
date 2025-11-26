@@ -223,6 +223,7 @@ const EditReadableScreen: React.FC = () => {
             description: values.description,
             status: 'to-read',
             priority: priorityNumber,
+            progressPercent: 0,
             moodTags,
             source: (values.source as BookSource) ?? 'manual',
             sourceId: null,
@@ -242,6 +243,7 @@ const EditReadableScreen: React.FC = () => {
             description: values.description,
             status: 'to-read',
             priority: priorityNumber,
+            progressPercent: 0,
             moodTags,
             source: 'ao3',
             ao3WorkId,
@@ -261,13 +263,13 @@ const EditReadableScreen: React.FC = () => {
         }
       }
 
-      // Make sure the queue refreshes
-      await queryClient.invalidateQueries({ queryKey: ['readables', 'to-read'] });
+      // Make sure the library and stats refresh
+      await queryClient.invalidateQueries({ queryKey: ['readables'] });
+      await queryClient.invalidateQueries({ queryKey: ['stats'] });
 
-      // For now, just go back to where we came from (usually the Queue or Detail screen)
+      // For now, just go back to where we came from
       navigation.goBack();
     } catch (error) {
-      // Log for debugging & show a simple alert so it doesn't fail silently
       // eslint-disable-next-line no-console
       console.error('Failed to save readable', error);
       Alert.alert('Error', 'Something went wrong while saving this item. Please try again.');
@@ -355,7 +357,7 @@ const EditReadableScreen: React.FC = () => {
 
         <View style={styles.footer}>
           <Button mode="contained" onPress={handleSubmit(onSubmit)}>
-            {isEditing ? 'Save changes' : 'Add to queue'}
+            {isEditing ? 'Save changes' : 'Add to library'}
           </Button>
         </View>
       </ScrollView>

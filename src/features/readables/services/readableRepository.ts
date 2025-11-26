@@ -25,6 +25,8 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
     ? (JSON.parse(row.mood_tags_json) as MoodTag[])
     : [];
 
+  const progressPercent = row.progress_percent ?? 0;
+
   const base = {
     id: row.id,
     type: row.type,
@@ -33,6 +35,7 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
     description: row.description ?? null,
     status: row.status,
     priority: row.priority,
+    progressPercent,
     moodTags,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -120,6 +123,7 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
     mood_tags_json: JSON.stringify(readable.moodTags ?? []),
     created_at: readable.createdAt,
     updated_at: readable.updatedAt,
+    progress_percent: readable.progressPercent ?? 0,
   };
 }
 
@@ -140,11 +144,8 @@ function buildRowFromNewReadable(
 }
 
 /**
- * Repository interface and implementation.
- */
-
-/**
  * Items still in the queue (to-read only), ordered by priority and recency.
+ * (Used by older code; Library view will use getAll()).
  */
 async function getAllToRead(): Promise<ReadableItem[]> {
   const rows = await getAllAsync<ReadableRow>(
@@ -212,7 +213,7 @@ async function insert(
 ): Promise<ReadableItem> {
   const row = buildRowFromNewReadable(readable);
 
-  // 25 columns, 25 values. Must match table definition exactly.
+  // 26 columns, 26 values. Must match table definition exactly.
   await runAsync(
     `
     INSERT INTO readables (
@@ -240,9 +241,10 @@ async function insert(
       genres_json,
       mood_tags_json,
       created_at,
-      updated_at
+      updated_at,
+      progress_percent
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     );
   `,
     [
@@ -271,6 +273,7 @@ async function insert(
       row.mood_tags_json,
       row.created_at,
       row.updated_at,
+      row.progress_percent,
     ],
   );
 
@@ -317,6 +320,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       word_count = ?,
       genres_json = ?,
       mood_tags_json = ?,
+      progress_percent = ?,
       updated_at = ?
     WHERE id = ?;
   `,
@@ -343,6 +347,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       row.word_count,
       row.genres_json,
       row.mood_tags_json,
+      row.progress_percent,
       row.updated_at,
       row.id,
     ],
@@ -364,17 +369,63 @@ async function remove(id: string): Promise<void> {
 /**
  * Simple status update helper, also bumps updated_at.
  * When you mark as finished, this timestamp becomes your "finished at" date.
+ *
+ * Semantics:
+ * - finished: also sets progress_percent = 100
+ * - to-read / reading / DNF: leave progress_percent as-is
  */
 async function updateStatus(id: string, status: ReadableStatus): Promise<void> {
+  const now = new Date().toISOString();
+
+  let progressPercentUpdate: number | null = null;
+
+  switch (status) {
+    case 'finished':
+      progressPercentUpdate = 100;
+      break;
+    case 'to-read':
+    case 'reading':
+    case 'DNF':
+      // do not touch progress_percent here
+      progressPercentUpdate = null;
+      break;
+  }
+
+  if (progressPercentUpdate === null) {
+    await runAsync(
+      `
+      UPDATE readables
+      SET status = ?, updated_at = ?
+      WHERE id = ?;
+    `,
+      [status, now, id],
+    );
+  } else {
+    await runAsync(
+      `
+      UPDATE readables
+      SET status = ?, updated_at = ?, progress_percent = ?
+      WHERE id = ?;
+    `,
+      [status, now, progressPercentUpdate, id],
+    );
+  }
+}
+
+/**
+ * Update reading progress (0–100) and bump updated_at.
+ */
+async function updateProgress(id: string, progressPercent: number): Promise<void> {
+  const clamped = Math.min(100, Math.max(0, Math.round(progressPercent)));
   const now = new Date().toISOString();
 
   await runAsync(
     `
     UPDATE readables
-    SET status = ?, updated_at = ?
+    SET progress_percent = ?, updated_at = ?
     WHERE id = ?;
   `,
-    [status, now, id],
+    [clamped, now, id],
   );
 }
 
@@ -387,4 +438,5 @@ export const readableRepository = {
   update,
   delete: remove,
   updateStatus,
+  updateProgress,
 };

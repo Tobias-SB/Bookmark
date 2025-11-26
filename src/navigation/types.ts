@@ -4,7 +4,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 
 export type MainTabsParamList = {
-  Queue: undefined;
+  Library: undefined;
   Discover: undefined;
   Stats: undefined;
   Settings: undefined;

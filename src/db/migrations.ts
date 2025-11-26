@@ -79,6 +79,13 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: '003_readables_progress_percent',
+    upSql: `
+      ALTER TABLE readables
+      ADD COLUMN progress_percent INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 interface MigrationMetaRow {

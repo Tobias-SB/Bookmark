@@ -22,7 +22,7 @@ interface TabIconProps {
  */
 function getTabIconName(routeName: TabRouteName): keyof typeof Ionicons.glyphMap {
   switch (routeName) {
-    case 'Queue':
+    case 'Library':
       return 'book-outline';
     case 'Discover':
       return 'bulb-outline';
@@ -53,7 +53,7 @@ const MainTabsNavigator: React.FC = () => {
         tabBarIcon: renderTabBarIcon(route.name as TabRouteName),
       })}
     >
-      <Tab.Screen name="Queue" component={ReadableListScreen} options={{ title: 'Queue' }} />
+      <Tab.Screen name="Library" component={ReadableListScreen} options={{ title: 'Library' }} />
       <Tab.Screen name="Discover" component={MoodSelectScreen} options={{ title: 'Discover' }} />
       <Tab.Screen name="Stats" component={StatsScreen} options={{ title: 'Stats' }} />
       <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
