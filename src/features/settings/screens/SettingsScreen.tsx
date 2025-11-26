@@ -1,9 +1,11 @@
 // src/features/settings/screens/SettingsScreen.tsx
 import React from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
-import Screen from '@src/components/common/Screen';
 import { Text } from 'react-native-paper';
+
+import Screen from '@src/components/common/Screen';
 import ThemeToggle from '../components/ThemeToggle';
+import ThemeVariantSelector from '../components/ThemeVariantSelector';
 import DataManagementSection from '../components/DataManagementSection';
 
 const SettingsScreen: React.FC = () => {
@@ -15,6 +17,7 @@ const SettingsScreen: React.FC = () => {
         </Text>
 
         <ThemeToggle />
+        <ThemeVariantSelector />
         <DataManagementSection />
       </ScrollView>
     </Screen>

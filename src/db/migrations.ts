@@ -86,6 +86,13 @@ const MIGRATIONS: Migration[] = [
       ADD COLUMN progress_percent INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    id: '004_settings_theme_variant',
+    upSql: `
+      ALTER TABLE settings
+      ADD COLUMN theme_variant TEXT NOT NULL DEFAULT 'default';
+    `,
+  },
 ];
 
 interface MigrationMetaRow {

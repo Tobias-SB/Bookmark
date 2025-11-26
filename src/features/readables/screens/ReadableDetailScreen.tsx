@@ -244,14 +244,18 @@ const ReadableDetailScreen: React.FC = () => {
             <Button mode="contained" onPress={handleMarkFinished} style={styles.button}>
               Mark as finished
             </Button>
-            <Button mode="text" onPress={handleMarkDnf} style={styles.button}>
+            <Button mode="outlined" onPress={handleMarkDnf} style={styles.button}>
               Mark as DNF
             </Button>
           </>
         )}
 
         {(item.status === 'finished' || item.status === 'DNF') && (
-          <Button mode="text" onPress={() => handleMoveToStatus('to-read')} style={styles.button}>
+          <Button
+            mode="outlined"
+            onPress={() => handleMoveToStatus('to-read')}
+            style={styles.button}
+          >
             Move back to to-read
           </Button>
         )}

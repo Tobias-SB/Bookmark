@@ -95,7 +95,7 @@ function computeStats(readables: ReadableItem[]): StatsSummary {
     'to-read': 0,
     reading: 0,
     finished: 0,
-    abandoned: 0,
+    DNF: 0,
   };
 
   const byType: TypeCounts = {
@@ -115,7 +115,7 @@ function computeStats(readables: ReadableItem[]): StatsSummary {
     completedCount: byStatus.finished,
     inQueueCount: byStatus['to-read'],
     readingCount: byStatus.reading,
-    abandonedCount: byStatus.abandoned,
+    abandonedCount: byStatus.DNF,
   };
 }
 
@@ -330,7 +330,7 @@ export function StatsScreen() {
           <Text>Queued: {stats.byStatus['to-read']}</Text>
           <Text>Reading: {stats.byStatus.reading}</Text>
           <Text>Completed: {stats.byStatus.finished}</Text>
-          <Text>Abandoned: {stats.byStatus.abandoned}</Text>
+          <Text>Abandoned: {stats.byStatus.DNF}</Text>
         </CollapsibleCard>
 
         {/* ---------- COMPLETIONS OVER TIME ---------- */}
