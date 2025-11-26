@@ -1,5 +1,5 @@
 // src/db/schema/readables.schema.ts
-export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'abandoned';
+export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'DNF';
 export type ReadableType = 'book' | 'fanfic';
 
 export interface ReadableRow {

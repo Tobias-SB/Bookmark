@@ -1,9 +1,16 @@
 // src/features/readables/types.ts
 import type { MoodTag } from '../../db/schema/moods.schema';
 
-export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'abandoned';
+export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'DNF';
 
 export type ReadableType = 'book' | 'fanfic';
+
+export const READABLE_STATUS_LABELS: Record<ReadableStatus, string> = {
+  'to-read': 'To read',
+  reading: 'Reading',
+  finished: 'Finished',
+  DNF: 'Did not finish',
+};
 
 export interface BaseReadableItem {
   id: string;
