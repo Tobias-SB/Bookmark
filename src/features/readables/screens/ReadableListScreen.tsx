@@ -56,7 +56,8 @@ const ReadableListScreen: React.FC = () => {
   }
 
   const handleAdd = () => {
-    navigation.navigate('EditReadable', {});
+    // ✅ NEW: go to QuickAddReadable, not EditReadable
+    navigation.navigate('QuickAddReadable');
   };
 
   return (
@@ -85,6 +86,7 @@ const ReadableListScreen: React.FC = () => {
             renderItem={({ item }) => (
               <ReadableCard
                 item={item}
+                // ✅ This should open the detail screen
                 onPress={() => navigation.navigate('ReadableDetail', { id: item.id })}
               />
             )}
