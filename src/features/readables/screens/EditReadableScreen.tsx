@@ -33,22 +33,13 @@ interface EditReadableFormValues {
   ao3Url?: string;
   moodTags: MoodTag[];
 
-  // Book-only (form side)
-  genresText?: string;
-
-  // Fanfic-only (we now use arrays in state for the actual data, these stay unused)
-  fandomsText?: string;
-  relationshipsText?: string;
-  charactersText?: string;
-  ao3TagsText?: string;
-  warningsText?: string;
+  // Fanfic extras
   chapterCount?: string;
   complete: boolean;
   rating?: Ao3Rating | null;
 }
 
-// Schema: keep the fields so react-hook-form is happy, but we largely ignore
-// the *Text fields for fanfic and use array state instead.
+// Schema: keep it focused on scalar fields; list fields are handled via local state
 const schema = yup
   .object({
     type: yup.mixed<'book' | 'fanfic'>().oneOf(['book', 'fanfic']).required(),
@@ -81,13 +72,6 @@ const schema = yup
       .optional(),
     moodTags: yup.array(yup.mixed<MoodTag>().oneOf(ALL_MOOD_TAGS as MoodTag[])).required(),
 
-    genresText: yup.string().optional(),
-
-    fandomsText: yup.string().optional(),
-    relationshipsText: yup.string().optional(),
-    charactersText: yup.string().optional(),
-    ao3TagsText: yup.string().optional(),
-    warningsText: yup.string().optional(),
     chapterCount: yup
       .string()
       .nullable()
@@ -102,7 +86,6 @@ const schema = yup
   })
   .required() as yup.ObjectSchema<EditReadableFormValues>;
 
-// Helper for the genres TextInput
 const splitCommaList = (value?: string | null): string[] => {
   if (!value) return [];
   return value
@@ -139,17 +122,15 @@ const EditReadableScreen: React.FC = () => {
       ao3Url:
         draft && draft.type === 'fanfic' ? ((draft as Partial<FanficReadable>).ao3Url ?? '') : '',
       moodTags: draft?.moodTags ?? [],
-
-      genresText: '',
-
-      fandomsText: '',
-      relationshipsText: '',
-      charactersText: '',
-      ao3TagsText: '',
-      warningsText: '',
       chapterCount: '',
-      complete: false,
-      rating: null,
+      complete:
+        draft && draft.type === 'fanfic' && (draft as Partial<FanficReadable>).complete != null
+          ? Boolean((draft as Partial<FanficReadable>).complete)
+          : false,
+      rating:
+        draft && draft.type === 'fanfic'
+          ? ((draft as Partial<FanficReadable>).rating ?? null)
+          : null,
     },
   });
 
@@ -158,7 +139,8 @@ const EditReadableScreen: React.FC = () => {
   const currentRating = watch('rating');
   const completeValue = watch('complete');
 
-  // NEW: array state for fanfic tag-like fields
+  // NEW: array state for book + fanfic list fields
+  const [genresList, setGenresList] = useState<string[]>([]); // book
   const [fandomsList, setFandomsList] = useState<string[]>([]);
   const [relationshipsList, setRelationshipsList] = useState<string[]>([]);
   const [charactersList, setCharactersList] = useState<string[]>([]);
@@ -185,19 +167,12 @@ const EditReadableScreen: React.FC = () => {
           pageCount: readable.pageCount ? String(readable.pageCount) : '',
           wordCount: '',
           ao3Url: '',
-          genresText: readable.genres.join(', '),
-
-          fandomsText: '',
-          relationshipsText: '',
-          charactersText: '',
-          ao3TagsText: '',
-          warningsText: '',
           chapterCount: '',
           complete: false,
           rating: null,
         } as EditReadableFormValues);
 
-        // For books, fanfic-specific lists are empty
+        setGenresList(readable.genres ?? []);
         setFandomsList([]);
         setRelationshipsList([]);
         setCharactersList([]);
@@ -210,24 +185,17 @@ const EditReadableScreen: React.FC = () => {
           pageCount: '',
           wordCount: readable.wordCount ? String(readable.wordCount) : '',
           ao3Url: readable.ao3Url,
-
-          genresText: '',
-
-          fandomsText: '',
-          relationshipsText: '',
-          charactersText: '',
-          ao3TagsText: '',
-          warningsText: '',
           chapterCount: readable.chapterCount ? String(readable.chapterCount) : '',
           complete: readable.complete ?? false,
           rating: readable.rating ?? null,
         } as EditReadableFormValues);
 
-        setFandomsList(readable.fandoms);
-        setRelationshipsList(readable.relationships);
-        setCharactersList(readable.characters);
-        setAo3TagsList(readable.ao3Tags);
-        setWarningsList(readable.warnings);
+        setGenresList([]);
+        setFandomsList(readable.fandoms ?? []);
+        setRelationshipsList(readable.relationships ?? []);
+        setCharactersList(readable.characters ?? []);
+        setAo3TagsList(readable.ao3Tags ?? []);
+        setWarningsList(readable.warnings ?? []);
       }
     }
   }, [data, isEditing, reset]);
@@ -252,19 +220,12 @@ const EditReadableScreen: React.FC = () => {
           pageCount: '',
           wordCount: fanficDraft.wordCount != null ? String(fanficDraft.wordCount) : '',
           ao3Url: fanficDraft.ao3Url ?? '',
-
-          genresText: '',
-
-          fandomsText: '',
-          relationshipsText: '',
-          charactersText: '',
-          ao3TagsText: '',
-          warningsText: '',
           chapterCount: fanficDraft.chapterCount != null ? String(fanficDraft.chapterCount) : '',
           complete: fanficDraft.complete ?? false,
           rating: fanficDraft.rating ?? null,
         } as EditReadableFormValues);
 
+        setGenresList([]);
         setFandomsList(fanficDraft.fandoms ?? []);
         setRelationshipsList(fanficDraft.relationships ?? []);
         setCharactersList(fanficDraft.characters ?? []);
@@ -278,18 +239,12 @@ const EditReadableScreen: React.FC = () => {
           pageCount: bookDraft.pageCount != null ? String(bookDraft.pageCount) : '',
           wordCount: '',
           ao3Url: '',
-          genresText: (bookDraft.genres ?? []).join(', '),
-
-          fandomsText: '',
-          relationshipsText: '',
-          charactersText: '',
-          ao3TagsText: '',
-          warningsText: '',
           chapterCount: '',
           complete: false,
           rating: null,
         } as EditReadableFormValues);
 
+        setGenresList(bookDraft.genres ?? []);
         setFandomsList([]);
         setRelationshipsList([]);
         setCharactersList([]);
@@ -298,9 +253,6 @@ const EditReadableScreen: React.FC = () => {
       }
     }
   }, [draft, isEditing, reset]);
-
-  // If user flips type between book/fanfic via segmented control,
-  // we don't aggressively reset, but arrays will only be used when type === 'fanfic'.
 
   if (isEditing && isLoading && !data) {
     return (
@@ -334,10 +286,7 @@ const EditReadableScreen: React.FC = () => {
 
       const moodTags = values.moodTags;
 
-      // Book genres still come from a text field
-      const genres = splitCommaList(values.genresText);
-
-      // Fanfic metadata now comes from the arrays, not text fields
+      const genres = genresList;
       const fandoms = fandomsList;
       const relationships = relationshipsList;
       const characters = charactersList;
@@ -361,7 +310,6 @@ const EditReadableScreen: React.FC = () => {
             priority: priorityNumber,
             status: existing.status,
             moodTags,
-            // Preserve existing source/sourceId for books
             source: existing.type === 'book' ? existing.source : 'manual',
             sourceId: existing.type === 'book' ? (existing.sourceId ?? null) : null,
             pageCount: pageCountNumber ?? null,
@@ -508,13 +456,7 @@ const EditReadableScreen: React.FC = () => {
                 keyboardType="numeric"
               />
             </View>
-            <View style={styles.field}>
-              <TextInputField
-                control={control}
-                name="genresText"
-                label="Genres (comma-separated)"
-              />
-            </View>
+            <TagListEditor label="Genres" tags={genresList} onChangeTags={setGenresList} />
           </>
         ) : (
           <>
@@ -610,7 +552,7 @@ const EditReadableScreen: React.FC = () => {
   );
 };
 
-// Simple editor for a list of tags: supports single-tag or comma-separated input
+// Generic editor for list fields: supports single-tag or comma-separated input
 interface TagListEditorProps {
   label: string;
   tags: string[];
@@ -642,7 +584,7 @@ const TagListEditor: React.FC<TagListEditorProps> = ({ label, tags, onChangeTags
           style={styles.tagInput}
           value={input}
           onChangeText={setInput}
-          placeholder="Add tag or comma-separated list"
+          placeholder="Add one or paste comma-separated"
         />
         <Button mode="text" onPress={handleAdd}>
           Add
@@ -650,7 +592,7 @@ const TagListEditor: React.FC<TagListEditorProps> = ({ label, tags, onChangeTags
       </View>
       <View style={styles.tagChipsRow}>
         {tags.map((tag) => (
-          <Chip key={tag} style={styles.tagChip} onClose={() => handleRemove(tag)}>
+          <Chip key={`${label}-${tag}`} style={styles.tagChip} onClose={() => handleRemove(tag)}>
             {tag}
           </Chip>
         ))}
