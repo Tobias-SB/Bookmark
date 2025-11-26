@@ -1,6 +1,6 @@
 // src/features/readables/screens/ReadableDetailScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Linking } from 'react-native';
+import { StyleSheet, View, Linking, Alert } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { Chip, Text, Button, TextInput } from 'react-native-paper';
@@ -135,6 +135,33 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete readable',
+      'Are you sure you want to delete this readable from your library? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: handleDelete,
+        },
+      ],
+    );
+  };
+
+  const handleDelete = async () => {
+    try {
+      await readableRepository.delete(item.id);
+      await invalidateReadablesAndStats();
+      navigation.goBack();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to delete readable', e);
+      Alert.alert('Error', 'Something went wrong while deleting this item.');
+    }
+  };
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -228,6 +255,10 @@ const ReadableDetailScreen: React.FC = () => {
             Move back to to-read
           </Button>
         )}
+
+        <Button mode="outlined" onPress={confirmDelete} style={styles.deleteButton}>
+          Delete from library
+        </Button>
       </View>
     </Screen>
   );
@@ -280,6 +311,9 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 8,
+  },
+  deleteButton: {
+    marginTop: 16,
   },
 });
 
