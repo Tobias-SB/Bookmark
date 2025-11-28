@@ -1,3 +1,4 @@
+// src/features/readables/services/readableRowMapper.ts
 import type { ReadableRow } from '../../../db/schema/readables.schema';
 import type { BookReadable, FanficReadable, ReadableItem, BookSource } from '../types';
 import type { MoodTag } from '../../../db/schema/moods.schema';
@@ -38,6 +39,7 @@ export function mapReadableRowToDomain(row: ReadableRow): ReadableItem {
     startedAt: row.started_at ?? null,
     finishedAt: row.finished_at ?? null,
     dnfAt: row.dnf_at ?? null,
+    notes: row.notes ?? null,
   } as const;
 
   if (row.type === 'book') {
@@ -113,6 +115,7 @@ export function buildReadableRowFromDomain(
     started_at: readable.startedAt ?? null,
     finished_at: readable.finishedAt ?? null,
     dnf_at: readable.dnfAt ?? null,
+    notes: readable.notes ?? null,
     progress_percent: readable.progressPercent,
   };
 

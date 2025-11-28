@@ -1,3 +1,4 @@
+// src/db/schema/readables.schema.ts
 export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'DNF';
 export type ReadableType = 'book' | 'fanfic';
 
@@ -36,6 +37,9 @@ export interface ReadableRow {
   started_at: string | null;
   finished_at: string | null;
   dnf_at: string | null;
+
+  // Optional user notes / review text
+  notes: string | null;
 
   // New: progress in percent (0–100)
   progress_percent: number;

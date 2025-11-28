@@ -38,21 +38,11 @@ export interface BaseReadableItem {
 
   createdAt: string;
   updatedAt: string;
-
-  /**
-   * When the item was first marked as "reading" (if ever).
-   */
   startedAt?: string | null;
-
-  /**
-   * When the item was first marked as "finished" (if ever).
-   */
   finishedAt?: string | null;
-
-  /**
-   * When the item was first marked as "DNF" (if ever).
-   */
   dnfAt?: string | null;
+
+  notes?: string | null;
 }
 
 export type BookSource = 'manual' | 'googleBooks' | 'openLibrary' | 'goodreads';

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View, Linking, Alert, ScrollView } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
-import { Chip, Text, Button } from 'react-native-paper';
+import { Chip, Text, Button, Dialog, Portal, TextInput } from 'react-native-paper';
 import { useQueryClient } from '@tanstack/react-query';
 
 import Screen from '@src/components/common/Screen';
@@ -31,6 +31,8 @@ const ReadableDetailScreen: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [tagsExpanded, setTagsExpanded] = useState<boolean>(false);
+  const [isEditingNotes, setIsEditingNotes] = useState<boolean>(false);
+  const [notesDraft, setNotesDraft] = useState<string>('');
 
   if (isLoading && !data) {
     return (
@@ -151,6 +153,32 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
+  const notesTitle =
+    item.status === 'finished' ? 'Review' : item.status === 'DNF' ? 'DNF notes' : 'Notes';
+
+  const handleStartEditNotes = () => {
+    setNotesDraft(item.notes ?? '');
+    setIsEditingNotes(true);
+  };
+
+  const handleCancelEditNotes = () => {
+    setIsEditingNotes(false);
+  };
+
+  const handleSaveNotes = async () => {
+    try {
+      const trimmed = notesDraft.trim();
+      await readableRepository.updateNotes(item.id, trimmed === '' ? null : trimmed);
+      await invalidateReadablesAndStats();
+      await refetch();
+      setIsEditingNotes(false);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to update notes', e);
+      Alert.alert('Error', 'Something went wrong while saving your notes.');
+    }
+  };
+
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -202,6 +230,23 @@ const ReadableDetailScreen: React.FC = () => {
           />
         )}
 
+        {/* Notes / review section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{notesTitle}</Text>
+          {item.notes ? (
+            <>
+              <Text style={styles.notesText}>{item.notes}</Text>
+              <Button mode="text" onPress={handleStartEditNotes} style={styles.notesButton}>
+                Edit notes
+              </Button>
+            </>
+          ) : (
+            <Button mode="outlined" onPress={handleStartEditNotes} style={styles.notesButton}>
+              Add notes
+            </Button>
+          )}
+        </View>
+
         <View style={styles.footer}>
           <Button mode="contained" onPress={handleEdit} style={styles.button}>
             Edit
@@ -239,6 +284,30 @@ const ReadableDetailScreen: React.FC = () => {
           </Button>
         </View>
       </ScrollView>
+
+      <Portal>
+        <Dialog visible={isEditingNotes} onDismiss={handleCancelEditNotes}>
+          <Dialog.Title>{notesTitle}</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              mode="outlined"
+              multiline
+              numberOfLines={4}
+              value={notesDraft}
+              onChangeText={setNotesDraft}
+              placeholder={
+                item.status === 'DNF'
+                  ? 'Why did you DNF this? (optional)'
+                  : 'Write your thoughts, review, or notes…'
+              }
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={handleCancelEditNotes}>Cancel</Button>
+            <Button onPress={handleSaveNotes}>Save</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </Screen>
   );
 };
@@ -284,6 +353,13 @@ const styles = StyleSheet.create({
   moodChip: {
     marginRight: 6,
     marginBottom: 6,
+  },
+  notesText: {
+    marginTop: 4,
+  },
+  notesButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
   },
   footer: {
     marginTop: 24,

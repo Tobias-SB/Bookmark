@@ -1,3 +1,4 @@
+// src/db/migrations.ts
 import { execAsync, getAllAsync, runAsync } from './sqlite';
 
 interface Migration {
@@ -117,6 +118,13 @@ const MIGRATIONS: Migration[] = [
       UPDATE readables
       SET dnf_at = updated_at
       WHERE status = 'DNF' AND dnf_at IS NULL;
+    `,
+  },
+  {
+    id: '006_readables_notes',
+    upSql: `
+      ALTER TABLE readables
+      ADD COLUMN notes TEXT;
     `,
   },
 ];

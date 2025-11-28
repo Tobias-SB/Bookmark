@@ -1,3 +1,4 @@
+// src/features/readables/services/readableRepository.ts
 import { getAllAsync, getFirstAsync, runAsync } from '@src/db/sqlite';
 import type {
   ReadableItem,
@@ -41,6 +42,7 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
     startedAt: row.started_at ?? null,
     finishedAt: row.finished_at ?? null,
     dnfAt: row.dnf_at ?? null,
+    notes: row.notes ?? null,
   } as const;
 
   if (row.type === 'book') {
@@ -128,6 +130,7 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
     started_at: readable.startedAt ?? null,
     finished_at: readable.finishedAt ?? null,
     dnf_at: readable.dnfAt ?? null,
+    notes: readable.notes ?? null,
     progress_percent: readable.progressPercent ?? 0,
   };
 }
@@ -242,7 +245,7 @@ async function insert(
 ): Promise<ReadableItem> {
   const row = buildRowFromNewReadable(readable);
 
-  // 26 columns, 26 values. Must match table definition exactly (new columns have defaults).
+  // 30 columns, 30 values. Must stay in sync with the table definition.
   await runAsync(
     `
     INSERT INTO readables (
@@ -274,9 +277,10 @@ async function insert(
       progress_percent,
       started_at,
       finished_at,
-      dnf_at
+      dnf_at,
+      notes
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     );
   `,
     [
@@ -309,6 +313,7 @@ async function insert(
       row.started_at,
       row.finished_at,
       row.dnf_at,
+      row.notes,
     ],
   );
 
@@ -362,6 +367,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       started_at = ?,
       finished_at = ?,
       dnf_at = ?,
+      notes = ?,
       updated_at = ?
     WHERE id = ?;
   `,
@@ -392,6 +398,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       row.started_at,
       row.finished_at,
       row.dnf_at,
+      row.notes,
       row.updated_at,
       row.id,
     ],
@@ -489,6 +496,22 @@ async function updateProgress(id: string, progressPercent: number): Promise<void
   );
 }
 
+/**
+ * Update notes (review / DNF reasoning) and bump updated_at.
+ */
+async function updateNotes(id: string, notes: string | null): Promise<void> {
+  const now = new Date().toISOString();
+
+  await runAsync(
+    `
+    UPDATE readables
+    SET notes = ?, updated_at = ?
+    WHERE id = ?;
+  `,
+    [notes, now, id],
+  );
+}
+
 export const readableRepository = {
   getAllToRead,
   getAll,
@@ -499,4 +522,5 @@ export const readableRepository = {
   delete: remove,
   updateStatus,
   updateProgress,
+  updateNotes,
 };
