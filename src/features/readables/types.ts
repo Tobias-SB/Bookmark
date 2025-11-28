@@ -12,6 +12,13 @@ export const READABLE_STATUS_LABELS: Record<ReadableStatus, string> = {
   DNF: 'Did not finish',
 };
 
+/**
+ * Filter options for the Library screen:
+ * - 'all' shows everything
+ * - others match ReadableStatus values
+ */
+export type LibraryFilter = 'all' | ReadableStatus;
+
 export interface BaseReadableItem {
   id: string;
   type: ReadableType;

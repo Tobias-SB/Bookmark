@@ -1,7 +1,7 @@
 // src/features/readables/screens/QuickAddReadableScreen.tsx
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
-import { Button, HelperText, RadioButton, TextInput, Text } from 'react-native-paper';
+import { Button, HelperText, SegmentedButtons, TextInput, Text } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
@@ -13,8 +13,8 @@ import { readableRepository } from '../services/readableRepository';
 import { fetchAo3Metadata } from '../services/ao3MetadataService';
 import { fetchBookMetadata } from '../services/bookMetadataService';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
-import { ALL_MOOD_TAGS, type MoodTag } from '@src/features/moods/types';
-import MoodChip from '@src/features/moods/components/MoodChip';
+import { type MoodTag } from '@src/features/moods/types';
+import MoodTagSelector from '@src/features/moods/components/MoodTagSelector';
 
 type Navigation = NativeStackNavigationProp<RootStackParamList, 'QuickAddReadable'>;
 
@@ -59,14 +59,6 @@ const QuickAddReadableScreen: React.FC = () => {
     priorityValid &&
     ((isBook && form.title.trim().length > 0 && form.author.trim().length > 0) ||
       (isFanfic && form.ao3Url.trim().length > 0));
-
-  const toggleMoodTag = (tag: MoodTag) => {
-    const hasTag = form.moodTags.includes(tag);
-    updateField(
-      'moodTags',
-      hasTag ? form.moodTags.filter((t) => t !== tag) : [...form.moodTags, tag],
-    );
-  };
 
   function showAo3ErrorDialog(priority: number, moodTags: MoodTag[]) {
     const now = new Date().toISOString();
@@ -274,19 +266,14 @@ const QuickAddReadableScreen: React.FC = () => {
         </Text>
 
         <Text style={styles.label}>Type</Text>
-        <RadioButton.Group
-          onValueChange={(value) => updateField('type', value as ReadableType)}
+        <SegmentedButtons
           value={form.type}
-        >
-          <View style={styles.radioRow}>
-            <RadioButton value="book" />
-            <Text>Book</Text>
-          </View>
-          <View style={styles.radioRow}>
-            <RadioButton value="fanfic" />
-            <Text>Fanfic (AO3)</Text>
-          </View>
-        </RadioButton.Group>
+          onValueChange={(value) => updateField('type', value as ReadableType)}
+          buttons={[
+            { value: 'book', label: 'Book' },
+            { value: 'fanfic', label: 'Fanfic (AO3)' },
+          ]}
+        />
 
         {isBook && (
           <>
@@ -331,19 +318,11 @@ const QuickAddReadableScreen: React.FC = () => {
         )}
 
         <View style={styles.moodsSection}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            Mood tags
-          </Text>
-          <View style={styles.moodChips}>
-            {ALL_MOOD_TAGS.map((tag) => (
-              <MoodChip
-                key={tag}
-                tag={tag}
-                selected={form.moodTags.includes(tag)}
-                onToggle={toggleMoodTag}
-              />
-            ))}
-          </View>
+          <MoodTagSelector
+            selected={form.moodTags}
+            onChange={(tags) => updateField('moodTags', tags)}
+            title="Mood tags"
+          />
         </View>
 
         {error && (
@@ -378,22 +357,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 4,
   },
-  radioRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   input: {
     marginTop: 12,
   },
   moodsSection: {
     marginTop: 16,
-  },
-  sectionTitle: {
-    marginBottom: 4,
-  },
-  moodChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
   },
   submitButton: {
     marginTop: 24,

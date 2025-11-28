@@ -11,7 +11,7 @@ interface Props {
 const ReadableListEmptyState: React.FC<Props> = ({ onAdd }) => {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Your queue is empty.</Text>
+      <Text style={styles.text}>Your library is empty.</Text>
       <Text style={styles.text}>Add a book or fic to get started.</Text>
       <View style={styles.buttonWrapper}>
         <PrimaryButton label="Add readable" onPress={onAdd} />

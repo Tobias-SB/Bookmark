@@ -3,20 +3,19 @@ import React, { useMemo, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View, Text, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
-import { FAB, Chip } from 'react-native-paper';
+import { FAB } from 'react-native-paper';
 
 import Screen from '@src/components/common/Screen';
 import LoadingState from '@src/components/common/LoadingState';
 import ErrorState from '@src/components/common/ErrorState';
 import ReadableCard from '../components/ReadableCard';
 import ReadableListEmptyState from '../components/ReadableListEmptyState';
+import LibraryFilterBar from '../components/LibraryFilterBar';
 import { useReadables } from '../hooks/useReadables';
 import type { RootStackParamList } from '@src/navigation/types';
-import type { ReadableStatus } from '../types';
-import { READABLE_STATUS_LABELS } from '../types';
+import type { LibraryFilter } from '../types';
 
 type RootNav = NavigationProp<RootStackParamList>;
-type LibraryFilter = 'all' | ReadableStatus;
 
 const ReadableListScreen: React.FC = () => {
   const navigation = useNavigation<RootNav>();
@@ -30,14 +29,6 @@ const ReadableListScreen: React.FC = () => {
     () => (filter === 'all' ? items : items.filter((item) => item.status === filter)),
     [items, filter],
   );
-
-  const filters: { key: LibraryFilter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'to-read', label: READABLE_STATUS_LABELS['to-read'] },
-    { key: 'reading', label: READABLE_STATUS_LABELS.reading },
-    { key: 'finished', label: READABLE_STATUS_LABELS.finished },
-    { key: 'DNF', label: READABLE_STATUS_LABELS.DNF },
-  ];
 
   if (isLoading && !data) {
     return (
@@ -81,18 +72,7 @@ const ReadableListScreen: React.FC = () => {
         <ReadableListEmptyState onAdd={handleAdd} />
       ) : (
         <>
-          <View style={styles.filtersContainer}>
-            {filters.map((f) => (
-              <Chip
-                key={f.key}
-                style={styles.filterChip}
-                selected={filter === f.key}
-                onPress={() => setFilter(f.key)}
-              >
-                {f.label}
-              </Chip>
-            ))}
-          </View>
+          <LibraryFilterBar value={filter} onChange={setFilter} />
 
           <FlatList
             data={filteredItems}
@@ -116,17 +96,6 @@ const ReadableListScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  filtersContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  filterChip: {
-    marginRight: 6,
-    marginBottom: 6,
-  },
   emptyFilteredText: {
     textAlign: 'center',
     marginTop: 16,

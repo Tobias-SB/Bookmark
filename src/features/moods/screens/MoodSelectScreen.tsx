@@ -3,8 +3,7 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Text, Button, Switch } from 'react-native-paper';
 import Screen from '@src/components/common/Screen';
-import MoodChip from '../components/MoodChip';
-import { ALL_MOOD_TAGS, type MoodTag } from '../types';
+import { type MoodTag } from '../types';
 import { readableRepository } from '@src/features/readables/services/readableRepository';
 import {
   runSuggestionEngine,
@@ -12,6 +11,7 @@ import {
 } from '@src/features/suggestions/services/suggestionEngine';
 import type { SuggestionResult } from '@src/store/useUiStore';
 import SuggestionResultCard from '@src/features/suggestions/components/SuggestionResultCard';
+import MoodTagSelector from '../components/MoodTagSelector';
 
 const MoodSelectScreen: React.FC = () => {
   // Local-only state (no Zustand here)
@@ -25,16 +25,6 @@ const MoodSelectScreen: React.FC = () => {
 
   const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(false);
   const [lastSuggestion, setLastSuggestion] = useState<SuggestionResult | null>(null);
-
-  const handleToggleMood = (tag: MoodTag) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
-    );
-  };
-
-  const handleClearMoods = () => {
-    setSelectedTags([]);
-  };
 
   const handleSuggest = async () => {
     try {
@@ -71,24 +61,12 @@ const MoodSelectScreen: React.FC = () => {
         </Text>
 
         <View style={styles.moodSection}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            Mood tags
-          </Text>
-          <View style={styles.moodChipsContainer}>
-            {ALL_MOOD_TAGS.map((tag) => (
-              <MoodChip
-                key={tag}
-                tag={tag}
-                selected={selectedTags.includes(tag)}
-                onToggle={handleToggleMood}
-              />
-            ))}
-          </View>
-          <View style={styles.clearRow}>
-            <Button mode="text" onPress={handleClearMoods}>
-              Clear moods
-            </Button>
-          </View>
+          <MoodTagSelector
+            selected={selectedTags}
+            onChange={setSelectedTags}
+            title="Mood tags"
+            showClearButton
+          />
         </View>
 
         <View style={styles.filtersSection}>
@@ -141,13 +119,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     marginBottom: 4,
-  },
-  moodChipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  clearRow: {
-    marginTop: 8,
   },
   filtersSection: {
     marginTop: 16,

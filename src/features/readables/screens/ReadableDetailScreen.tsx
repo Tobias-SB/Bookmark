@@ -1,9 +1,9 @@
 // src/features/readables/screens/ReadableDetailScreen.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, View, Linking, Alert, ScrollView } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
-import { Chip, Text, Button, TextInput } from 'react-native-paper';
+import { Chip, Text, Button } from 'react-native-paper';
 import { useQueryClient } from '@tanstack/react-query';
 
 import Screen from '@src/components/common/Screen';
@@ -17,6 +17,8 @@ import {
   type ReadableStatus,
   type FanficReadable,
 } from '@src/features/readables/types';
+import ReadingProgressSection from '../components/ReadingProgressSection';
+import FanficMetadataSection from '../components/FanficMetadataSection';
 
 type DetailRoute = RouteProp<RootStackParamList, 'ReadableDetail'>;
 type RootNav = NavigationProp<RootStackParamList>;
@@ -28,14 +30,7 @@ const ReadableDetailScreen: React.FC = () => {
   const { data, isLoading, isError, refetch } = useReadableById(id);
   const queryClient = useQueryClient();
 
-  const [progressDraft, setProgressDraft] = useState<number>(0);
   const [tagsExpanded, setTagsExpanded] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (data) {
-      setProgressDraft(data.progressPercent ?? 0);
-    }
-  }, [data]);
 
   if (isLoading && !data) {
     return (
@@ -83,9 +78,9 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
-  const handleSaveProgress = async () => {
+  const handleSaveProgress = async (percent: number) => {
     try {
-      await readableRepository.updateProgress(item.id, progressDraft);
+      await readableRepository.updateProgress(item.id, percent);
       await invalidateReadablesAndStats();
       await refetch();
     } catch (e) {
@@ -108,8 +103,7 @@ const ReadableDetailScreen: React.FC = () => {
 
   const handleMarkDnf = async () => {
     try {
-      // Make sure the last progress is saved before DNF
-      await readableRepository.updateProgress(item.id, progressDraft);
+      // We now rely on the last saved progress; user can update via "Save progress" first.
       await readableRepository.updateStatus(item.id, 'DNF');
       await invalidateReadablesAndStats();
       navigation.goBack();
@@ -127,16 +121,6 @@ const ReadableDetailScreen: React.FC = () => {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(`Failed to move to status ${status}`, e);
-    }
-  };
-
-  const handleProgressChange = (text: string) => {
-    const numeric = parseInt(text.replace(/[^0-9]/g, ''), 10);
-    if (Number.isNaN(numeric)) {
-      setProgressDraft(0);
-    } else {
-      const clamped = Math.min(100, Math.max(0, numeric));
-      setProgressDraft(clamped);
     }
   };
 
@@ -167,121 +151,6 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
-  const renderFanficMetadata = () => {
-    if (item.type !== 'fanfic') return null;
-    const fanfic = item as FanficReadable;
-
-    return (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Fanfic details</Text>
-
-        {fanfic.wordCount != null && (
-          <Text style={styles.metaText}>
-            <Text style={styles.metaLabel}>Word count: </Text>
-            {fanfic.wordCount.toLocaleString()}
-          </Text>
-        )}
-
-        {fanfic.rating && (
-          <Text style={styles.metaText}>
-            <Text style={styles.metaLabel}>Rating: </Text>
-            {fanfic.rating}
-          </Text>
-        )}
-
-        {fanfic.complete != null && (
-          <Text style={styles.metaText}>
-            <Text style={styles.metaLabel}>Complete: </Text>
-            {fanfic.complete ? 'Yes' : 'No'}
-          </Text>
-        )}
-
-        {fanfic.chapterCount != null && (
-          <Text style={styles.metaText}>
-            <Text style={styles.metaLabel}>Chapters: </Text>
-            {fanfic.chapterCount}
-          </Text>
-        )}
-
-        {fanfic.fandoms.length > 0 && (
-          <View style={styles.metaBlock}>
-            <Text style={styles.metaLabel}>Fandoms</Text>
-            <View style={styles.tagChips}>
-              {fanfic.fandoms.map((fandom) => (
-                <Chip key={fandom} style={styles.tagChip}>
-                  {fandom}
-                </Chip>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {fanfic.relationships.length > 0 && (
-          <View style={styles.metaBlock}>
-            <Text style={styles.metaLabel}>Relationships</Text>
-            <View style={styles.tagChips}>
-              {fanfic.relationships.map((rel) => (
-                <Chip key={rel} style={styles.tagChip}>
-                  {rel}
-                </Chip>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {fanfic.characters.length > 0 && (
-          <View style={styles.metaBlock}>
-            <Text style={styles.metaLabel}>Characters</Text>
-            <View style={styles.tagChips}>
-              {fanfic.characters.map((char) => (
-                <Chip key={char} style={styles.tagChip}>
-                  {char}
-                </Chip>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {fanfic.ao3Tags.length > 0 && (
-          <View style={styles.metaBlock}>
-            <View style={styles.tagsHeaderRow}>
-              <Text style={styles.metaLabel}>Tags</Text>
-              <Button mode="text" compact onPress={() => setTagsExpanded((prev) => !prev)}>
-                {tagsExpanded ? 'Hide tags' : 'Show tags'}
-              </Button>
-            </View>
-            {tagsExpanded && (
-              <View style={styles.tagChips}>
-                {fanfic.ao3Tags.map((tag) => (
-                  <Chip key={tag} style={styles.tagChip}>
-                    {tag}
-                  </Chip>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-
-        {fanfic.warnings.length > 0 && (
-          <View style={styles.metaBlock}>
-            <Text style={styles.metaLabel}>Warnings</Text>
-            <View style={styles.tagChips}>
-              {fanfic.warnings.map((warning) => (
-                <Chip key={warning} style={styles.tagChip}>
-                  {warning}
-                </Chip>
-              ))}
-            </View>
-          </View>
-        )}
-
-        <Button mode="contained-tonal" style={styles.button} onPress={handleOpenAo3}>
-          Open on AO3
-        </Button>
-      </View>
-    );
-  };
-
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -304,23 +173,11 @@ const ReadableDetailScreen: React.FC = () => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Reading progress</Text>
-          <Text>Current progress: {item.progressPercent}%</Text>
-
-          {(item.status === 'reading' || item.status === 'DNF') && (
-            <>
-              <TextInput
-                mode="outlined"
-                label="Progress (%)"
-                keyboardType="numeric"
-                value={String(progressDraft)}
-                onChangeText={handleProgressChange}
-                style={styles.progressInput}
-              />
-              <Button mode="outlined" onPress={handleSaveProgress} style={styles.button}>
-                Save progress
-              </Button>
-            </>
-          )}
+          <ReadingProgressSection
+            status={item.status}
+            currentPercent={item.progressPercent}
+            onSaveProgress={handleSaveProgress}
+          />
         </View>
 
         {item.moodTags.length > 0 ? (
@@ -336,7 +193,14 @@ const ReadableDetailScreen: React.FC = () => {
           </View>
         ) : null}
 
-        {renderFanficMetadata()}
+        {item.type === 'fanfic' && (
+          <FanficMetadataSection
+            fanfic={item as FanficReadable}
+            tagsExpanded={tagsExpanded}
+            onToggleTags={() => setTagsExpanded((prev) => !prev)}
+            onOpenAo3={handleOpenAo3}
+          />
+        )}
 
         <View style={styles.footer}>
           <Button mode="contained" onPress={handleEdit} style={styles.button}>
@@ -420,33 +284,6 @@ const styles = StyleSheet.create({
   moodChip: {
     marginRight: 6,
     marginBottom: 6,
-  },
-  progressInput: {
-    marginTop: 8,
-    maxWidth: 160,
-  },
-  metaText: {
-    marginTop: 4,
-  },
-  metaLabel: {
-    fontWeight: '600',
-  },
-  metaBlock: {
-    marginTop: 8,
-  },
-  tagChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 4,
-  },
-  tagChip: {
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  tagsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   footer: {
     marginTop: 24,

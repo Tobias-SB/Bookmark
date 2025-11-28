@@ -6,11 +6,14 @@ import { ScrollView, StyleSheet, View, Alert } from 'react-native';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { Button, SegmentedButtons, Text, Chip, Switch, TextInput } from 'react-native-paper';
+import { Button, SegmentedButtons, Text } from 'react-native-paper';
 import { useQueryClient } from '@tanstack/react-query';
+
 import Screen from '@src/components/common/Screen';
 import LoadingState from '@src/components/common/LoadingState';
-import TextInputField from '@src/components/common/TextInputField';
+import ReadableMetadataForm from '@src/features/readables/components/ReadableMetadataForm';
+import MoodTagSelector from '@src/features/moods/components/MoodTagSelector';
+
 import { useReadableById } from '../hooks/useReadableById';
 import type { RootStackParamList } from '@src/navigation/types';
 import type { BookSource, ReadableItem, BookReadable, FanficReadable, Ao3Rating } from '../types';
@@ -86,14 +89,6 @@ const schema = yup
   })
   .required() as yup.ObjectSchema<EditReadableFormValues>;
 
-const splitCommaList = (value?: string | null): string[] => {
-  if (!value) return [];
-  return value
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-};
-
 const EditReadableScreen: React.FC = () => {
   const route = useRoute<EditRoute>();
   const navigation = useNavigation<RootNav>();
@@ -139,7 +134,7 @@ const EditReadableScreen: React.FC = () => {
   const currentRating = watch('rating');
   const completeValue = watch('complete');
 
-  // NEW: array state for book + fanfic list fields
+  // array state for book + fanfic list fields
   const [genresList, setGenresList] = useState<string[]>([]); // book
   const [fandomsList, setFandomsList] = useState<string[]>([]);
   const [relationshipsList, setRelationshipsList] = useState<string[]>([]);
@@ -261,18 +256,6 @@ const EditReadableScreen: React.FC = () => {
       </Screen>
     );
   }
-
-  const toggleMoodTag = (tag: MoodTag) => {
-    const hasTag = selectedMoodTags.includes(tag);
-    if (hasTag) {
-      setValue(
-        'moodTags',
-        selectedMoodTags.filter((t) => t !== tag),
-      );
-    } else {
-      setValue('moodTags', [...selectedMoodTags, tag]);
-    }
-  };
 
   const onSubmit = async (values: EditReadableFormValues) => {
     try {
@@ -428,118 +411,33 @@ const EditReadableScreen: React.FC = () => {
           ]}
         />
 
-        <View style={styles.field}>
-          <TextInputField control={control} name="title" label="Title" />
-        </View>
-        <View style={styles.field}>
-          <TextInputField control={control} name="author" label="Author" />
-        </View>
-        <View style={styles.field}>
-          <TextInputField control={control} name="description" label="Description" multiline />
-        </View>
-        <View style={styles.field}>
-          <TextInputField
-            control={control}
-            name="priority"
-            label="Priority (1–5)"
-            keyboardType="numeric"
-          />
-        </View>
-
-        {currentType === 'book' ? (
-          <>
-            <View style={styles.field}>
-              <TextInputField
-                control={control}
-                name="pageCount"
-                label="Page count"
-                keyboardType="numeric"
-              />
-            </View>
-            <TagListEditor label="Genres" tags={genresList} onChangeTags={setGenresList} />
-          </>
-        ) : (
-          <>
-            <View style={styles.field}>
-              <TextInputField control={control} name="ao3Url" label="AO3 URL" />
-            </View>
-            <View style={styles.field}>
-              <TextInputField
-                control={control}
-                name="wordCount"
-                label="Word count"
-                keyboardType="numeric"
-              />
-            </View>
-
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              Fanfic metadata
-            </Text>
-
-            <TagListEditor label="Fandoms" tags={fandomsList} onChangeTags={setFandomsList} />
-            <TagListEditor
-              label="Relationships"
-              tags={relationshipsList}
-              onChangeTags={setRelationshipsList}
-            />
-            <TagListEditor
-              label="Characters"
-              tags={charactersList}
-              onChangeTags={setCharactersList}
-            />
-            <TagListEditor label="Tags" tags={ao3TagsList} onChangeTags={setAo3TagsList} />
-            <TagListEditor label="Warnings" tags={warningsList} onChangeTags={setWarningsList} />
-
-            <View style={styles.field}>
-              <TextInputField
-                control={control}
-                name="chapterCount"
-                label="Chapter count"
-                keyboardType="numeric"
-              />
-            </View>
-
-            <View style={styles.toggleRow}>
-              <Text>Marked complete</Text>
-              <Switch value={completeValue} onValueChange={(val) => setValue('complete', val)} />
-            </View>
-
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              AO3 rating
-            </Text>
-            <SegmentedButtons
-              value={currentRating ?? ''}
-              onValueChange={(value) => setValue('rating', (value || null) as Ao3Rating | null)}
-              buttons={[
-                { value: 'G', label: 'G' },
-                { value: 'T', label: 'T' },
-                { value: 'M', label: 'M' },
-                { value: 'E', label: 'E' },
-                { value: 'NR', label: 'NR' },
-              ]}
-            />
-          </>
-        )}
+        <ReadableMetadataForm
+          type={currentType}
+          control={control}
+          genres={genresList}
+          onChangeGenres={setGenresList}
+          fandoms={fandomsList}
+          onChangeFandoms={setFandomsList}
+          relationships={relationshipsList}
+          onChangeRelationships={setRelationshipsList}
+          characters={charactersList}
+          onChangeCharacters={setCharactersList}
+          ao3Tags={ao3TagsList}
+          onChangeAo3Tags={setAo3TagsList}
+          warnings={warningsList}
+          onChangeWarnings={setWarningsList}
+          completeValue={completeValue}
+          onChangeComplete={(val) => setValue('complete', val)}
+          currentRating={currentRating ?? null}
+          onChangeRating={(val) => setValue('rating', val)}
+        />
 
         <View style={styles.moodsSection}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            Mood tags
-          </Text>
-          <View style={styles.moodChips}>
-            {ALL_MOOD_TAGS.map((tag) => {
-              const selected = selectedMoodTags.includes(tag);
-              return (
-                <Chip
-                  key={tag}
-                  style={styles.moodChip}
-                  selected={selected}
-                  onPress={() => toggleMoodTag(tag)}
-                >
-                  {tag.replace('-', ' ')}
-                </Chip>
-              );
-            })}
-          </View>
+          <MoodTagSelector
+            selected={selectedMoodTags}
+            onChange={(tags) => setValue('moodTags', tags)}
+            title="Mood tags"
+          />
         </View>
 
         <View style={styles.footer}>
@@ -552,61 +450,9 @@ const EditReadableScreen: React.FC = () => {
   );
 };
 
-// Generic editor for list fields: supports single-tag or comma-separated input
-interface TagListEditorProps {
-  label: string;
-  tags: string[];
-  onChangeTags: (tags: string[]) => void;
-}
-
-const TagListEditor: React.FC<TagListEditorProps> = ({ label, tags, onChangeTags }) => {
-  const [input, setInput] = useState('');
-
-  const handleAdd = () => {
-    const newTags = splitCommaList(input);
-    if (newTags.length === 0) return;
-
-    const merged = Array.from(new Set([...tags, ...newTags]));
-    onChangeTags(merged);
-    setInput('');
-  };
-
-  const handleRemove = (tag: string) => {
-    onChangeTags(tags.filter((t) => t !== tag));
-  };
-
-  return (
-    <View style={styles.tagEditor}>
-      <Text style={styles.tagLabel}>{label}</Text>
-      <View style={styles.tagInputRow}>
-        <TextInput
-          mode="outlined"
-          style={styles.tagInput}
-          value={input}
-          onChangeText={setInput}
-          placeholder="Add one or paste comma-separated"
-        />
-        <Button mode="text" onPress={handleAdd}>
-          Add
-        </Button>
-      </View>
-      <View style={styles.tagChipsRow}>
-        {tags.map((tag) => (
-          <Chip key={`${label}-${tag}`} style={styles.tagChip} onClose={() => handleRemove(tag)}>
-            {tag}
-          </Chip>
-        ))}
-      </View>
-    </View>
-  );
-};
-
 const styles = StyleSheet.create({
   container: {
     paddingBottom: 24,
-  },
-  field: {
-    marginTop: 12,
   },
   sectionTitle: {
     marginTop: 16,
@@ -615,45 +461,8 @@ const styles = StyleSheet.create({
   moodsSection: {
     marginTop: 16,
   },
-  moodChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  moodChip: {
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  toggleRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   footer: {
     marginTop: 24,
-  },
-  tagEditor: {
-    marginTop: 12,
-  },
-  tagLabel: {
-    marginBottom: 4,
-  },
-  tagInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  tagInput: {
-    flex: 1,
-    marginRight: 8,
-  },
-  tagChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 6,
-  },
-  tagChip: {
-    marginRight: 4,
-    marginBottom: 4,
   },
 });
 
