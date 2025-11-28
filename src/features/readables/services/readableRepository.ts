@@ -1,4 +1,3 @@
-// src/features/readables/services/readableRepository.ts
 import { getAllAsync, getFirstAsync, runAsync } from '@src/db/sqlite';
 import type {
   ReadableItem,
@@ -39,6 +38,9 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
     moodTags,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    startedAt: row.started_at ?? null,
+    finishedAt: row.finished_at ?? null,
+    dnfAt: row.dnf_at ?? null,
   } as const;
 
   if (row.type === 'book') {
@@ -123,6 +125,9 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
     mood_tags_json: JSON.stringify(readable.moodTags ?? []),
     created_at: readable.createdAt,
     updated_at: readable.updatedAt,
+    started_at: readable.startedAt ?? null,
+    finished_at: readable.finishedAt ?? null,
+    dnf_at: readable.dnfAt ?? null,
     progress_percent: readable.progressPercent ?? 0,
   };
 }
@@ -134,11 +139,35 @@ function buildRowFromNewReadable(
   readable: Omit<ReadableItem, 'id' | 'createdAt' | 'updatedAt'>,
 ): ReadableRow {
   const now = new Date().toISOString();
+
+  // Derive initial status timestamps from the starting status.
+  let startedAt: string | null = null;
+  let finishedAt: string | null = null;
+  let dnfAt: string | null = null;
+
+  switch (readable.status) {
+    case 'reading':
+      startedAt = now;
+      break;
+    case 'finished':
+      finishedAt = now;
+      break;
+    case 'DNF':
+      dnfAt = now;
+      break;
+    case 'to-read':
+    default:
+      break;
+  }
+
   const withMeta: ReadableItem = {
     ...(readable as ReadableItem),
     id: generateId(),
     createdAt: now,
     updatedAt: now,
+    startedAt,
+    finishedAt,
+    dnfAt,
   };
   return buildRowFromReadable(withMeta);
 }
@@ -213,7 +242,7 @@ async function insert(
 ): Promise<ReadableItem> {
   const row = buildRowFromNewReadable(readable);
 
-  // 26 columns, 26 values. Must match table definition exactly.
+  // 26 columns, 26 values. Must match table definition exactly (new columns have defaults).
   await runAsync(
     `
     INSERT INTO readables (
@@ -242,9 +271,12 @@ async function insert(
       mood_tags_json,
       created_at,
       updated_at,
-      progress_percent
+      progress_percent,
+      started_at,
+      finished_at,
+      dnf_at
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     );
   `,
     [
@@ -274,6 +306,9 @@ async function insert(
       row.created_at,
       row.updated_at,
       row.progress_percent,
+      row.started_at,
+      row.finished_at,
+      row.dnf_at,
     ],
   );
 
@@ -291,6 +326,9 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
     ...readable,
     createdAt: existing.createdAt, // keep original
     updatedAt: now,
+    startedAt: readable.startedAt ?? existing.startedAt ?? null,
+    finishedAt: readable.finishedAt ?? existing.finishedAt ?? null,
+    dnfAt: readable.dnfAt ?? existing.dnfAt ?? null,
   };
   const row = buildRowFromReadable(updated);
 
@@ -321,6 +359,9 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       genres_json = ?,
       mood_tags_json = ?,
       progress_percent = ?,
+      started_at = ?,
+      finished_at = ?,
+      dnf_at = ?,
       updated_at = ?
     WHERE id = ?;
   `,
@@ -348,6 +389,9 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       row.genres_json,
       row.mood_tags_json,
       row.progress_percent,
+      row.started_at,
+      row.finished_at,
+      row.dnf_at,
       row.updated_at,
       row.id,
     ],
@@ -371,45 +415,61 @@ async function remove(id: string): Promise<void> {
  * When you mark as finished, this timestamp becomes your "finished at" date.
  *
  * Semantics:
- * - finished: also sets progress_percent = 100
- * - to-read / reading / DNF: leave progress_percent as-is
+ * - finished: also sets progress_percent = 100 and finished_at (if not already set)
+ * - reading: sets started_at if not already set
+ * - DNF: sets dnf_at if not already set
+ * - to-read: leaves timestamps as-is (we preserve history)
  */
 async function updateStatus(id: string, status: ReadableStatus): Promise<void> {
   const now = new Date().toISOString();
 
-  let progressPercentUpdate: number | null = null;
+  const existing = await getById(id);
+  if (!existing) {
+    throw new Error(`Readable with id ${id} not found`);
+  }
+
+  let progressPercent = existing.progressPercent ?? 0;
+  let startedAt = existing.startedAt ?? null;
+  let finishedAt = existing.finishedAt ?? null;
+  let dnfAt = existing.dnfAt ?? null;
 
   switch (status) {
+    case 'reading':
+      if (!startedAt) {
+        startedAt = now;
+      }
+      break;
     case 'finished':
-      progressPercentUpdate = 100;
+      progressPercent = 100;
+      if (!finishedAt) {
+        finishedAt = now;
+      }
+      break;
+    case 'DNF':
+      if (!dnfAt) {
+        dnfAt = now;
+      }
       break;
     case 'to-read':
-    case 'reading':
-    case 'DNF':
-      // do not touch progress_percent here
-      progressPercentUpdate = null;
+    default:
+      // leave timestamps + progress as-is
       break;
   }
 
-  if (progressPercentUpdate === null) {
-    await runAsync(
-      `
-      UPDATE readables
-      SET status = ?, updated_at = ?
-      WHERE id = ?;
-    `,
-      [status, now, id],
-    );
-  } else {
-    await runAsync(
-      `
-      UPDATE readables
-      SET status = ?, updated_at = ?, progress_percent = ?
-      WHERE id = ?;
-    `,
-      [status, now, progressPercentUpdate, id],
-    );
-  }
+  await runAsync(
+    `
+    UPDATE readables
+    SET
+      status = ?,
+      updated_at = ?,
+      progress_percent = ?,
+      started_at = ?,
+      finished_at = ?,
+      dnf_at = ?
+    WHERE id = ?;
+  `,
+    [status, now, progressPercent, startedAt, finishedAt, dnfAt, id],
+  );
 }
 
 /**

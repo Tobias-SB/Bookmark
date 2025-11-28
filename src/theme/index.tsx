@@ -1,4 +1,3 @@
-// src/theme/index.tsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   MD3DarkTheme as DefaultDarkTheme,
@@ -27,71 +26,90 @@ const AppThemeContext = createContext<AppThemeContextValue | undefined>(undefine
 
 /**
  * Raspberry Lemonade – light palette.
- * Uses only the provided colours, with pink and yellow as the main colours.
- *
- * Allowed colours:
- * #d1507d #f0b4cc #dfd9e8 #a2807e #f6cbdc #f8e8f8
- * #7f5a5d #c8adaf #e9a4a0 #f0c8b8 #ffeddf #862c38
- * #cba278 #a76248 #fff9a7 #fae1cc #ffef62
+ * Uses the central palette defined in src/theme/colors.ts.
  */
 function buildRaspberryLemonadeLightTheme(base: MD3Theme): MD3Theme {
+  const palette = colors.raspberryLemonade.light;
+
   return {
     ...base,
     colors: {
       ...base.colors,
-      // Main brand colours (light)
-      primary: '#d1507d', // strong pink
-      primaryContainer: '#f6cbdc', // soft pink container
-      // You tweaked this for better contrast on buttons
-      onPrimary: '#f6cbdc',
+      primary: palette.primary,
+      primaryContainer: palette.primaryContainer,
+      onPrimary: palette.onPrimary,
 
-      secondary: '#ffef62', // bright yellow
-      secondaryContainer: '#fff9a7', // soft yellow
-      onSecondary: '#862c38',
+      secondary: palette.secondary,
+      secondaryContainer: palette.secondaryContainer,
+      onSecondary: palette.onSecondary,
 
-      // Backgrounds / surfaces
-      background: '#f8e8f8', // very soft pink
-      surface: '#ffeddf', // warm cream
-      surfaceVariant: '#fae1cc', // peachy accent
+      background: palette.background,
+      surface: palette.surface,
+      surfaceVariant: palette.surfaceVariant,
 
-      // Text / outline
-      outline: '#7f5a5d',
-      onBackground: '#7f5a5d',
-      onSurface: '#7f5a5d',
+      outline: palette.outline,
+      onBackground: palette.onBackground,
+      onSurface: palette.onSurface,
     },
   };
 }
 
 /**
  * Raspberry Lemonade – dark palette.
- * Here we prioritise usability: proper dark backgrounds and high contrast,
- * but keep Raspberry Lemonade as the accent vibe (pink + yellow).
- *
- * We’re allowed to use additional colours beyond the original light palette.
+ * Uses the central palette defined in src/theme/colors.ts.
  */
 function buildRaspberryLemonadeDarkTheme(base: MD3Theme): MD3Theme {
+  const palette = colors.raspberryLemonade.dark;
+
   return {
     ...base,
     colors: {
       ...base.colors,
-      // Brand accents
-      primary: '#f0b4cc', // soft pink that pops on dark
-      primaryContainer: '#862c38', // deep berry container
-      onPrimary: '#2b2328',
+      primary: palette.primary,
+      primaryContainer: palette.primaryContainer,
+      onPrimary: palette.onPrimary,
 
-      secondary: '#ffef62', // bright yellow accent
-      secondaryContainer: '#d1507d',
-      onSecondary: '#1b1b1f',
+      secondary: palette.secondary,
+      secondaryContainer: palette.secondaryContainer,
+      onSecondary: palette.onSecondary,
 
-      // Dark surfaces
-      background: '#121212',
-      surface: '#1e1b20',
-      surfaceVariant: '#2b2328',
+      background: palette.background,
+      surface: palette.surface,
+      surfaceVariant: palette.surfaceVariant,
 
-      // Text / outline
-      onBackground: '#f6f0f3',
-      onSurface: '#f6f0f3',
-      outline: '#a2807e',
+      onBackground: palette.onBackground,
+      onSurface: palette.onSurface,
+      outline: palette.outline,
+    },
+  };
+}
+
+/**
+ * Default Bookmark theme builder (non-Raspberry).
+ * Uses the `colors.default` palette.
+ */
+function buildDefaultTheme(base: MD3Theme, mode: ThemeMode): MD3Theme {
+  const palette = mode === 'light' ? colors.default.light : colors.default.dark;
+
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: palette.primary,
+      primaryContainer: palette.primaryContainer,
+      onPrimary: palette.onPrimary,
+
+      secondary: palette.secondary,
+      secondaryContainer: palette.secondaryContainer,
+      onSecondary: palette.onSecondary,
+
+      background: palette.background,
+      surface: palette.surface,
+      surfaceVariant: palette.surfaceVariant,
+
+      outline: palette.outline,
+      onBackground: palette.onBackground,
+      onSurface: palette.onSurface,
     },
   };
 }
@@ -134,15 +152,8 @@ export const AppThemeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         : buildRaspberryLemonadeDarkTheme(base);
     }
 
-    // Default theme: keep your existing overrides.
-    return {
-      ...base,
-      colors: {
-        ...base.colors,
-        primary: colors.primary,
-        secondary: colors.secondary,
-      },
-    };
+    // Default theme: use the structured default palette.
+    return buildDefaultTheme(base, mode);
   }, [mode, themeVariant]);
 
   const persistSettings = (nextMode: ThemeMode, nextVariant: ThemeVariant) => {

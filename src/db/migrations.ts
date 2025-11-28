@@ -1,4 +1,3 @@
-// src/db/migrations.ts
 import { execAsync, getAllAsync, runAsync } from './sqlite';
 
 interface Migration {
@@ -91,6 +90,33 @@ const MIGRATIONS: Migration[] = [
     upSql: `
       ALTER TABLE settings
       ADD COLUMN theme_variant TEXT NOT NULL DEFAULT 'default';
+    `,
+  },
+  {
+    id: '005_readables_status_timestamps',
+    upSql: `
+      ALTER TABLE readables
+      ADD COLUMN started_at TEXT;
+
+      ALTER TABLE readables
+      ADD COLUMN finished_at TEXT;
+
+      ALTER TABLE readables
+      ADD COLUMN dnf_at TEXT;
+
+      -- Rough backfill based on current status.
+      -- We use updated_at as a proxy for when that status was reached.
+      UPDATE readables
+      SET started_at = updated_at
+      WHERE status = 'reading' AND started_at IS NULL;
+
+      UPDATE readables
+      SET finished_at = updated_at
+      WHERE status = 'finished' AND finished_at IS NULL;
+
+      UPDATE readables
+      SET dnf_at = updated_at
+      WHERE status = 'DNF' AND dnf_at IS NULL;
     `,
   },
 ];

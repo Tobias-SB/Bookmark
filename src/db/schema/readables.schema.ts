@@ -1,4 +1,3 @@
-// src/db/schema/readables.schema.ts
 export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'DNF';
 export type ReadableType = 'book' | 'fanfic';
 
@@ -32,6 +31,11 @@ export interface ReadableRow {
 
   created_at: string;
   updated_at: string;
+
+  // New: explicit status timestamps
+  started_at: string | null;
+  finished_at: string | null;
+  dnf_at: string | null;
 
   // New: progress in percent (0–100)
   progress_percent: number;

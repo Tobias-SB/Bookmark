@@ -1,4 +1,3 @@
-// src/features/readables/types.ts
 import type { MoodTag } from '../../db/schema/moods.schema';
 
 export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'DNF';
@@ -36,8 +35,24 @@ export interface BaseReadableItem {
    */
   progressPercent: number;
   moodTags: MoodTag[];
+
   createdAt: string;
   updatedAt: string;
+
+  /**
+   * When the item was first marked as "reading" (if ever).
+   */
+  startedAt?: string | null;
+
+  /**
+   * When the item was first marked as "finished" (if ever).
+   */
+  finishedAt?: string | null;
+
+  /**
+   * When the item was first marked as "DNF" (if ever).
+   */
+  dnfAt?: string | null;
 }
 
 export type BookSource = 'manual' | 'googleBooks' | 'openLibrary' | 'goodreads';
