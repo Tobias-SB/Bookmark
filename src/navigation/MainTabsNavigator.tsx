@@ -2,6 +2,8 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useTheme } from 'react-native-paper';
+
 import type { MainTabsParamList } from './types';
 import ReadableListScreen from '@src/features/readables/screens/ReadableListScreen';
 import MoodSelectScreen from '@src/features/moods/screens/MoodSelectScreen';
@@ -46,11 +48,22 @@ function renderTabBarIcon(routeName: TabRouteName) {
 }
 
 const MainTabsNavigator: React.FC = () => {
+  const theme = useTheme();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: renderTabBarIcon(route.name as TabRouteName),
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: (theme.colors as any).onSurfaceDisabled ?? theme.colors.onSurface,
+        tabBarStyle: {
+          backgroundColor: theme.colors.surface,
+          borderTopColor: (theme.colors as any).outlineVariant ?? theme.colors.outline,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+        },
       })}
     >
       <Tab.Screen name="Library" component={ReadableListScreen} options={{ title: 'Library' }} />

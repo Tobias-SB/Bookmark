@@ -37,6 +37,7 @@ import type {
 import { readableRepository } from '../services/readableRepository';
 import { ALL_MOOD_TAGS, MoodTag } from '@src/features/moods/types';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
+import { useAppThemeMode } from '@src/theme';
 
 type EditRoute = RouteProp<RootStackParamList, 'EditReadable'>;
 type RootNav = NavigationProp<RootStackParamList>;
@@ -149,6 +150,8 @@ const DatePickerField: React.FC<DatePickerFieldProps> = ({
   errorMessage,
 }) => {
   const [showPicker, setShowPicker] = useState(false);
+  const { mode } = useAppThemeMode();
+  const isDark = mode === 'dark';
 
   const today = new Date();
 
@@ -206,7 +209,8 @@ const DatePickerField: React.FC<DatePickerFieldProps> = ({
           value={initialDate}
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={handleChange}
-          maximumDate={today} // ⬅️ hard cap: no future dates
+          maximumDate={today}
+          themeVariant={isDark ? 'dark' : 'light'}
         />
       )}
     </View>
