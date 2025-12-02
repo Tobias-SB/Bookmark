@@ -2,11 +2,21 @@
 import React, { useEffect, useState } from 'react';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
-import { ScrollView, StyleSheet, View, Alert } from 'react-native';
-import { useForm } from 'react-hook-form';
+import {
+  ScrollView,
+  StyleSheet,
+  View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+} from 'react-native';
+
+import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { Button, SegmentedButtons, Text } from 'react-native-paper';
+import { Button, SegmentedButtons, Text, TextInput, HelperText } from 'react-native-paper';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useQueryClient } from '@tanstack/react-query';
 
 import Screen from '@src/components/common/Screen';
@@ -16,7 +26,14 @@ import MoodTagSelector from '@src/features/moods/components/MoodTagSelector';
 
 import { useReadableById } from '../hooks/useReadableById';
 import type { RootStackParamList } from '@src/navigation/types';
-import type { BookSource, ReadableItem, BookReadable, FanficReadable, Ao3Rating } from '../types';
+import type {
+  BookSource,
+  ReadableItem,
+  BookReadable,
+  FanficReadable,
+  Ao3Rating,
+  ReadableStatus,
+} from '../types';
 import { readableRepository } from '../services/readableRepository';
 import { ALL_MOOD_TAGS, MoodTag } from '@src/features/moods/types';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
@@ -40,9 +57,31 @@ interface EditReadableFormValues {
   chapterCount?: string;
   complete: boolean;
   rating?: Ao3Rating | null;
+
+  // Manual date fields (YYYY-MM-DD or empty)
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  dnfAt?: string | null;
 }
 
-// Schema: keep it focused on scalar fields; list fields are handled via local state
+// Helper: format a Date -> 'YYYY-MM-DD'
+function formatDateForField(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Reusable date field schema: optional, nullable, YYYY-MM-DD when present.
+const dateFieldSchema = yup
+  .string()
+  .nullable()
+  .transform((v) => (v === '' ? null : v))
+  .test('is-valid-date', 'Use YYYY-MM-DD (e.g. 2025-03-15)', (value) => {
+    if (!value) return true; // empty / null is fine
+    return /^\d{4}-\d{2}-\d{2}$/.test(value);
+  });
+
 const schema = yup
   .object({
     type: yup.mixed<'book' | 'fanfic'>().oneOf(['book', 'fanfic']).required(),
@@ -86,8 +125,95 @@ const schema = yup
       .oneOf(['G', 'T', 'M', 'E', 'NR'] as const)
       .nullable()
       .optional(),
+
+    // Dates use the shared schema
+    startedAt: dateFieldSchema.optional(),
+    finishedAt: dateFieldSchema.optional(),
+    dnfAt: dateFieldSchema.optional(),
   })
   .required() as yup.ObjectSchema<EditReadableFormValues>;
+
+// ---------- Date picker field component ----------
+
+interface DatePickerFieldProps {
+  label: string;
+  value?: string | null;
+  onChange: (value: string | null) => void;
+  errorMessage?: string;
+}
+
+const DatePickerField: React.FC<DatePickerFieldProps> = ({
+  label,
+  value,
+  onChange,
+  errorMessage,
+}) => {
+  const [showPicker, setShowPicker] = useState(false);
+
+  const today = new Date();
+
+  // Parse existing value, but don't let it go past today.
+  let initialDate = today;
+  if (value) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      initialDate = parsed > today ? today : parsed;
+    }
+  }
+
+  const handleOpen = () => {
+    setShowPicker(true);
+  };
+
+  const handleChange = (event: DateTimePickerEvent, date?: Date) => {
+    // Android: picker is a modal → hide on any interaction
+    if (Platform.OS === 'android') {
+      setShowPicker(false);
+    }
+
+    if (event.type === 'set' && date) {
+      // Just in case: clamp picked date to today too
+      const clamped = date > today ? today : date;
+      onChange(formatDateForField(clamped));
+    }
+  };
+
+  return (
+    <View style={styles.dateField}>
+      <Pressable onPress={handleOpen}>
+        {/* Let Pressable receive the touch; TextInput is just visual */}
+        <View pointerEvents="none">
+          <TextInput
+            label={label}
+            mode="outlined"
+            value={value ?? ''}
+            editable={false}
+            placeholder="YYYY-MM-DD"
+            autoCapitalize="none"
+          />
+        </View>
+      </Pressable>
+
+      {errorMessage && (
+        <HelperText type="error" visible>
+          {errorMessage}
+        </HelperText>
+      )}
+
+      {showPicker && (
+        <DateTimePicker
+          mode="date"
+          value={initialDate}
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleChange}
+          maximumDate={today} // ⬅️ hard cap: no future dates
+        />
+      )}
+    </View>
+  );
+};
+
+// ---------- Screen component ----------
 
 const EditReadableScreen: React.FC = () => {
   const route = useRoute<EditRoute>();
@@ -126,6 +252,9 @@ const EditReadableScreen: React.FC = () => {
         draft && draft.type === 'fanfic'
           ? ((draft as Partial<FanficReadable>).rating ?? null)
           : null,
+      startedAt: draft?.startedAt ? draft.startedAt.slice(0, 10) : '',
+      finishedAt: draft?.finishedAt ? draft.finishedAt.slice(0, 10) : '',
+      dnfAt: draft?.dnfAt ? draft.dnfAt.slice(0, 10) : '',
     },
   });
 
@@ -153,6 +282,9 @@ const EditReadableScreen: React.FC = () => {
         description: readable.description ?? '',
         priority: String(readable.priority),
         moodTags: readable.moodTags,
+        startedAt: readable.startedAt ? readable.startedAt.slice(0, 10) : '',
+        finishedAt: readable.finishedAt ? readable.finishedAt.slice(0, 10) : '',
+        dnfAt: readable.dnfAt ? readable.dnfAt.slice(0, 10) : '',
       };
 
       if (readable.type === 'book') {
@@ -205,6 +337,9 @@ const EditReadableScreen: React.FC = () => {
         description: (draft.description as string | undefined) ?? '',
         priority: draft.priority != null ? String(draft.priority) : '3',
         moodTags: draft.moodTags ?? [],
+        startedAt: draft.startedAt ? draft.startedAt.slice(0, 10) : '',
+        finishedAt: draft.finishedAt ? draft.finishedAt.slice(0, 10) : '',
+        dnfAt: draft.dnfAt ? draft.dnfAt.slice(0, 10) : '',
       };
 
       if (draft.type === 'fanfic') {
@@ -257,6 +392,12 @@ const EditReadableScreen: React.FC = () => {
     );
   }
 
+  const normaliseDate = (value?: string | null): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  };
+
   const onSubmit = async (values: EditReadableFormValues) => {
     try {
       const priorityNumber = parseInt(values.priority, 10);
@@ -278,6 +419,10 @@ const EditReadableScreen: React.FC = () => {
       const complete = values.complete ?? false;
       const rating = values.rating ?? null;
 
+      const startedAt = normaliseDate(values.startedAt);
+      const finishedAt = normaliseDate(values.finishedAt);
+      const dnfAt = normaliseDate(values.dnfAt);
+
       let result: ReadableItem;
 
       if (isEditing && data) {
@@ -297,6 +442,9 @@ const EditReadableScreen: React.FC = () => {
             sourceId: existing.type === 'book' ? (existing.sourceId ?? null) : null,
             pageCount: pageCountNumber ?? null,
             genres,
+            startedAt,
+            finishedAt,
+            dnfAt,
           };
 
           result = await readableRepository.update(updatedBook);
@@ -327,6 +475,9 @@ const EditReadableScreen: React.FC = () => {
             chapterCount: chapterCountNumber ?? null,
             complete,
             wordCount: wordCountNumber ?? null,
+            startedAt,
+            finishedAt,
+            dnfAt,
           };
 
           result = await readableRepository.update(updatedFanfic);
@@ -347,6 +498,9 @@ const EditReadableScreen: React.FC = () => {
             sourceId: null,
             pageCount: pageCountNumber ?? null,
             genres,
+            startedAt,
+            finishedAt,
+            dnfAt,
           };
 
           result = await readableRepository.insert(newBook);
@@ -375,6 +529,9 @@ const EditReadableScreen: React.FC = () => {
             chapterCount: chapterCountNumber ?? null,
             complete,
             wordCount: wordCountNumber ?? null,
+            startedAt,
+            finishedAt,
+            dnfAt,
           };
 
           result = await readableRepository.insert(newFanfic);
@@ -396,56 +553,129 @@ const EditReadableScreen: React.FC = () => {
     }
   };
 
+  // We only want to show date fields when editing an existing readable,
+  // and only those that match its status.
+  const currentStatus: ReadableStatus | null =
+    isEditing && data ? (data.status as ReadableStatus) : null;
+
+  const showStartedField =
+    currentStatus === 'reading' || currentStatus === 'finished' || currentStatus === 'DNF';
+
+  const showFinishedField = currentStatus === 'finished';
+  const showDnfField = currentStatus === 'DNF';
+
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          Type
-        </Text>
-        <SegmentedButtons
-          value={currentType}
-          onValueChange={(value) => setValue('type', value as 'book' | 'fanfic')}
-          buttons={[
-            { value: 'book', label: 'Book' },
-            { value: 'fanfic', label: 'Fanfic' },
-          ]}
-        />
-
-        <ReadableMetadataForm
-          type={currentType}
-          control={control}
-          genres={genresList}
-          onChangeGenres={setGenresList}
-          fandoms={fandomsList}
-          onChangeFandoms={setFandomsList}
-          relationships={relationshipsList}
-          onChangeRelationships={setRelationshipsList}
-          characters={charactersList}
-          onChangeCharacters={setCharactersList}
-          ao3Tags={ao3TagsList}
-          onChangeAo3Tags={setAo3TagsList}
-          warnings={warningsList}
-          onChangeWarnings={setWarningsList}
-          completeValue={completeValue}
-          onChangeComplete={(val) => setValue('complete', val)}
-          currentRating={currentRating ?? null}
-          onChangeRating={(val) => setValue('rating', val)}
-        />
-
-        <View style={styles.moodsSection}>
-          <MoodTagSelector
-            selected={selectedMoodTags}
-            onChange={(tags) => setValue('moodTags', tags)}
-            title="Mood tags"
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      >
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+          <Text variant="titleMedium" style={styles.sectionTitle}>
+            Type
+          </Text>
+          <SegmentedButtons
+            value={currentType}
+            onValueChange={(value) => setValue('type', value as 'book' | 'fanfic')}
+            buttons={[
+              { value: 'book', label: 'Book' },
+              { value: 'fanfic', label: 'Fanfic' },
+            ]}
           />
-        </View>
 
-        <View style={styles.footer}>
-          <Button mode="contained" onPress={handleSubmit(onSubmit)}>
-            {isEditing ? 'Save changes' : 'Add to library'}
-          </Button>
-        </View>
-      </ScrollView>
+          <ReadableMetadataForm
+            type={currentType}
+            control={control}
+            genres={genresList}
+            onChangeGenres={setGenresList}
+            fandoms={fandomsList}
+            onChangeFandoms={setFandomsList}
+            relationships={relationshipsList}
+            onChangeRelationships={setRelationshipsList}
+            characters={charactersList}
+            onChangeCharacters={setCharactersList}
+            ao3Tags={ao3TagsList}
+            onChangeAo3Tags={setAo3TagsList}
+            warnings={warningsList}
+            onChangeWarnings={setWarningsList}
+            completeValue={completeValue}
+            onChangeComplete={(val) => setValue('complete', val)}
+            currentRating={currentRating ?? null}
+            onChangeRating={(val) => setValue('rating', val)}
+          />
+
+          <View style={styles.moodsSection}>
+            <MoodTagSelector
+              selected={selectedMoodTags}
+              onChange={(tags) => setValue('moodTags', tags)}
+              title="Mood tags"
+            />
+          </View>
+
+          {/* Reading timeline section – only when editing, and only show applicable fields */}
+          {isEditing &&
+            currentStatus &&
+            (showStartedField || showFinishedField || showDnfField) && (
+              <View style={styles.datesSection}>
+                <Text variant="titleMedium" style={styles.sectionTitle}>
+                  Reading timeline
+                </Text>
+
+                {showStartedField && (
+                  <Controller
+                    control={control}
+                    name="startedAt"
+                    render={({ field: { onChange, value }, fieldState: { error } }) => (
+                      <DatePickerField
+                        label="Started reading"
+                        value={value}
+                        onChange={onChange}
+                        errorMessage={error?.message}
+                      />
+                    )}
+                  />
+                )}
+
+                {showFinishedField && (
+                  <Controller
+                    control={control}
+                    name="finishedAt"
+                    render={({ field: { onChange, value }, fieldState: { error } }) => (
+                      <DatePickerField
+                        label="Finished on"
+                        value={value}
+                        onChange={onChange}
+                        errorMessage={error?.message}
+                      />
+                    )}
+                  />
+                )}
+
+                {showDnfField && (
+                  <Controller
+                    control={control}
+                    name="dnfAt"
+                    render={({ field: { onChange, value }, fieldState: { error } }) => (
+                      <DatePickerField
+                        label="Marked DNF on"
+                        value={value}
+                        onChange={onChange}
+                        errorMessage={error?.message}
+                      />
+                    )}
+                  />
+                )}
+              </View>
+            )}
+
+          <View style={styles.footer}>
+            <Button mode="contained" onPress={handleSubmit(onSubmit)}>
+              {isEditing ? 'Save changes' : 'Add to library'}
+            </Button>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 };
@@ -461,8 +691,16 @@ const styles = StyleSheet.create({
   moodsSection: {
     marginTop: 16,
   },
+  datesSection: {
+    marginTop: 16,
+    paddingHorizontal: 0,
+  },
+  dateField: {
+    marginTop: 8,
+  },
   footer: {
     marginTop: 24,
+    paddingBottom: 16,
   },
 });
 

@@ -18,6 +18,60 @@ function generateId(): string {
 }
 
 /**
+ * Helper: pick earliest valid ISO-ish date string from a list.
+ */
+function pickEarliestDateString(values: Array<string | null | undefined>): string | null {
+  const timestamps: number[] = [];
+
+  for (const v of values) {
+    if (!v) continue;
+    const t = new Date(v).getTime();
+    if (!Number.isNaN(t)) {
+      timestamps.push(t);
+    }
+  }
+
+  if (timestamps.length === 0) return null;
+
+  const earliest = Math.min(...timestamps);
+  return new Date(earliest).toISOString();
+}
+
+interface CreatedAtRecalculationInput {
+  existingCreatedAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  dnfAt?: string | null;
+}
+
+/**
+ * Ensure createdAt is never later than any of the reading dates.
+ * - If there are backdated started/finished/dnf dates, createdAt
+ *   becomes the earliest of them (or stays as-is if it's already earlier).
+ * - If nothing is set, falls back to "now".
+ */
+function computeCreatedAt({
+  existingCreatedAt,
+  startedAt,
+  finishedAt,
+  dnfAt,
+}: CreatedAtRecalculationInput): string {
+  const earliest = pickEarliestDateString([
+    existingCreatedAt ?? null,
+    startedAt ?? null,
+    finishedAt ?? null,
+    dnfAt ?? null,
+  ]);
+
+  if (earliest) {
+    return earliest;
+  }
+
+  // Fallback: nothing to go on, use now.
+  return new Date().toISOString();
+}
+
+/**
  * Map a DB row into a domain ReadableItem.
  */
 function mapRowToReadable(row: ReadableRow): ReadableItem {
@@ -143,30 +197,37 @@ function buildRowFromNewReadable(
 ): ReadableRow {
   const now = new Date().toISOString();
 
-  // Derive initial status timestamps from the starting status.
-  let startedAt: string | null = null;
-  let finishedAt: string | null = null;
-  let dnfAt: string | null = null;
+  // Respect any explicit dates coming in; otherwise derive from status.
+  let startedAt: string | null = readable.startedAt ?? null;
+  let finishedAt: string | null = readable.finishedAt ?? null;
+  let dnfAt: string | null = readable.dnfAt ?? null;
 
   switch (readable.status) {
     case 'reading':
-      startedAt = now;
+      if (!startedAt) startedAt = now;
       break;
     case 'finished':
-      finishedAt = now;
+      if (!finishedAt) finishedAt = now;
       break;
     case 'DNF':
-      dnfAt = now;
+      if (!dnfAt) dnfAt = now;
       break;
     case 'to-read':
     default:
       break;
   }
 
+  const createdAt = computeCreatedAt({
+    existingCreatedAt: now, // baseline "added now", pulled back if dates are earlier
+    startedAt,
+    finishedAt,
+    dnfAt,
+  });
+
   const withMeta: ReadableItem = {
     ...(readable as ReadableItem),
     id: generateId(),
-    createdAt: now,
+    createdAt,
     updatedAt: now,
     startedAt,
     finishedAt,
@@ -327,15 +388,31 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
   }
 
   const now = new Date().toISOString();
-  const updated: ReadableItem = {
+
+  // Caller (EditReadableScreen) sends a full object with updated fields,
+  // including explicit nulls for dates they want to clear.
+  // We treat that as authoritative and recompute createdAt from there,
+  // but we never move createdAt *forward* in time.
+  const merged: ReadableItem = {
+    ...existing,
     ...readable,
-    createdAt: existing.createdAt, // keep original
     updatedAt: now,
-    startedAt: readable.startedAt ?? existing.startedAt ?? null,
-    finishedAt: readable.finishedAt ?? existing.finishedAt ?? null,
-    dnfAt: readable.dnfAt ?? existing.dnfAt ?? null,
   };
-  const row = buildRowFromReadable(updated);
+
+  const createdAt = computeCreatedAt({
+    existingCreatedAt: existing.createdAt,
+    startedAt: merged.startedAt ?? null,
+    finishedAt: merged.finishedAt ?? null,
+    dnfAt: merged.dnfAt ?? null,
+  });
+
+  const final: ReadableItem = {
+    ...merged,
+    createdAt,
+    updatedAt: now,
+  };
+
+  const row = buildRowFromReadable(final);
 
   await runAsync(
     `
@@ -368,6 +445,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       finished_at = ?,
       dnf_at = ?,
       notes = ?,
+      created_at = ?,
       updated_at = ?
     WHERE id = ?;
   `,
@@ -399,12 +477,13 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       row.finished_at,
       row.dnf_at,
       row.notes,
+      row.created_at, // NEW: persist backdated createdAt
       row.updated_at,
       row.id,
     ],
   );
 
-  return updated;
+  return final;
 }
 
 async function remove(id: string): Promise<void> {
