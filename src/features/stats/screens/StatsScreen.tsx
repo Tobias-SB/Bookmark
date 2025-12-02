@@ -1,3 +1,4 @@
+// src/features/stats/screens/StatsScreen.tsx
 import React, { useMemo, useState, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, Pressable } from 'react-native';
 import {
@@ -6,7 +7,6 @@ import {
   Text,
   useTheme,
   IconButton,
-  Chip,
   SegmentedButtons,
 } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
@@ -60,7 +60,6 @@ function useAllReadables() {
 // ---------- Types & helpers ----------
 
 type StatsView = 'activity' | 'mood' | 'type';
-type PeriodKey = 'all' | string; // 'YYYY-MM'
 
 type StatusCounts = Record<ReadableStatus, number>;
 type TypeCounts = Record<ReadableType, number>;
@@ -198,67 +197,30 @@ function buildMonthlyActivityBuckets(readables: ReadableItem[]): MonthlyActivity
   return buckets;
 }
 
-function computeActivityCountsForPeriod(
-  period: PeriodKey,
-  buckets: MonthlyActivityBucket[],
-): ActivityCounts {
-  if (period === 'all') {
-    let added = 0;
-    let started = 0;
-    let finished = 0;
-    let dnf = 0;
+function computeActivityCountsForAll(buckets: MonthlyActivityBucket[]): ActivityCounts {
+  let added = 0;
+  let started = 0;
+  let finished = 0;
+  let dnf = 0;
 
-    for (const b of buckets) {
-      added += b.added.length;
-      started += b.started.length;
-      finished += b.finished.length;
-      dnf += b.dnf.length;
-    }
-
-    const totalEvents = added + started + finished + dnf;
-    return { added, started, finished, dnf, totalEvents };
+  for (const b of buckets) {
+    added += b.added.length;
+    started += b.started.length;
+    finished += b.finished.length;
+    dnf += b.dnf.length;
   }
 
-  const bucket = buckets.find((b) => b.monthKey === period);
-  if (!bucket) {
-    return { added: 0, started: 0, finished: 0, dnf: 0, totalEvents: 0 };
-  }
+  const totalEvents = added + started + finished + dnf;
+  return { added, started, finished, dnf, totalEvents };
+}
 
+function computeActivityCountsForBucket(bucket: MonthlyActivityBucket): ActivityCounts {
   const added = bucket.added.length;
   const started = bucket.started.length;
   const finished = bucket.finished.length;
   const dnf = bucket.dnf.length;
   const totalEvents = added + started + finished + dnf;
   return { added, started, finished, dnf, totalEvents };
-}
-
-/**
- * "Items touched in period" = union of all items that had any activity
- * in that period (added / started / finished / dnf).
- */
-function getItemsForPeriod(
-  period: PeriodKey,
-  buckets: MonthlyActivityBucket[],
-  allReadables: ReadableItem[],
-): ReadableItem[] {
-  if (period === 'all') {
-    return allReadables;
-  }
-
-  const bucket = buckets.find((b) => b.monthKey === period);
-  if (!bucket) return [];
-
-  const byId = new Map<string, ReadableItem>();
-
-  for (const list of [bucket.added, bucket.started, bucket.finished, bucket.dnf]) {
-    for (const item of list) {
-      if (!byId.has(item.id)) {
-        byId.set(item.id, item);
-      }
-    }
-  }
-
-  return Array.from(byId.values());
 }
 
 function computeMoodStats(items: ReadableItem[]): MoodStats[] {
@@ -320,6 +282,21 @@ function buildTypePieData(typeStats: TypeStats[]): PieDatum[] {
     }));
 }
 
+/**
+ * Unique set of items touched in this bucket (added/started/finished/dnf).
+ */
+function getUniqueItemsForBucket(bucket: MonthlyActivityBucket): ReadableItem[] {
+  const byId = new Map<string, ReadableItem>();
+  for (const list of [bucket.added, bucket.started, bucket.finished, bucket.dnf]) {
+    for (const item of list) {
+      if (!byId.has(item.id)) {
+        byId.set(item.id, item);
+      }
+    }
+  }
+  return Array.from(byId.values());
+}
+
 // ---------- Screen component ----------
 
 export function StatsScreen() {
@@ -339,84 +316,54 @@ export function StatsScreen() {
     }, [refetchReadables]),
   );
 
+  const safeReadables = readables ?? [];
+
+  const stats = useMemo(() => computeStats(safeReadables), [safeReadables]);
+  const monthlyBuckets = useMemo(() => buildMonthlyActivityBuckets(safeReadables), [safeReadables]);
+
+  // All-time overview state (text only)
+  const [overviewView, setOverviewView] = useState<StatsView>('activity');
+
+  const allActivityCounts = useMemo(
+    () => computeActivityCountsForAll(monthlyBuckets),
+    [monthlyBuckets],
+  );
+
+  const allMoodStats = useMemo(() => computeMoodStats(safeReadables), [safeReadables]);
+  const allTypeStats = useMemo(() => computeTypeStats(safeReadables), [safeReadables]);
+
+  // Per-month view selection: monthKey -> 'activity' | 'mood' | 'type'
+  const [monthViews, setMonthViews] = useState<Record<string, StatsView>>({});
+
+  // ---------- Conditional UI (no conditional hooks) ----------
+
+  let content: React.ReactNode;
+
   if (readablesLoading) {
-    return (
-      <Screen>
-        <View style={styles.center}>
-          <ActivityIndicator />
-          <Text style={styles.centerText}>Loading your stats…</Text>
-        </View>
-      </Screen>
+    content = (
+      <View style={styles.center}>
+        <ActivityIndicator />
+        <Text style={styles.centerText}>Loading your stats…</Text>
+      </View>
     );
-  }
-
-  if (readablesError) {
-    return (
-      <Screen>
-        <View style={styles.center}>
-          <Text style={styles.errorText}>
-            Failed to load stats: {(readablesError as Error).message}
-          </Text>
-        </View>
-      </Screen>
+  } else if (readablesError) {
+    content = (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>
+          Failed to load stats: {(readablesError as Error).message}
+        </Text>
+      </View>
     );
-  }
-
-  if (!readables || readables.length === 0) {
-    return (
-      <Screen>
-        <View style={styles.center}>
-          <Text style={styles.centerText}>
-            No items in your library yet. Add a book or fic to see stats here.
-          </Text>
-        </View>
-      </Screen>
+  } else if (!safeReadables.length) {
+    content = (
+      <View style={styles.center}>
+        <Text style={styles.centerText}>
+          No items in your library yet. Add a book or fic to see stats here.
+        </Text>
+      </View>
     );
-  }
-
-  const stats = useMemo(() => computeStats(readables), [readables]);
-  const monthlyBuckets = useMemo(() => buildMonthlyActivityBuckets(readables), [readables]);
-
-  // Period & view state
-  const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('all');
-  const [view, setView] = useState<StatsView>('activity');
-
-  const periodLabel: string = useMemo(() => {
-    if (selectedPeriod === 'all') return 'All time';
-    const bucket = monthlyBuckets.find((b) => b.monthKey === selectedPeriod);
-    return bucket ? bucket.label : 'All time';
-  }, [selectedPeriod, monthlyBuckets]);
-
-  const activityCounts = useMemo(
-    () => computeActivityCountsForPeriod(selectedPeriod, monthlyBuckets),
-    [selectedPeriod, monthlyBuckets],
-  );
-
-  const itemsInPeriod = useMemo(
-    () => getItemsForPeriod(selectedPeriod, monthlyBuckets, readables),
-    [selectedPeriod, monthlyBuckets, readables],
-  );
-
-  const moodStats = useMemo(() => computeMoodStats(itemsInPeriod), [itemsInPeriod]);
-  const typeStats = useMemo(() => computeTypeStats(itemsInPeriod), [itemsInPeriod]);
-
-  const pieData: PieDatum[] = useMemo(() => {
-    switch (view) {
-      case 'activity':
-        return buildActivityPieData(activityCounts);
-      case 'mood':
-        return buildMoodPieData(moodStats);
-      case 'type':
-        return buildTypePieData(typeStats);
-      default:
-        return [];
-    }
-  }, [view, activityCounts, moodStats, typeStats]);
-
-  const monthsForChips = monthlyBuckets;
-
-  return (
-    <Screen>
+  } else {
+    content = (
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { backgroundColor: theme.colors.background }]}
       >
@@ -434,52 +381,20 @@ export function StatsScreen() {
               <Text>Books: {stats.byType.book}</Text>
               <Text>Fanfics: {stats.byType.fanfic}</Text>
             </View>
-            <View style={styles.snapshotColumn}>
-              <Text style={styles.snapshotHeading}>By status</Text>
-              <Text>Queued: {stats.byStatus['to-read']}</Text>
-              <Text>Reading: {stats.byStatus.reading}</Text>
-              <Text>Completed: {stats.byStatus.finished}</Text>
-              <Text>DNF: {stats.byStatus.DNF}</Text>
-            </View>
           </View>
         </CollapsibleCard>
 
-        {/* ---------- PERIOD & VIEW SELECTION ---------- */}
+        {/* ---------- OVERVIEW (ALL-TIME, TEXT ONLY) ---------- */}
         <Card style={styles.card}>
           <Card.Content>
             <Text variant="titleMedium" style={styles.sectionHeader}>
-              Period & view
+              Overview – all time
             </Text>
 
-            <Text style={styles.subLabel}>Period</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.periodChipsRow}
-            >
-              <Chip
-                style={styles.periodChip}
-                selected={selectedPeriod === 'all'}
-                onPress={() => setSelectedPeriod('all')}
-              >
-                All time
-              </Chip>
-              {monthsForChips.map((bucket) => (
-                <Chip
-                  key={bucket.monthKey}
-                  style={styles.periodChip}
-                  selected={selectedPeriod === bucket.monthKey}
-                  onPress={() => setSelectedPeriod(bucket.monthKey)}
-                >
-                  {bucket.label}
-                </Chip>
-              ))}
-            </ScrollView>
-
-            <Text style={[styles.subLabel, { marginTop: 12 }]}>View</Text>
+            <Text style={styles.subLabel}>View</Text>
             <SegmentedButtons
-              value={view}
-              onValueChange={(v) => setView(v as StatsView)}
+              value={overviewView}
+              onValueChange={(v) => setOverviewView(v as StatsView)}
               buttons={[
                 { value: 'activity', label: 'Activity' },
                 { value: 'mood', label: 'Mood' },
@@ -487,106 +402,185 @@ export function StatsScreen() {
               ]}
               style={styles.segmented}
             />
+
+            {overviewView === 'activity' && (
+              <View style={styles.activitySummary}>
+                <Text>Total events: {allActivityCounts.totalEvents}</Text>
+                <Text>Added: {allActivityCounts.added}</Text>
+                <Text>Started: {allActivityCounts.started}</Text>
+                <Text>Finished: {allActivityCounts.finished}</Text>
+                <Text>DNF: {allActivityCounts.dnf}</Text>
+              </View>
+            )}
+
+            {overviewView === 'mood' && (
+              <View style={styles.activitySummary}>
+                {allMoodStats.length === 0 ? (
+                  <Text style={styles.muted}>No mood tags recorded yet.</Text>
+                ) : (
+                  allMoodStats.map((m) => (
+                    <View key={m.moodTag} style={styles.rowBetween}>
+                      <Text>{m.moodTag.replace('-', ' ')}</Text>
+                      <Text>{m.count}</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
+
+            {overviewView === 'type' && (
+              <View style={styles.activitySummary}>
+                {allTypeStats.map((t) => (
+                  <View key={t.type} style={styles.rowBetween}>
+                    <Text>{t.type === 'book' ? 'Books' : 'Fanfics'}</Text>
+                    <Text>{t.count}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </Card.Content>
         </Card>
 
-        {/* ---------- OVERVIEW (PIE CHART) ---------- */}
-        <CollapsibleCard title={`Overview – ${periodLabel}`}>
-          <StatsPieChart data={pieData} />
+        {/* ---------- DETAILS BY MONTH (WITH PIE + LEGEND) ---------- */}
+        <Text variant="titleMedium" style={[styles.sectionHeader, { marginTop: 8 }]}>
+          Details by month
+        </Text>
 
-          {view === 'activity' && (
-            <View style={styles.activitySummary}>
-              <Text>Total events: {activityCounts.totalEvents}</Text>
-              <Text>Added: {activityCounts.added}</Text>
-              <Text>Started: {activityCounts.started}</Text>
-              <Text>Finished: {activityCounts.finished}</Text>
-              <Text>DNF: {activityCounts.dnf}</Text>
-            </View>
-          )}
+        {monthlyBuckets.length === 0 && <Text style={styles.muted}>No activity recorded yet.</Text>}
 
-          {view === 'mood' && moodStats.length > 0 && (
-            <View style={styles.activitySummary}>
-              {moodStats.map((m) => (
-                <View key={m.moodTag} style={styles.rowBetween}>
-                  <Text>{m.moodTag.replace('-', ' ')}</Text>
-                  <Text>{m.count}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+        {monthlyBuckets.map((bucket, index) => {
+          const counts = computeActivityCountsForBucket(bucket);
+          const bucketItems = getUniqueItemsForBucket(bucket);
+          const bucketMoodStats = computeMoodStats(bucketItems);
+          const bucketTypeStats = computeTypeStats(bucketItems);
 
-          {view === 'mood' && moodStats.length === 0 && (
-            <Text style={styles.muted}>No mood tags recorded in this period.</Text>
-          )}
+          const monthView = monthViews[bucket.monthKey] ?? 'activity';
 
-          {view === 'type' && (
-            <View style={styles.activitySummary}>
-              {typeStats.map((t) => (
-                <View key={t.type} style={styles.rowBetween}>
-                  <Text>{t.type === 'book' ? 'Books' : 'Fanfics'}</Text>
-                  <Text>{t.count}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </CollapsibleCard>
+          let monthPieData: PieDatum[];
+          switch (monthView) {
+            case 'activity':
+              monthPieData = buildActivityPieData(counts);
+              break;
+            case 'mood':
+              monthPieData = buildMoodPieData(bucketMoodStats);
+              break;
+            case 'type':
+              monthPieData = buildTypePieData(bucketTypeStats);
+              break;
+            default:
+              monthPieData = [];
+          }
 
-        {/* ---------- ACTIVITY DETAILS FOR PERIOD ---------- */}
-        {view === 'activity' && selectedPeriod !== 'all' && (
-          <CollapsibleCard title={`Activity details – ${periodLabel}`}>
-            {(() => {
-              const bucket = monthlyBuckets.find((b) => b.monthKey === selectedPeriod);
-              if (!bucket) {
-                return <Text style={styles.muted}>No activity for this month.</Text>;
-              }
+          const initiallyCollapsed = index > 0; // latest month open by default
 
-              const sections: {
-                title: string;
-                items: ReadableItem[];
-              }[] = [
-                { title: 'Added to library', items: bucket.added },
-                { title: 'Started reading', items: bucket.started },
-                { title: 'Marked as finished', items: bucket.finished },
-                { title: 'Marked as DNF', items: bucket.dnf },
-              ];
+          return (
+            <CollapsibleCard
+              key={bucket.monthKey}
+              initiallyCollapsed={initiallyCollapsed}
+              title={`${bucket.label} – ${counts.totalEvents} event${
+                counts.totalEvents === 1 ? '' : 's'
+              }`}
+            >
+              <Text style={styles.subLabel}>View</Text>
+              <SegmentedButtons
+                value={monthView}
+                onValueChange={(v) =>
+                  setMonthViews((prev) => ({
+                    ...prev,
+                    [bucket.monthKey]: v as StatsView,
+                  }))
+                }
+                buttons={[
+                  { value: 'activity', label: 'Activity' },
+                  { value: 'mood', label: 'Mood' },
+                  { value: 'type', label: 'Type' },
+                ]}
+                style={styles.segmented}
+              />
 
-              const hasAny = sections.some((s) => s.items.length > 0);
+              <View style={{ marginTop: 8 }}>
+                <StatsPieChart data={monthPieData} />
+              </View>
 
-              if (!hasAny) {
-                return <Text style={styles.muted}>No activity for this month.</Text>;
-              }
+              {/* Per-month textual breakdown depending on view, but
+               *not* repeating what the legend already shows. */}
+              {monthView === 'activity' && (
+                <>
+                  <View style={styles.activitySummary}>
+                    <Text>Total events: {counts.totalEvents}</Text>
+                  </View>
 
-              return (
-                <View>
-                  {sections.map(
-                    (section) =>
-                      section.items.length > 0 && (
-                        <View key={section.title} style={styles.monthGroup}>
-                          <Text style={styles.monthTitle}>
-                            {section.title} ({section.items.length})
-                          </Text>
-                          {section.items.map((item) => (
-                            <View
-                              key={`${section.title}-${item.id}`}
-                              style={styles.finishedItemRow}
-                            >
-                              <Text style={styles.finishedItemTitle}>{item.title}</Text>
-                              <Text style={styles.finishedItemMeta}>
-                                {item.type === 'book' ? 'Book' : 'Fanfic'} • {item.author}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      ),
+                  {(() => {
+                    const sections: {
+                      title: string;
+                      items: ReadableItem[];
+                    }[] = [
+                      { title: 'Added to library', items: bucket.added },
+                      { title: 'Started reading', items: bucket.started },
+                      { title: 'Marked as finished', items: bucket.finished },
+                      { title: 'Marked as DNF', items: bucket.dnf },
+                    ];
+
+                    const hasAny = sections.some((s) => s.items.length > 0);
+
+                    if (!hasAny) {
+                      return <Text style={styles.muted}>No activity for this month.</Text>;
+                    }
+
+                    return (
+                      <View style={{ marginTop: 8 }}>
+                        {sections.map(
+                          (section) =>
+                            section.items.length > 0 && (
+                              <View key={section.title} style={styles.monthGroup}>
+                                <Text style={styles.monthTitle}>
+                                  {section.title} ({section.items.length})
+                                </Text>
+                                {section.items.map((item) => (
+                                  <View
+                                    key={`${section.title}-${item.id}`}
+                                    style={styles.finishedItemRow}
+                                  >
+                                    <Text style={styles.finishedItemTitle}>{item.title}</Text>
+                                    <Text style={styles.finishedItemMeta}>
+                                      {item.type === 'book' ? 'Book' : 'Fanfic'} • {item.author}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+                            ),
+                        )}
+                      </View>
+                    );
+                  })()}
+                </>
+              )}
+
+              {monthView === 'mood' && (
+                <View style={styles.activitySummary}>
+                  {bucketMoodStats.length === 0 && (
+                    <Text style={styles.muted}>No mood tags recorded this month.</Text>
                   )}
+                  {/* Counts per mood are already shown via the pie legend */}
                 </View>
-              );
-            })()}
-          </CollapsibleCard>
-        )}
+              )}
+
+              {monthView === 'type' && (
+                <View style={styles.activitySummary}>
+                  {bucketTypeStats.length === 0 && (
+                    <Text style={styles.muted}>No items this month.</Text>
+                  )}
+                  {/* Per-type counts already shown in legend */}
+                </View>
+              )}
+            </CollapsibleCard>
+          );
+        })}
       </ScrollView>
-    </Screen>
-  );
+    );
+  }
+
+  return <Screen>{content}</Screen>;
 }
 
 // ---------- Styles ----------
@@ -642,14 +636,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.8,
     marginBottom: 4,
-  },
-  periodChipsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  periodChip: {
-    marginRight: 6,
   },
   segmented: {
     marginTop: 4,

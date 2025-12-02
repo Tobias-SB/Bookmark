@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import Svg, { G, Path } from 'react-native-svg';
+import Svg, { G, Path, Circle } from 'react-native-svg';
 import { useAppThemeMode } from '@src/theme';
 import { colors } from '@src/theme/colors';
 
@@ -57,7 +57,8 @@ const StatsPieChart: React.FC<StatsPieChartProps> = ({ data }) => {
 
     for (const key of keys) {
       if (!colorMap.has(key)) {
-        const color = chartPalette[usedCount % chartPalette.length];
+        const paletteLength = chartPalette.length || 1;
+        const color = chartPalette[usedCount % paletteLength];
         colorMap.set(key, color);
         usedCount += 1;
       }
@@ -124,7 +125,6 @@ const StatsPieChart: React.FC<StatsPieChartProps> = ({ data }) => {
         cancelAnimationFrame(animationFrame.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, chartPalette]);
 
   // Use the *target* data for emptiness + legend (no animated numbers).
@@ -137,13 +137,7 @@ const StatsPieChart: React.FC<StatsPieChartProps> = ({ data }) => {
     [data],
   );
 
-  if (!data.length || targetTotal <= 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>No data for this period yet.</Text>
-      </View>
-    );
-  }
+  const hasData = data.length > 0 && targetTotal > 0;
 
   // Total for angles should come from animated data, so the pie morphs smoothly.
   const animatedTotal = animatedData.reduce((sum, d) => {
@@ -154,6 +148,9 @@ const StatsPieChart: React.FC<StatsPieChartProps> = ({ data }) => {
   const radius = 60;
   const size = radius * 2 + 8;
   const center = size / 2;
+
+  const nonZeroAnimated = animatedData.filter((d) => d.value > 0);
+  const isSingleFullSlice = nonZeroAnimated.length === 1 && animatedTotal > 0;
 
   let currentAngle = -Math.PI / 2; // start at top
 
@@ -204,15 +201,32 @@ const StatsPieChart: React.FC<StatsPieChartProps> = ({ data }) => {
   // Legend entries: use the *real* data values, not animated ones.
   const legendEntries = useMemo(() => data.filter((d) => d.value > 0), [data]);
 
+  if (!hasData) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyText}>No data for this period yet.</Text>
+      </View>
+    );
+  }
+
+  const singleSliceColor =
+    isSingleFullSlice && nonZeroAnimated[0]
+      ? (colorMap.get(nonZeroAnimated[0].key) ?? theme.colors.primary)
+      : undefined;
+
   return (
     <View style={styles.container}>
       <Svg width={size} height={size}>
         <G>
-          {slices.map((slice) => {
-            if (!slice.hasPath) return null;
-            const color = colorMap.get(slice.key) ?? theme.colors.primary;
-            return <Path key={slice.key} d={slice.pathData} fill={color} />;
-          })}
+          {isSingleFullSlice ? (
+            <Circle cx={center} cy={center} r={radius} fill={singleSliceColor} />
+          ) : (
+            slices.map((slice) => {
+              if (!slice.hasPath) return null;
+              const color = colorMap.get(slice.key) ?? theme.colors.primary;
+              return <Path key={slice.key} d={slice.pathData} fill={color} />;
+            })
+          )}
         </G>
       </Svg>
 
