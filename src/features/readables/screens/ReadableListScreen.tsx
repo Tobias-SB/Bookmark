@@ -1,6 +1,6 @@
 // src/features/readables/screens/ReadableListScreen.tsx
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View, Text, Alert } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationProp, RouteProp } from '@react-navigation/native';
 import { FAB } from 'react-native-paper';
@@ -13,7 +13,7 @@ import ReadableListEmptyState from '../components/ReadableListEmptyState';
 import LibraryFilterBar from '../components/LibraryFilterBar';
 import { useReadables } from '../hooks/useReadables';
 import type { MainTabsParamList, RootStackParamList } from '@src/navigation/types';
-import type { ReadableItem, ReadableType } from '../types';
+import type { ReadableItem } from '../types';
 import type { LibraryQueryParams } from '../types/libraryQuery';
 
 type RootNav = NavigationProp<RootStackParamList>;
@@ -21,7 +21,7 @@ type LibraryRoute = RouteProp<MainTabsParamList, 'Library'>;
 
 const DEFAULT_QUERY: LibraryQueryParams = {
   status: 'all',
-  types: undefined,
+  type: undefined,
   minPriority: undefined,
   maxPriority: undefined,
   searchQuery: null,
@@ -142,10 +142,9 @@ function applyLibraryQuery(items: ReadableItem[], query: LibraryQueryParams): Re
     result = result.filter((item) => item.status === query.status);
   }
 
-  // Types
-  if (query.types && query.types.length > 0) {
-    const typeSet = new Set<ReadableType>(query.types);
-    result = result.filter((item) => typeSet.has(item.type));
+  // Type (single-select)
+  if (query.type) {
+    result = result.filter((item) => item.type === query.type);
   }
 
   // Priority

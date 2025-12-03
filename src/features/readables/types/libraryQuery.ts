@@ -18,7 +18,13 @@ export interface LibrarySort {
  */
 export interface LibraryQueryParams {
   status: LibraryFilter;
-  types?: ReadableType[];
+  /**
+   * Optional single type filter:
+   * - 'book' shows only books
+   * - 'fanfic' shows only fanfic
+   * - undefined shows all types
+   */
+  type?: ReadableType;
   minPriority?: number;
   maxPriority?: number;
   searchQuery?: string | null;

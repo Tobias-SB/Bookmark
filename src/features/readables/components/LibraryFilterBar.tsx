@@ -1,7 +1,15 @@
 // src/features/readables/components/LibraryFilterBar.tsx
-import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Chip, Searchbar, Text, useTheme, IconButton, SegmentedButtons } from 'react-native-paper';
+import React, { useState } from 'react';
+import { View, StyleSheet } from 'react-native';
+import {
+  Button,
+  Menu,
+  Searchbar,
+  Text,
+  useTheme,
+  IconButton,
+  SegmentedButtons,
+} from 'react-native-paper';
 
 import type { LibraryFilter, ReadableType } from '../types';
 import type { LibraryQueryParams, LibrarySortField } from '../types/libraryQuery';
@@ -18,7 +26,8 @@ export interface LibraryFilterBarProps {
 
 const STATUS_FILTERS: LibraryFilter[] = ['all', 'to-read', 'reading', 'finished', 'DNF'];
 
-const TYPE_FILTERS: { value: ReadableType; label: string }[] = [
+const TYPE_FILTERS: { value?: ReadableType; label: string }[] = [
+  { value: undefined, label: 'All types' },
   { value: 'book', label: 'Books' },
   { value: 'fanfic', label: 'Fanfic' },
 ];
@@ -40,49 +49,51 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
 }) => {
   const theme = useTheme();
 
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
+
+  const [statusMenuVisible, setStatusMenuVisible] = useState(false);
+  const [typeMenuVisible, setTypeMenuVisible] = useState(false);
+  const [priorityMenuVisible, setPriorityMenuVisible] = useState(false);
+  const [sortMenuVisible, setSortMenuVisible] = useState(false);
+
   const handleStatusChange = (status: LibraryFilter) => {
     onQueryChange({
       ...query,
       status,
     });
+    setStatusMenuVisible(false);
   };
 
-  const handleToggleType = (type: ReadableType) => {
-    const current = query.types ?? [];
-    const exists = current.includes(type);
-    const next = exists ? current.filter((t) => t !== type) : [...current, type];
-
+  const handleTypeChange = (type: ReadableType | undefined) => {
     onQueryChange({
       ...query,
-      types: next.length === 0 ? undefined : next,
+      type,
     });
+    setTypeMenuVisible(false);
   };
 
-  const handlePriorityChange = (priority: number) => {
-    const { minPriority, maxPriority } = query;
-
-    // Simple UX: tapping the same number again clears the priority filter
-    if (minPriority === priority && maxPriority === priority) {
+  const handlePriorityChange = (priority: number | undefined) => {
+    if (priority == null) {
       onQueryChange({
         ...query,
         minPriority: undefined,
         maxPriority: undefined,
       });
-      return;
+    } else {
+      onQueryChange({
+        ...query,
+        minPriority: priority,
+        maxPriority: priority,
+      });
     }
-
-    onQueryChange({
-      ...query,
-      minPriority: priority,
-      maxPriority: priority,
-    });
+    setPriorityMenuVisible(false);
   };
 
   const handleSortChange = (field: LibrarySortField) => {
     let direction = query.sort.direction;
 
     if (query.sort.field === field) {
-      // On repeated tap, flip direction
+      // On repeated selection, flip direction
       direction = direction === 'asc' ? 'desc' : 'asc';
     } else {
       // Defaults per field
@@ -103,12 +114,13 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
       ...query,
       sort: { field, direction },
     });
+    setSortMenuVisible(false);
   };
 
   const handleClearAllFilters = () => {
     onQueryChange({
       status: 'all',
-      types: undefined,
+      type: undefined,
       minPriority: undefined,
       maxPriority: undefined,
       searchQuery: null,
@@ -118,6 +130,24 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
       },
     });
   };
+
+  const statusLabel = labelForStatus(query.status);
+  const typeLabel = (() => {
+    if (!query.type) return 'All types';
+    return query.type === 'book' ? 'Books' : 'Fanfic';
+  })();
+  const priorityLabel = (() => {
+    if (query.minPriority == null || query.maxPriority == null) return 'Any priority';
+    if (query.minPriority === query.maxPriority) {
+      return `Priority ${query.minPriority}`;
+    }
+    return `Priority ${query.minPriority}–${query.maxPriority}`;
+  })();
+  const sortLabel = (() => {
+    const base = SORT_CONFIG.find((s) => s.value === query.sort.field)?.label ?? 'Sort';
+    const dirArrow = query.sort.direction === 'asc' ? '↑' : '↓';
+    return `${base} ${dirArrow}`;
+  })();
 
   return (
     <View style={styles.container}>
@@ -150,90 +180,134 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
         style={styles.searchbar}
       />
 
-      <View style={styles.section}>
-        <Text variant="labelSmall" style={styles.sectionLabel}>
-          Status
+      <View style={styles.filtersHeaderRow}>
+        <Text variant="labelSmall" style={styles.filtersLabel}>
+          Filters
         </Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.chipRow}>
-            {STATUS_FILTERS.map((status) => (
-              <Chip
-                key={status}
-                selected={query.status === status}
-                onPress={() => handleStatusChange(status)}
-                style={styles.chip}
-              >
-                {labelForStatus(status)}
-              </Chip>
-            ))}
-          </View>
-        </ScrollView>
+        <View style={styles.filtersHeaderRight}>
+          <Button mode="text" onPress={handleClearAllFilters} compact icon="filter-off-outline">
+            Clear
+          </Button>
+          <IconButton
+            icon={filtersCollapsed ? 'chevron-down' : 'chevron-up'}
+            size={20}
+            onPress={() => setFiltersCollapsed((prev) => !prev)}
+            accessibilityLabel={filtersCollapsed ? 'Show filters' : 'Hide filters'}
+          />
+        </View>
       </View>
 
-      <View style={styles.section}>
-        <Text variant="labelSmall" style={styles.sectionLabel}>
-          Type
-        </Text>
-        <View style={styles.chipRow}>
-          {TYPE_FILTERS.map((t) => (
-            <Chip
-              key={t.value}
-              selected={query.types?.includes(t.value) ?? false}
-              onPress={() => handleToggleType(t.value)}
-              style={styles.chip}
+      {!filtersCollapsed && (
+        <>
+          <View style={styles.menuRow}>
+            {/* Status */}
+            <Menu
+              visible={statusMenuVisible}
+              onDismiss={() => setStatusMenuVisible(false)}
+              anchor={
+                <Button
+                  mode="outlined"
+                  onPress={() => setStatusMenuVisible(true)}
+                  style={styles.menuButton}
+                  icon="tune-vertical"
+                >
+                  Status: {statusLabel}
+                </Button>
+              }
             >
-              {t.label}
-            </Chip>
-          ))}
-        </View>
-      </View>
+              {STATUS_FILTERS.map((status) => (
+                <Menu.Item
+                  key={status}
+                  onPress={() => handleStatusChange(status)}
+                  title={labelForStatus(status)}
+                />
+              ))}
+            </Menu>
 
-      <View style={styles.section}>
-        <Text variant="labelSmall" style={styles.sectionLabel}>
-          Priority
-        </Text>
-        <View style={styles.chipRow}>
-          {PRIORITY_VALUES.map((value) => {
-            const selected = query.minPriority === value && query.maxPriority === value;
+            {/* Type */}
+            <Menu
+              visible={typeMenuVisible}
+              onDismiss={() => setTypeMenuVisible(false)}
+              anchor={
+                <Button
+                  mode="outlined"
+                  onPress={() => setTypeMenuVisible(true)}
+                  style={styles.menuButton}
+                  icon="book-open-variant"
+                >
+                  Type: {typeLabel}
+                </Button>
+              }
+            >
+              {TYPE_FILTERS.map((option) => (
+                <Menu.Item
+                  key={option.label}
+                  onPress={() => handleTypeChange(option.value)}
+                  title={option.label}
+                />
+              ))}
+            </Menu>
+          </View>
 
-            return (
-              <Chip
-                key={value}
-                selected={selected}
-                onPress={() => handlePriorityChange(value)}
-                style={styles.chip}
-              >
-                {value}
-              </Chip>
-            );
-          })}
-        </View>
-      </View>
+          <View style={styles.menuRow}>
+            {/* Priority */}
+            <Menu
+              visible={priorityMenuVisible}
+              onDismiss={() => setPriorityMenuVisible(false)}
+              anchor={
+                <Button
+                  mode="outlined"
+                  onPress={() => setPriorityMenuVisible(true)}
+                  style={styles.menuButton}
+                  icon="star-outline"
+                >
+                  {priorityLabel}
+                </Button>
+              }
+            >
+              <Menu.Item onPress={() => handlePriorityChange(undefined)} title="Any priority" />
+              {PRIORITY_VALUES.map((value) => (
+                <Menu.Item
+                  key={value}
+                  onPress={() => handlePriorityChange(value)}
+                  title={`Priority ${value}`}
+                />
+              ))}
+            </Menu>
 
-      <View style={styles.section}>
-        <Text variant="labelSmall" style={styles.sectionLabel}>
-          Sort by
-        </Text>
-        <SegmentedButtons
-          value={query.sort.field}
-          onValueChange={(value) => handleSortChange(value as LibrarySortField)}
-          buttons={SORT_CONFIG.map((config) => ({
-            value: config.value,
-            label: config.label,
-          }))}
-          style={styles.sortButtons}
-        />
-      </View>
+            {/* Sort */}
+            <Menu
+              visible={sortMenuVisible}
+              onDismiss={() => setSortMenuVisible(false)}
+              anchor={
+                <Button
+                  mode="outlined"
+                  onPress={() => setSortMenuVisible(true)}
+                  style={styles.menuButton}
+                  icon="sort"
+                >
+                  {sortLabel}
+                </Button>
+              }
+            >
+              {SORT_CONFIG.map((config) => (
+                <Menu.Item
+                  key={config.value}
+                  onPress={() => handleSortChange(config.value)}
+                  title={config.label}
+                />
+              ))}
+            </Menu>
+          </View>
 
-      <View style={styles.clearRow}>
-        <IconButton
-          icon="filter-off-outline"
-          size={20}
-          onPress={handleClearAllFilters}
-          accessibilityLabel="Clear filters"
-        />
-        <Text variant="labelSmall">Clear all filters</Text>
-      </View>
+          {/* Optional: small hint row */}
+          <View style={styles.sortHintRow}>
+            <Text variant="labelSmall" style={styles.sortHintText}>
+              Tip: selecting the same sort again toggles ascending/descending.
+            </Text>
+          </View>
+        </>
+      )}
     </View>
   );
 };
@@ -265,35 +339,39 @@ const styles = StyleSheet.create({
   searchbar: {
     marginBottom: 4,
   },
-  section: {
-    marginTop: 4,
-  },
-  sectionLabel: {
-    marginBottom: 4,
-    opacity: 0.7,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    alignItems: 'center',
-  },
-  chip: {
-    marginRight: 4,
-    marginVertical: 2,
-  },
-  sortButtons: {
-    marginTop: 4,
-  },
-  clearRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
   tagBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  filtersHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  filtersLabel: {
+    opacity: 0.8,
+  },
+  filtersHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  menuButton: {
+    flex: 1,
+    marginRight: 8,
+  },
+  sortHintRow: {
+    marginTop: 2,
+  },
+  sortHintText: {
+    opacity: 0.6,
+    fontSize: 11,
   },
 });
 
