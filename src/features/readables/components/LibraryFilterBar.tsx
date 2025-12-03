@@ -1,14 +1,15 @@
 // src/features/readables/components/LibraryFilterBar.tsx
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import {
   Button,
-  Menu,
+  Dialog,
+  Portal,
+  RadioButton,
   Searchbar,
   Text,
   useTheme,
   IconButton,
-  SegmentedButtons,
 } from 'react-native-paper';
 
 import type { LibraryFilter, ReadableType } from '../types';
@@ -51,45 +52,49 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
 
   const [filtersCollapsed, setFiltersCollapsed] = useState(false);
 
-  const [statusMenuVisible, setStatusMenuVisible] = useState(false);
-  const [typeMenuVisible, setTypeMenuVisible] = useState(false);
-  const [priorityMenuVisible, setPriorityMenuVisible] = useState(false);
-  const [sortMenuVisible, setSortMenuVisible] = useState(false);
+  const [statusDialogVisible, setStatusDialogVisible] = useState(false);
+  const [typeDialogVisible, setTypeDialogVisible] = useState(false);
+  const [priorityDialogVisible, setPriorityDialogVisible] = useState(false);
+  const [sortDialogVisible, setSortDialogVisible] = useState(false);
 
   const handleStatusChange = (status: LibraryFilter) => {
     onQueryChange({
       ...query,
       status,
     });
-    setStatusMenuVisible(false);
+    setStatusDialogVisible(false);
   };
 
-  const handleTypeChange = (type: ReadableType | undefined) => {
+  const handleTypeChange = (typeValue: string) => {
+    const type = typeValue === 'all' ? undefined : (typeValue as ReadableType);
     onQueryChange({
       ...query,
       type,
     });
-    setTypeMenuVisible(false);
+    setTypeDialogVisible(false);
   };
 
-  const handlePriorityChange = (priority: number | undefined) => {
-    if (priority == null) {
+  const handlePriorityChange = (value: string) => {
+    if (value === 'any') {
       onQueryChange({
         ...query,
         minPriority: undefined,
         maxPriority: undefined,
       });
     } else {
-      onQueryChange({
-        ...query,
-        minPriority: priority,
-        maxPriority: priority,
-      });
+      const num = Number(value);
+      if (!Number.isNaN(num)) {
+        onQueryChange({
+          ...query,
+          minPriority: num,
+          maxPriority: num,
+        });
+      }
     }
-    setPriorityMenuVisible(false);
+    setPriorityDialogVisible(false);
   };
 
-  const handleSortChange = (field: LibrarySortField) => {
+  const handleSortFieldChange = (field: LibrarySortField) => {
     let direction = query.sort.direction;
 
     if (query.sort.field === field) {
@@ -114,7 +119,18 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
       ...query,
       sort: { field, direction },
     });
-    setSortMenuVisible(false);
+    setSortDialogVisible(false);
+  };
+
+  const toggleSortDirection = () => {
+    const nextDirection = query.sort.direction === 'asc' ? 'desc' : 'asc';
+    onQueryChange({
+      ...query,
+      sort: {
+        ...query.sort,
+        direction: nextDirection,
+      },
+    });
   };
 
   const handleClearAllFilters = () => {
@@ -143,11 +159,12 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
     }
     return `Priority ${query.minPriority}–${query.maxPriority}`;
   })();
-  const sortLabel = (() => {
-    const base = SORT_CONFIG.find((s) => s.value === query.sort.field)?.label ?? 'Sort';
-    const dirArrow = query.sort.direction === 'asc' ? '↑' : '↓';
-    return `${base} ${dirArrow}`;
-  })();
+  const sortFieldLabel = SORT_CONFIG.find((s) => s.value === query.sort.field)?.label ?? 'Sort';
+  const sortDirectionIcon = query.sort.direction === 'asc' ? 'arrow-up' : 'arrow-down';
+
+  const toggleFiltersCollapsed = () => {
+    setFiltersCollapsed((prev) => !prev);
+  };
 
   return (
     <View style={styles.container}>
@@ -180,133 +197,214 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
         style={styles.searchbar}
       />
 
-      <View style={styles.filtersHeaderRow}>
-        <Text variant="labelSmall" style={styles.filtersLabel}>
-          Filters
-        </Text>
-        <View style={styles.filtersHeaderRight}>
-          <Button mode="text" onPress={handleClearAllFilters} compact icon="filter-off-outline">
-            Clear
-          </Button>
+      {/* Header row: Filters chip + (when open) Clear filters */}
+      <View style={styles.headerRow}>
+        <Pressable
+          style={[
+            styles.filtersChip,
+            {
+              backgroundColor: theme.colors.secondaryContainer,
+            },
+          ]}
+          onPress={toggleFiltersCollapsed}
+        >
+          <IconButton
+            icon="filter-variant"
+            size={16}
+            iconColor={theme.colors.primary}
+            style={styles.filtersChipIcon}
+          />
+          <Text
+            variant="labelMedium"
+            style={[styles.filtersLabel, { color: theme.colors.primary }]}
+          >
+            Filters
+          </Text>
           <IconButton
             icon={filtersCollapsed ? 'chevron-down' : 'chevron-up'}
-            size={20}
-            onPress={() => setFiltersCollapsed((prev) => !prev)}
-            accessibilityLabel={filtersCollapsed ? 'Show filters' : 'Hide filters'}
+            size={16}
+            iconColor={theme.colors.primary}
+            style={styles.filtersChipIcon}
           />
-        </View>
+        </Pressable>
+
+        {!filtersCollapsed && (
+          <Button mode="text" onPress={handleClearAllFilters} compact icon="filter-off-outline">
+            Clear filters
+          </Button>
+        )}
       </View>
 
       {!filtersCollapsed && (
         <>
           <View style={styles.menuRow}>
-            {/* Status */}
-            <Menu
-              visible={statusMenuVisible}
-              onDismiss={() => setStatusMenuVisible(false)}
-              anchor={
-                <Button
-                  mode="outlined"
-                  onPress={() => setStatusMenuVisible(true)}
-                  style={styles.menuButton}
-                  icon="tune-vertical"
-                >
-                  Status: {statusLabel}
-                </Button>
-              }
-            >
-              {STATUS_FILTERS.map((status) => (
-                <Menu.Item
-                  key={status}
-                  onPress={() => handleStatusChange(status)}
-                  title={labelForStatus(status)}
-                />
-              ))}
-            </Menu>
-
-            {/* Type */}
-            <Menu
-              visible={typeMenuVisible}
-              onDismiss={() => setTypeMenuVisible(false)}
-              anchor={
-                <Button
-                  mode="outlined"
-                  onPress={() => setTypeMenuVisible(true)}
-                  style={styles.menuButton}
-                  icon="book-open-variant"
-                >
-                  Type: {typeLabel}
-                </Button>
-              }
-            >
-              {TYPE_FILTERS.map((option) => (
-                <Menu.Item
-                  key={option.label}
-                  onPress={() => handleTypeChange(option.value)}
-                  title={option.label}
-                />
-              ))}
-            </Menu>
+            <FilterButton
+              icon="tune-vertical"
+              label={`Status: ${statusLabel}`}
+              onPress={() => setStatusDialogVisible(true)}
+              themeOutlineColor={theme.colors.outline}
+              style={styles.menuButton}
+            />
+            <FilterButton
+              icon="book-open-variant"
+              label={`Type: ${typeLabel}`}
+              onPress={() => setTypeDialogVisible(true)}
+              themeOutlineColor={theme.colors.outline}
+              style={styles.menuButton}
+            />
           </View>
 
           <View style={styles.menuRow}>
-            {/* Priority */}
-            <Menu
-              visible={priorityMenuVisible}
-              onDismiss={() => setPriorityMenuVisible(false)}
-              anchor={
-                <Button
-                  mode="outlined"
-                  onPress={() => setPriorityMenuVisible(true)}
-                  style={styles.menuButton}
-                  icon="star-outline"
-                >
-                  {priorityLabel}
-                </Button>
-              }
-            >
-              <Menu.Item onPress={() => handlePriorityChange(undefined)} title="Any priority" />
-              {PRIORITY_VALUES.map((value) => (
-                <Menu.Item
-                  key={value}
-                  onPress={() => handlePriorityChange(value)}
-                  title={`Priority ${value}`}
-                />
-              ))}
-            </Menu>
+            <FilterButton
+              icon="star-outline"
+              label={priorityLabel}
+              onPress={() => setPriorityDialogVisible(true)}
+              themeOutlineColor={theme.colors.outline}
+              style={styles.menuButton}
+            />
 
-            {/* Sort */}
-            <Menu
-              visible={sortMenuVisible}
-              onDismiss={() => setSortMenuVisible(false)}
-              anchor={
-                <Button
-                  mode="outlined"
-                  onPress={() => setSortMenuVisible(true)}
-                  style={styles.menuButton}
-                  icon="sort"
-                >
-                  {sortLabel}
-                </Button>
-              }
-            >
-              {SORT_CONFIG.map((config) => (
-                <Menu.Item
-                  key={config.value}
-                  onPress={() => handleSortChange(config.value)}
-                  title={config.label}
-                />
-              ))}
-            </Menu>
+            <FilterButton
+              icon="sort"
+              label={sortFieldLabel}
+              onPress={() => setSortDialogVisible(true)}
+              rightIconName={sortDirectionIcon}
+              onRightIconPress={toggleSortDirection}
+              themeOutlineColor={theme.colors.outline}
+              style={styles.menuButton}
+            />
           </View>
 
-          {/* Optional: small hint row */}
           <View style={styles.sortHintRow}>
             <Text variant="labelSmall" style={styles.sortHintText}>
-              Tip: selecting the same sort again toggles ascending/descending.
+              Tap the label to change sort field, arrow to flip direction.
             </Text>
           </View>
         </>
+      )}
+
+      {/* Separator line between controls and list */}
+      <View
+        style={[
+          styles.separator,
+          { backgroundColor: theme.colors.outlineVariant ?? theme.colors.outline },
+        ]}
+      />
+
+      {/* Dialogs */}
+      <Portal>
+        {/* Status dialog */}
+        <Dialog visible={statusDialogVisible} onDismiss={() => setStatusDialogVisible(false)}>
+          <Dialog.Title>Status filter</Dialog.Title>
+          <Dialog.Content>
+            <RadioButton.Group
+              onValueChange={(value) => handleStatusChange(value as LibraryFilter)}
+              value={query.status}
+            >
+              {STATUS_FILTERS.map((status) => (
+                <RadioButton.Item key={status} label={labelForStatus(status)} value={status} />
+              ))}
+            </RadioButton.Group>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setStatusDialogVisible(false)}>Close</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* Type dialog */}
+        <Dialog visible={typeDialogVisible} onDismiss={() => setTypeDialogVisible(false)}>
+          <Dialog.Title>Type filter</Dialog.Title>
+          <Dialog.Content>
+            <RadioButton.Group onValueChange={handleTypeChange} value={query.type ?? 'all'}>
+              <RadioButton.Item label="All types" value="all" />
+              <RadioButton.Item label="Books" value="book" />
+              <RadioButton.Item label="Fanfic" value="fanfic" />
+            </RadioButton.Group>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setTypeDialogVisible(false)}>Close</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* Priority dialog */}
+        <Dialog visible={priorityDialogVisible} onDismiss={() => setPriorityDialogVisible(false)}>
+          <Dialog.Title>Priority filter</Dialog.Title>
+          <Dialog.Content>
+            <RadioButton.Group
+              onValueChange={handlePriorityChange}
+              value={
+                query.minPriority != null && query.maxPriority != null
+                  ? String(query.minPriority)
+                  : 'any'
+              }
+            >
+              <RadioButton.Item label="Any priority" value="any" />
+              {PRIORITY_VALUES.map((value) => (
+                <RadioButton.Item key={value} label={`Priority ${value}`} value={String(value)} />
+              ))}
+            </RadioButton.Group>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setPriorityDialogVisible(false)}>Close</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* Sort dialog */}
+        <Dialog visible={sortDialogVisible} onDismiss={() => setSortDialogVisible(false)}>
+          <Dialog.Title>Sort by</Dialog.Title>
+          <Dialog.Content>
+            <RadioButton.Group
+              onValueChange={(value) => handleSortFieldChange(value as LibrarySortField)}
+              value={query.sort.field}
+            >
+              {SORT_CONFIG.map((config) => (
+                <RadioButton.Item key={config.value} label={config.label} value={config.value} />
+              ))}
+            </RadioButton.Group>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setSortDialogVisible(false)}>Close</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+    </View>
+  );
+};
+
+/**
+ * Shared outlined filter button so all filters (status/type/priority/sort)
+ * look and size the same.
+ */
+interface FilterButtonProps {
+  icon: string;
+  label: string;
+  onPress: () => void;
+  rightIconName?: string;
+  onRightIconPress?: () => void;
+  themeOutlineColor: string;
+  style?: any;
+}
+
+const FilterButton: React.FC<FilterButtonProps> = ({
+  icon,
+  label,
+  onPress,
+  rightIconName,
+  onRightIconPress,
+  themeOutlineColor,
+  style,
+}) => {
+  return (
+    <View style={[styles.filterButtonContainer, style, { borderColor: themeOutlineColor }]}>
+      <Pressable style={styles.filterButtonMain} onPress={onPress}>
+        <IconButton icon={icon} size={16} style={styles.filterButtonIcon} />
+        <Text variant="labelMedium" style={styles.filterButtonText}>
+          {label}
+        </Text>
+      </Pressable>
+      {rightIconName && (
+        <Pressable style={styles.filterButtonRight} onPress={onRightIconPress ?? onPress}>
+          <IconButton icon={rightIconName} size={16} style={styles.filterButtonRightIcon} />
+        </Pressable>
       )}
     </View>
   );
@@ -344,18 +442,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  filtersHeaderRow: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginTop: 4,
+    justifyContent: 'space-between',
+  },
+  filtersChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    alignSelf: 'flex-start',
+  },
+  filtersChipIcon: {
+    margin: 0,
   },
   filtersLabel: {
-    opacity: 0.8,
-  },
-  filtersHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginHorizontal: 2,
   },
   menuRow: {
     flexDirection: 'row',
@@ -372,6 +477,39 @@ const styles = StyleSheet.create({
   sortHintText: {
     opacity: 0.6,
     fontSize: 11,
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 8,
+  },
+
+  // FilterButton styles
+  filterButtonContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  filterButtonMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    flex: 1,
+  },
+  filterButtonIcon: {
+    margin: 0,
+    marginRight: 4,
+  },
+  filterButtonText: {
+    fontSize: 13,
+  },
+  filterButtonRight: {
+    paddingRight: 2,
+  },
+  filterButtonRightIcon: {
+    margin: 0,
   },
 });
 
