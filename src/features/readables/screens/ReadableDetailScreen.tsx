@@ -179,6 +179,21 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
+  const handleTagPress = (rawTag: string) => {
+    const tag = rawTag.trim();
+    if (!tag) return;
+
+    navigation.navigate('RootTabs', {
+      screen: 'Library',
+      params: {
+        initialQuery: {
+          searchQuery: tag,
+          tagLabel: tag,
+        },
+      },
+    });
+  };
+
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -212,11 +227,14 @@ const ReadableDetailScreen: React.FC = () => {
           <View style={styles.moods}>
             <Text style={styles.sectionTitle}>Mood tags</Text>
             <View style={styles.moodChips}>
-              {item.moodTags.map((tag) => (
-                <Chip key={tag} style={styles.moodChip}>
-                  {tag.replace('-', ' ')}
-                </Chip>
-              ))}
+              {item.moodTags.map((tag) => {
+                const label = typeof tag === 'string' ? tag.replace('-', ' ') : String(tag);
+                return (
+                  <Chip key={label} style={styles.moodChip} onPress={() => handleTagPress(label)}>
+                    {label}
+                  </Chip>
+                );
+              })}
             </View>
           </View>
         ) : null}
@@ -227,6 +245,7 @@ const ReadableDetailScreen: React.FC = () => {
             tagsExpanded={tagsExpanded}
             onToggleTags={() => setTagsExpanded((prev) => !prev)}
             onOpenAo3={handleOpenAo3}
+            onTagPress={handleTagPress}
           />
         )}
 
