@@ -1,3 +1,4 @@
+// src/features/readables/services/ao3MetadataService.ts
 import cheerio from 'react-native-cheerio';
 import type { Ao3Rating } from '../types';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
@@ -12,21 +13,18 @@ export interface Ao3WorkMetadata {
   tags: string[]; // additional / freeform tags
   warnings: string[];
   wordCount: number | null;
-
   /**
-   * Legacy total-chapter count (Y in X/Y).
-   * Prefer availableChapters / totalChapters.
+   * Number of chapters currently published/available on AO3.
+   * For completed works this is also the total number of chapters.
    */
   chapterCount: number | null;
-
-  /** Chapters currently posted (X in X/Y). */
-  availableChapters: number | null;
-
-  /** Total planned chapters (Y in X/Y) or null when AO3 shows '?'. */
-  totalChapters: number | null;
-
+  /**
+   * Whether the work is complete. This is inferred from the chapter string
+   * when possible (e.g. "10/10" → complete), otherwise left as null.
+   */
   complete: boolean | null;
-  summary: string | null; // AO3 "Summary" block
+  // AO3 "Summary" block
+  summary: string | null;
 }
 
 export function extractAo3WorkId(url: string): string | null {
@@ -58,36 +56,54 @@ function parseIntOrNull(value: string | null): number | null {
   return Number.isNaN(num) ? null : num;
 }
 
+/**
+ * Parse AO3's "Chapters" field.
+ *
+ * Examples of input:
+ * - "3/10" → current = 3, total = 10, complete = false
+ * - "10/10" → current = 10, total = 10, complete = true
+ * - "46/?" → current = 46, total unknown, complete = null
+ * - "21"   → current = 21, total unknown, complete = null
+ *
+ * We treat `chapterCount` as "chapters currently available".
+ * For completed works this is also the total.
+ */
 function parseChapters(chaptersText: string | null): {
   chapterCount: number | null;
-  availableChapters: number | null;
-  totalChapters: number | null;
   complete: boolean | null;
 } {
-  if (!chaptersText) {
-    return {
-      chapterCount: null,
-      availableChapters: null,
-      totalChapters: null,
-      complete: null,
-    };
+  if (!chaptersText) return { chapterCount: null, complete: null };
+
+  const raw = chaptersText.trim();
+
+  // Common case: "current/total"
+  const parts = raw.split('/').map((s) => s.trim());
+
+  if (parts.length === 2) {
+    const [currentRaw, totalRaw] = parts;
+    const current = parseIntOrNull(currentRaw);
+    const total = totalRaw === '?' ? null : parseIntOrNull(totalRaw);
+
+    // If we at least know how many chapters are currently published, keep that.
+    if (current != null) {
+      const isComplete = total != null ? current === total : null;
+      return { chapterCount: current, complete: isComplete };
+    }
+
+    // Fallback: couldn't parse current, but maybe we know a total.
+    if (total != null) {
+      return { chapterCount: total, complete: null };
+    }
+
+    return { chapterCount: null, complete: null };
   }
 
-  // Examples: "3/10", "10/10", "3/?"
-  const [currentRaw, totalRaw] = chaptersText.split('/').map((s) => s.trim());
-
-  const current = Number.parseInt(currentRaw, 10);
-  const total =
-    totalRaw === '?' || !totalRaw ? null : Number.parseInt(totalRaw.replace(/,/g, ''), 10);
-
-  const availableChapters = Number.isNaN(current) ? null : current;
-  const totalChapters = Number.isNaN(total as number) ? null : total;
-
-  const chapterCount = totalChapters ?? null;
-  const complete =
-    availableChapters != null && totalChapters != null ? availableChapters === totalChapters : null;
-
-  return { chapterCount, availableChapters, totalChapters, complete };
+  // Weird/legacy case: just a single number like "21"
+  const single = parseIntOrNull(raw);
+  return {
+    chapterCount: single,
+    complete: null,
+  };
 }
 
 function detectLockedWork($: any): boolean {
@@ -157,8 +173,15 @@ export async function fetchAo3Metadata(rawUrl: string): Promise<Ao3WorkMetadata>
   const wordCount = parseIntOrNull(wordsText);
 
   const chaptersText = $('dd.chapters').first().text().trim() || null;
-  const { chapterCount, availableChapters, totalChapters, complete } = parseChapters(chaptersText);
+  const { chapterCount, complete } = parseChapters(chaptersText);
 
+  // AO3 "Summary" block:
+  // <div class="summary module">
+  //   <h3>Summary:</h3>
+  //   <blockquote class="userstuff">
+  //     <p>...</p>
+  //   </blockquote>
+  // </div>
   const summaryText = $('div.summary.module blockquote.userstuff').first().text().trim() || null;
 
   return {
@@ -172,8 +195,6 @@ export async function fetchAo3Metadata(rawUrl: string): Promise<Ao3WorkMetadata>
     warnings,
     wordCount,
     chapterCount,
-    availableChapters,
-    totalChapters,
     complete,
     summary: summaryText,
   };

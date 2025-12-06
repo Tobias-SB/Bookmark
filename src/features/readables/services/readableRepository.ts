@@ -1,3 +1,4 @@
+// src/features/readables/services/readableRepository.ts
 import { getAllAsync, getFirstAsync, runAsync } from '@src/db/sqlite';
 import type {
   ReadableItem,
@@ -72,6 +73,58 @@ function computeCreatedAt({
 }
 
 /**
+ * Normalise chapter fields from a DB row into AO3-style semantics.
+ * This mirrors the logic in readableRowMapper so everything stays consistent.
+ */
+function normaliseFanficChapterDataFromRow(row: ReadableRow): {
+  chapterCount: number | null;
+  availableChapters: number | null;
+  totalChapters: number | null;
+  complete: boolean | null;
+  currentChapter: number | null;
+} {
+  const isComplete = row.is_complete == null ? null : row.is_complete === 1;
+
+  let legacyCount: number | null = row.chapter_count;
+  let available: number | null = row.available_chapters;
+  let total: number | null = row.total_chapters;
+
+  // Case 1: no explicit available/total, but we have a legacy count
+  if (available == null && total == null && legacyCount != null) {
+    if (isComplete) {
+      available = legacyCount;
+      total = legacyCount;
+    } else {
+      available = legacyCount;
+      total = null;
+    }
+  }
+  // Case 2: total set, available missing
+  else if (available == null && total != null) {
+    if (isComplete) {
+      // Completed work, total is definitive → X/X
+      available = total;
+    } else if (legacyCount != null && total === legacyCount) {
+      // New AO3 behaviour: parser gave us "current" only, and older writer
+      // stored it into both chapter_count and total_chapters. Interpret as X/?.
+      available = legacyCount;
+      total = null;
+    }
+    // Else: ambiguous older data: we only know total → ?/total
+  }
+
+  const currentChapter = row.current_chapter ?? null;
+
+  return {
+    chapterCount: legacyCount,
+    availableChapters: available,
+    totalChapters: total,
+    complete: isComplete,
+    currentChapter,
+  };
+}
+
+/**
  * Map a DB row into a domain ReadableItem.
  */
 function mapRowToReadable(row: ReadableRow): ReadableItem {
@@ -129,6 +182,9 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
   // DB stores rating as string | null, we trust it's one of the Ao3Rating values.
   const rating = (row.rating as Ao3Rating | null) ?? null;
 
+  const { chapterCount, availableChapters, totalChapters, complete, currentChapter } =
+    normaliseFanficChapterDataFromRow(row);
+
   const fanfic: FanficReadable = {
     ...base,
     type: 'fanfic',
@@ -141,11 +197,11 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
     ao3Tags,
     rating,
     warnings,
-    chapterCount: row.chapter_count ?? row.total_chapters ?? null,
-    currentChapter: row.current_chapter ?? null,
-    availableChapters: row.available_chapters ?? null,
-    totalChapters: row.total_chapters ?? row.chapter_count ?? null,
-    complete: row.is_complete == null ? null : row.is_complete === 1,
+    chapterCount,
+    currentChapter,
+    availableChapters,
+    totalChapters,
+    complete,
     wordCount: row.word_count ?? null,
   };
 
@@ -159,8 +215,41 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
   const isBook = readable.type === 'book';
   const isFanfic = readable.type === 'fanfic';
 
-  const book = readable.type === 'book' ? (readable as BookReadable) : null;
-  const fanfic = readable.type === 'fanfic' ? (readable as FanficReadable) : null;
+  const book = isBook ? (readable as BookReadable) : null;
+  const fanfic = isFanfic ? (readable as FanficReadable) : null;
+
+  let chapter_count: number | null = null;
+  let current_chapter: number | null = null;
+  let available_chapters: number | null = null;
+  let total_chapters: number | null = null;
+  let is_complete: number | null = null;
+
+  if (fanfic) {
+    const legacyCount: number | null = fanfic.chapterCount ?? null;
+    let available: number | null = fanfic.availableChapters ?? null;
+    let total: number | null = fanfic.totalChapters ?? null;
+    const complete = fanfic.complete ?? null;
+
+    // If we only have a single legacy number, interpret it based on completeness.
+    if (available == null && total == null && legacyCount != null) {
+      if (complete) {
+        available = legacyCount;
+        total = legacyCount;
+      } else {
+        available = legacyCount;
+        total = null;
+      }
+    } else if (available != null && total == null && complete) {
+      // Complete but only "available" specified → treat as X/X
+      total = available;
+    }
+
+    chapter_count = total ?? legacyCount ?? available ?? null;
+    current_chapter = fanfic.currentChapter ?? null;
+    available_chapters = available;
+    total_chapters = total;
+    is_complete = complete == null ? null : complete ? 1 : 0;
+  }
 
   return {
     id: readable.id,
@@ -182,11 +271,11 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
     ao3_tags_json: isFanfic ? JSON.stringify(fanfic!.ao3Tags) : null,
     rating: isFanfic ? (fanfic!.rating ?? null) : null,
     warnings_json: isFanfic ? JSON.stringify(fanfic!.warnings) : null,
-    chapter_count: isFanfic ? (fanfic!.totalChapters ?? fanfic!.chapterCount ?? null) : null,
-    current_chapter: isFanfic ? (fanfic!.currentChapter ?? null) : null,
-    available_chapters: isFanfic ? (fanfic!.availableChapters ?? null) : null,
-    total_chapters: isFanfic ? (fanfic!.totalChapters ?? fanfic!.chapterCount ?? null) : null,
-    is_complete: isFanfic ? (fanfic!.complete == null ? null : fanfic!.complete ? 1 : 0) : null,
+    chapter_count,
+    current_chapter,
+    available_chapters,
+    total_chapters,
+    is_complete,
     word_count: isFanfic ? (fanfic!.wordCount ?? null) : null,
     genres_json: isBook ? JSON.stringify(book!.genres) : null,
     mood_tags_json: JSON.stringify(readable.moodTags ?? []),
@@ -406,6 +495,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
 
   const now = new Date().toISOString();
 
+  // Caller sends a full object with updated fields.
   const merged: ReadableItem = {
     ...existing,
     ...readable,
@@ -597,15 +687,6 @@ async function updateProgress(id: string, progressPercent: number): Promise<void
   );
 }
 
-/**
- * NEW: Update progress based on units (pages/chapters) and recompute percent.
- *
- * - For books: currentPage / pageCount
- * - For fanfic: currentChapter / (totalChapters || availableChapters)
- *
- * If we don't know a denominator, we still store the current unit but
- * leave progress_percent unchanged.
- */
 async function updateProgressByUnits(args: {
   id: string;
   type: ReadableType;
@@ -619,6 +700,7 @@ async function updateProgressByUnits(args: {
 
   const value = Number.isFinite(args.currentUnit) ? Math.max(0, Math.round(args.currentUnit)) : 0;
 
+  // ---- Books: page-based progress ----
   if (args.type === 'book') {
     const book = existing as BookReadable;
     const totalPages = book.pageCount ?? null;
@@ -641,16 +723,17 @@ async function updateProgressByUnits(args: {
     return;
   }
 
+  // ---- Fanfic: chapter-based progress ----
   const fanfic = existing as FanficReadable;
-  const totalChapters = fanfic.totalChapters ?? fanfic.chapterCount ?? null;
-  const availableChapters = fanfic.availableChapters ?? null;
 
   const denominator =
-    totalChapters && totalChapters > 0
-      ? totalChapters
-      : availableChapters && availableChapters > 0
-        ? availableChapters
-        : null;
+    fanfic.totalChapters != null && fanfic.totalChapters > 0
+      ? fanfic.totalChapters
+      : fanfic.availableChapters != null && fanfic.availableChapters > 0
+        ? fanfic.availableChapters
+        : fanfic.chapterCount != null && fanfic.chapterCount > 0
+          ? fanfic.chapterCount
+          : null;
 
   const maxAllowed = denominator ?? value;
   const clampedChapter = Math.min(value, maxAllowed);

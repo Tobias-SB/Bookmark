@@ -35,12 +35,29 @@ const ReadableCard: React.FC<ReadableCardProps> = ({ item, onPress }) => {
     metaLine = `${progressPercent}%`;
   } else {
     const currentChapter = item.currentChapter ?? null;
-    const available = item.availableChapters ?? null;
-    const total = item.totalChapters ?? item.chapterCount ?? null;
 
-    const left = available != null ? String(available) : '?';
-    const right = total != null ? String(total) : '?';
-    const chaptersDisplay = available != null || total != null ? `${left}/${right}` : null;
+    // Normalised chapter data:
+    // - availableChapters: how many are currently published
+    // - totalChapters: planned total (may be unknown)
+    let availableChapters = item.availableChapters ?? null;
+    let totalChapters = item.totalChapters ?? null;
+
+    // If neither available nor total are set but we have a legacy chapterCount,
+    // interpret chapterCount as "available so far" and total as unknown.
+    if (availableChapters == null && totalChapters == null && item.chapterCount != null) {
+      availableChapters = item.chapterCount;
+    }
+
+    // If the work is complete and we know how many are available but not total,
+    // assume total = available (e.g. 21 → 21/21).
+    if (item.complete && availableChapters != null && totalChapters == null) {
+      totalChapters = availableChapters;
+    }
+
+    const left = availableChapters != null ? String(availableChapters) : '?';
+    const right = totalChapters != null ? String(totalChapters) : '?';
+    const chaptersDisplay =
+      availableChapters != null || totalChapters != null ? `${left}/${right}` : null;
 
     if (currentChapter != null && chaptersDisplay) {
       unitLine = `Ch ${currentChapter} • ${chaptersDisplay}`;

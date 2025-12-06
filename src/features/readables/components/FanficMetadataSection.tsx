@@ -2,15 +2,31 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Chip, Text } from 'react-native-paper';
-
-import type { FanficReadable } from '@src/features/readables/types';
+import type { FanficReadable, Ao3Rating } from '@src/features/readables/types';
 
 interface FanficMetadataSectionProps {
   fanfic: FanficReadable;
   tagsExpanded: boolean;
   onToggleTags: () => void;
   onOpenAo3: () => void;
-  onTagPress?: (tag: string) => void;
+  onTagPress: (tag: string) => void;
+}
+
+function mapAo3RatingToLabel(rating: Ao3Rating): string {
+  switch (rating) {
+    case 'G':
+      return 'General Audiences';
+    case 'T':
+      return 'Teen and Up';
+    case 'M':
+      return 'Mature';
+    case 'E':
+      return 'Explicit';
+    case 'NR':
+      return 'Not Rated';
+    default:
+      return rating;
+  }
 }
 
 const FanficMetadataSection: React.FC<FanficMetadataSectionProps> = ({
@@ -20,116 +36,162 @@ const FanficMetadataSection: React.FC<FanficMetadataSectionProps> = ({
   onOpenAo3,
   onTagPress,
 }) => {
-  const { rating, wordCount, chapterCount, complete, warnings } = fanfic;
+  const { fandoms, relationships, characters, ao3Tags, warnings, rating, complete, wordCount } =
+    fanfic;
 
   const hasAnyTags =
-    fanfic.fandoms.length > 0 ||
-    fanfic.relationships.length > 0 ||
-    fanfic.characters.length > 0 ||
-    fanfic.ao3Tags.length > 0 ||
-    warnings.length > 0;
+    (fandoms && fandoms.length > 0) ||
+    (relationships && relationships.length > 0) ||
+    (characters && characters.length > 0) ||
+    (warnings && warnings.length > 0) ||
+    (ao3Tags && ao3Tags.length > 0);
 
-  const handleTagPress = (tag: string) => {
-    onTagPress?.(tag);
+  const effectiveCompletionLabel = complete === true ? 'Complete' : 'Work in Progress';
+
+  const handleRatingChipPress = () => {
+    if (!rating) return;
+    const label = mapAo3RatingToLabel(rating);
+    onTagPress(label);
+  };
+
+  const handleCompletionChipPress = () => {
+    onTagPress(effectiveCompletionLabel);
   };
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Fanfic metadata</Text>
+      {/* AO3 button above section title */}
+      <View style={styles.ao3ButtonContainer}>
+        <Button mode="contained" onPress={onOpenAo3} contentStyle={styles.ao3ButtonContent}>
+          View on AO3
+        </Button>
+      </View>
 
-      <View style={styles.row}>
-        {rating && <Chip style={styles.chip}>Rating: {rating}</Chip>}
-        {typeof wordCount === 'number' && (
+      {/* Header */}
+      <View style={styles.headerRow}>
+        <Text style={styles.sectionTitle}>Fanfic details</Text>
+      </View>
+
+      {/* Core metadata chips: rating + completion + word count (always visible) */}
+      <View style={styles.chipRow}>
+        {rating ? (
+          <Chip
+            style={styles.chip}
+            onPress={handleRatingChipPress}
+            accessibilityRole="button"
+            accessibilityLabel={`Filter by rating ${mapAo3RatingToLabel(rating)}`}
+          >
+            Rating: {mapAo3RatingToLabel(rating)}
+          </Chip>
+        ) : null}
+
+        <Chip
+          style={styles.chip}
+          onPress={handleCompletionChipPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Filter by ${effectiveCompletionLabel}`}
+        >
+          {effectiveCompletionLabel}
+        </Chip>
+
+        {typeof wordCount === 'number' && wordCount > 0 ? (
           <Chip style={styles.chip}>{wordCount.toLocaleString()} words</Chip>
-        )}
-        {typeof chapterCount === 'number' && (
-          <Chip style={styles.chip}>
-            {chapterCount} chapter{chapterCount === 1 ? '' : 's'}
-          </Chip>
-        )}
-        {complete != null && (
-          <Chip style={styles.chip}>{complete ? 'Complete' : 'Work in progress'}</Chip>
-        )}
+        ) : null}
       </View>
 
-      {warnings.length > 0 && (
-        <View style={styles.tagGroup}>
-          <Text style={styles.tagGroupTitle}>Warnings</Text>
-          <View style={styles.tagRow}>
-            {warnings.map((tag) => (
-              <Chip
-                key={`warning-${tag}`}
-                style={styles.tagChip}
-                onPress={() => handleTagPress(tag)}
-              >
-                {tag}
-              </Chip>
-            ))}
+      {/* Collapsible tag block: fandoms, relationships, characters, warnings, AO3 tags */}
+      {hasAnyTags ? (
+        <View style={styles.tagsSection}>
+          <View style={styles.tagsHeaderRow}>
+            <Text style={styles.groupLabel}>Tags</Text>
+            <Button compact mode="text" onPress={onToggleTags}>
+              {tagsExpanded ? 'Hide tags' : 'Show tags'}
+            </Button>
           </View>
+
+          {tagsExpanded ? (
+            <View>
+              {/* Fandoms */}
+              {fandoms && fandoms.length > 0 ? (
+                <View style={styles.group}>
+                  <Text style={styles.groupLabelSmall}>Fandoms</Text>
+                  <View style={styles.chipRowWrap}>
+                    {fandoms.map((fandom) => (
+                      <Chip
+                        key={fandom}
+                        style={styles.smallChip}
+                        onPress={() => onTagPress(fandom)}
+                      >
+                        {fandom}
+                      </Chip>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Relationships */}
+              {relationships && relationships.length > 0 ? (
+                <View style={styles.group}>
+                  <Text style={styles.groupLabelSmall}>Relationships</Text>
+                  <View style={styles.chipRowWrap}>
+                    {relationships.map((rel) => (
+                      <Chip key={rel} style={styles.smallChip} onPress={() => onTagPress(rel)}>
+                        {rel}
+                      </Chip>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Characters */}
+              {characters && characters.length > 0 ? (
+                <View style={styles.group}>
+                  <Text style={styles.groupLabelSmall}>Characters</Text>
+                  <View style={styles.chipRowWrap}>
+                    {characters.map((ch) => (
+                      <Chip key={ch} style={styles.smallChip} onPress={() => onTagPress(ch)}>
+                        {ch}
+                      </Chip>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Warnings */}
+              {warnings && warnings.length > 0 ? (
+                <View style={styles.group}>
+                  <Text style={styles.groupLabelSmall}>Warnings</Text>
+                  <View style={styles.chipRowWrap}>
+                    {warnings.map((w) => (
+                      <Chip
+                        key={w}
+                        style={[styles.smallChip, styles.warningChip]}
+                        onPress={() => onTagPress(w)}
+                      >
+                        {w}
+                      </Chip>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* AO3 freeform tags */}
+              {ao3Tags && ao3Tags.length > 0 ? (
+                <View style={styles.group}>
+                  <Text style={styles.groupLabelSmall}>Additional tags</Text>
+                  <View style={styles.chipRowWrap}>
+                    {ao3Tags.map((tag) => (
+                      <Chip key={tag} style={styles.smallChip} onPress={() => onTagPress(tag)}>
+                        {tag}
+                      </Chip>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
-      )}
-
-      {hasAnyTags && (
-        <View style={styles.tagsHeaderRow}>
-          <Text style={styles.tagsHeaderText}>
-            {tagsExpanded ? 'Hide tags' : 'Show tags (fandoms, characters, etc.)'}
-          </Text>
-          <Button mode="text" onPress={onToggleTags}>
-            {tagsExpanded ? 'Hide' : 'Show'}
-          </Button>
-        </View>
-      )}
-
-      {tagsExpanded && (
-        <>
-          {fanfic.fandoms.length > 0 && (
-            <TagGroup label="Fandoms" tags={fanfic.fandoms} onTagPress={handleTagPress} />
-          )}
-
-          {fanfic.relationships.length > 0 && (
-            <TagGroup
-              label="Relationships"
-              tags={fanfic.relationships}
-              onTagPress={handleTagPress}
-            />
-          )}
-
-          {fanfic.characters.length > 0 && (
-            <TagGroup label="Characters" tags={fanfic.characters} onTagPress={handleTagPress} />
-          )}
-
-          {fanfic.ao3Tags.length > 0 && (
-            <TagGroup label="Tags" tags={fanfic.ao3Tags} onTagPress={handleTagPress} />
-          )}
-        </>
-      )}
-
-      <Button mode="outlined" onPress={onOpenAo3} style={styles.ao3Button}>
-        View on AO3
-      </Button>
-    </View>
-  );
-};
-
-interface TagGroupProps {
-  label: string;
-  tags: string[];
-  onTagPress?: (tag: string) => void;
-}
-
-const TagGroup: React.FC<TagGroupProps> = ({ label, tags, onTagPress }) => {
-  if (tags.length === 0) return null;
-
-  return (
-    <View style={styles.tagGroup}>
-      <Text style={styles.tagGroupTitle}>{label}</Text>
-      <View style={styles.tagRow}>
-        {tags.map((tag) => (
-          <Chip key={`${label}-${tag}`} style={styles.tagChip} onPress={() => onTagPress?.(tag)}>
-            {tag}
-          </Chip>
-        ))}
-      </View>
+      ) : null}
     </View>
   );
 };
@@ -138,48 +200,61 @@ const styles = StyleSheet.create({
   section: {
     marginTop: 16,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   sectionTitle: {
-    marginBottom: 4,
     fontWeight: '500',
   },
-  row: {
+  ao3ButtonContainer: {
+    alignSelf: 'stretch',
+    paddingVertical: 4,
+    marginBottom: 4,
+  },
+  ao3ButtonContent: {
+    paddingVertical: 4,
+  },
+  chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginBottom: 8,
   },
   chip: {
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  smallChip: {
     marginRight: 6,
     marginBottom: 6,
+  },
+  tagsSection: {
+    marginTop: 4,
+  },
+  group: {
+    marginTop: 4,
+  },
+  groupLabel: {
+    fontWeight: '500',
+  },
+  groupLabelSmall: {
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  chipRowWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  warningChip: {
+    opacity: 0.9,
   },
   tagsHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
-  },
-  tagsHeaderText: {
-    fontSize: 13,
-    opacity: 0.8,
-  },
-  tagGroup: {
-    marginTop: 8,
-  },
-  tagGroupTitle: {
     marginBottom: 4,
-    fontWeight: '500',
-    fontSize: 13,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  tagChip: {
-    marginRight: 4,
-    marginBottom: 4,
-  },
-  ao3Button: {
-    marginTop: 12,
-    alignSelf: 'flex-start',
   },
 });
 

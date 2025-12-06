@@ -81,7 +81,7 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
-  // NEW: unit-based save (page/chapter) instead of raw percent
+  // Unit-based save (page/chapter) instead of raw percent
   const handleSaveUnit = async (unit: number) => {
     try {
       await readableRepository.updateProgressByUnits({
@@ -111,7 +111,6 @@ const ReadableDetailScreen: React.FC = () => {
 
   const handleMarkDnf = async () => {
     try {
-      // We now rely on the last saved progress; user can update via the progress section first.
       await readableRepository.updateStatus(item.id, 'DNF');
       await invalidateReadablesAndStats();
       navigation.goBack();
@@ -213,13 +212,38 @@ const ReadableDetailScreen: React.FC = () => {
 
   // Fanfic metadata (AO3-style)
   const currentChapter = fanfic?.currentChapter ?? null;
-  const availableChapters = fanfic?.availableChapters ?? null;
-  const totalChapters = fanfic?.totalChapters ?? fanfic?.chapterCount ?? null;
+  let availableChapters = fanfic?.availableChapters ?? null;
+  let totalChapters = fanfic?.totalChapters ?? null;
+
+  // If neither available nor total are set but we have a legacy chapterCount,
+  // interpret chapterCount as "available so far" and total as unknown.
+  if (availableChapters == null && totalChapters == null && fanfic?.chapterCount != null) {
+    availableChapters = fanfic.chapterCount;
+  }
+
+  // If the work is complete and we know how many are available but not total,
+  // assume total = available (e.g. 21 → 21/21).
+  if (fanfic?.complete && availableChapters != null && totalChapters == null) {
+    totalChapters = availableChapters;
+  }
 
   const chaptersLeft = availableChapters != null ? String(availableChapters) : '?';
   const chaptersRight = totalChapters != null ? String(totalChapters) : '?';
   const chaptersDisplay =
     availableChapters != null || totalChapters != null ? `${chaptersLeft}/${chaptersRight}` : null;
+
+  // Status label next to chapters (Complete / Work in Progress)
+  let chapterStatusLabel: string | null = null;
+  if (fanfic) {
+    if (fanfic.complete === true) {
+      chapterStatusLabel = 'Complete';
+    } else {
+      // Treat unknown/null as "Work in Progress" if we have any chapter info
+      if (chaptersDisplay) {
+        chapterStatusLabel = 'Work in Progress';
+      }
+    }
+  }
 
   // Progress section wiring (unit-based)
   const unitLabel = isBook ? 'page' : 'chapter';
@@ -240,7 +264,7 @@ const ReadableDetailScreen: React.FC = () => {
           <Chip style={styles.chip}>Status: {READABLE_STATUS_LABELS[item.status]}</Chip>
         </View>
 
-        {/* NEW: pages/chapters metadata block */}
+        {/* Pages/chapters metadata block */}
         {isBook && (
           <View style={styles.metaBlock}>
             {totalPages != null && (
@@ -255,7 +279,12 @@ const ReadableDetailScreen: React.FC = () => {
 
         {isFanfic && (
           <View style={styles.metaBlock}>
-            {chaptersDisplay && <Text>Chapters: {chaptersDisplay}</Text>}
+            {chaptersDisplay && (
+              <Text>
+                Chapters: {chaptersDisplay}
+                {chapterStatusLabel ? ` • ${chapterStatusLabel}` : ''}
+              </Text>
+            )}
             {currentChapter != null && <Text>Current chapter: {currentChapter}</Text>}
           </View>
         )}
