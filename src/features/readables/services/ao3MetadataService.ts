@@ -1,4 +1,3 @@
-// src/features/readables/services/ao3MetadataService.ts
 import cheerio from 'react-native-cheerio';
 import type { Ao3Rating } from '../types';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
@@ -13,9 +12,21 @@ export interface Ao3WorkMetadata {
   tags: string[]; // additional / freeform tags
   warnings: string[];
   wordCount: number | null;
+
+  /**
+   * Legacy total-chapter count (Y in X/Y).
+   * Prefer availableChapters / totalChapters.
+   */
   chapterCount: number | null;
+
+  /** Chapters currently posted (X in X/Y). */
+  availableChapters: number | null;
+
+  /** Total planned chapters (Y in X/Y) or null when AO3 shows '?'. */
+  totalChapters: number | null;
+
   complete: boolean | null;
-  summary: string | null; // NEW: AO3 "Summary" block
+  summary: string | null; // AO3 "Summary" block
 }
 
 export function extractAo3WorkId(url: string): string | null {
@@ -49,25 +60,34 @@ function parseIntOrNull(value: string | null): number | null {
 
 function parseChapters(chaptersText: string | null): {
   chapterCount: number | null;
+  availableChapters: number | null;
+  totalChapters: number | null;
   complete: boolean | null;
 } {
-  if (!chaptersText) return { chapterCount: null, complete: null };
+  if (!chaptersText) {
+    return {
+      chapterCount: null,
+      availableChapters: null,
+      totalChapters: null,
+      complete: null,
+    };
+  }
 
   // Examples: "3/10", "10/10", "3/?"
   const [currentRaw, totalRaw] = chaptersText.split('/').map((s) => s.trim());
-  const total = totalRaw === '?' || !totalRaw ? null : Number.parseInt(totalRaw, 10);
-
-  if (!total || Number.isNaN(total)) {
-    return { chapterCount: null, complete: null };
-  }
 
   const current = Number.parseInt(currentRaw, 10);
-  if (Number.isNaN(current)) {
-    return { chapterCount: total, complete: null };
-  }
+  const total =
+    totalRaw === '?' || !totalRaw ? null : Number.parseInt(totalRaw.replace(/,/g, ''), 10);
 
-  const complete = current === total;
-  return { chapterCount: total, complete };
+  const availableChapters = Number.isNaN(current) ? null : current;
+  const totalChapters = Number.isNaN(total as number) ? null : total;
+
+  const chapterCount = totalChapters ?? null;
+  const complete =
+    availableChapters != null && totalChapters != null ? availableChapters === totalChapters : null;
+
+  return { chapterCount, availableChapters, totalChapters, complete };
 }
 
 function detectLockedWork($: any): boolean {
@@ -137,15 +157,8 @@ export async function fetchAo3Metadata(rawUrl: string): Promise<Ao3WorkMetadata>
   const wordCount = parseIntOrNull(wordsText);
 
   const chaptersText = $('dd.chapters').first().text().trim() || null;
-  const { chapterCount, complete } = parseChapters(chaptersText);
+  const { chapterCount, availableChapters, totalChapters, complete } = parseChapters(chaptersText);
 
-  // AO3 "Summary" block:
-  // <div class="summary module">
-  //   <h3>Summary:</h3>
-  //   <blockquote class="userstuff">
-  //     <p>...</p>
-  //   </blockquote>
-  // </div>
   const summaryText = $('div.summary.module blockquote.userstuff').first().text().trim() || null;
 
   return {
@@ -159,6 +172,8 @@ export async function fetchAo3Metadata(rawUrl: string): Promise<Ao3WorkMetadata>
     warnings,
     wordCount,
     chapterCount,
+    availableChapters,
+    totalChapters,
     complete,
     summary: summaryText,
   };

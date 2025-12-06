@@ -1,7 +1,13 @@
 // src/features/readables/types/libraryQuery.ts
 import type { LibraryFilter, ReadableType } from '../types';
 
-export type LibrarySortField = 'createdAt' | 'updatedAt' | 'title' | 'author' | 'priority';
+export type LibrarySortField =
+  | 'createdAt'
+  | 'updatedAt'
+  | 'title'
+  | 'author'
+  | 'priority'
+  | 'progressPercent';
 
 export type SortDirection = 'asc' | 'desc';
 

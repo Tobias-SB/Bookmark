@@ -1,4 +1,3 @@
-// src/db/migrations.ts
 import { execAsync, getAllAsync, runAsync } from './sqlite';
 
 interface Migration {
@@ -125,6 +124,35 @@ const MIGRATIONS: Migration[] = [
     upSql: `
       ALTER TABLE readables
       ADD COLUMN notes TEXT;
+    `,
+  },
+  {
+    id: '007_readables_progress_units',
+    upSql: `
+      -- Book & fanfic unit-based progress fields
+      ALTER TABLE readables
+      ADD COLUMN current_page INTEGER;
+
+      ALTER TABLE readables
+      ADD COLUMN current_chapter INTEGER;
+
+      ALTER TABLE readables
+      ADD COLUMN available_chapters INTEGER;
+
+      ALTER TABLE readables
+      ADD COLUMN total_chapters INTEGER;
+
+      -- Backfill: for existing fanfics, treat chapter_count as total_chapters.
+      UPDATE readables
+      SET total_chapters = chapter_count
+      WHERE total_chapters IS NULL AND chapter_count IS NOT NULL;
+
+      -- For completed fanfics, assume available = total.
+      UPDATE readables
+      SET available_chapters = total_chapters
+      WHERE available_chapters IS NULL
+        AND total_chapters IS NOT NULL
+        AND is_complete = 1;
     `,
   },
 ];

@@ -1,4 +1,3 @@
-// src/db/schema/readables.schema.ts
 export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'DNF';
 export type ReadableType = 'book' | 'fanfic';
 
@@ -10,9 +9,14 @@ export interface ReadableRow {
   description: string | null;
   status: ReadableStatus;
   priority: number;
+
+  // Source metadata
   source: string | null;
   source_id: string | null;
+
+  // Book-specific
   page_count: number | null;
+  current_page: number | null; // NEW: current page position
 
   // Fanfic-specific fields (nullable for books)
   ao3_work_id: string | null;
@@ -23,7 +27,18 @@ export interface ReadableRow {
   ao3_tags_json: string | null;
   rating: string | null;
   warnings_json: string | null;
+
+  /**
+   * Legacy total chapter count. Kept for backwards compatibility.
+   * Use total_chapters where possible.
+   */
   chapter_count: number | null;
+
+  // NEW: AO3-style chapter metadata
+  current_chapter: number | null;
+  available_chapters: number | null;
+  total_chapters: number | null;
+
   is_complete: number | null; // 0/1
   word_count: number | null;
 
@@ -33,7 +48,7 @@ export interface ReadableRow {
   created_at: string;
   updated_at: string;
 
-  // New: explicit status timestamps
+  // Status timestamps
   started_at: string | null;
   finished_at: string | null;
   dnf_at: string | null;
@@ -41,7 +56,7 @@ export interface ReadableRow {
   // Optional user notes / review text
   notes: string | null;
 
-  // New: progress in percent (0–100)
+  // Progress in percent (0–100)
   progress_percent: number;
 }
 

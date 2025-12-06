@@ -41,6 +41,7 @@ const SORT_CONFIG: { value: LibrarySortField; label: string }[] = [
   { value: 'title', label: 'Title' },
   { value: 'author', label: 'Author' },
   { value: 'priority', label: 'Priority' },
+  { value: 'progressPercent', label: 'Progress' }, // NEW
 ];
 
 const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
@@ -106,6 +107,7 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
         case 'createdAt':
         case 'updatedAt':
         case 'priority':
+        case 'progressPercent':
           direction = 'desc';
           break;
         case 'title':

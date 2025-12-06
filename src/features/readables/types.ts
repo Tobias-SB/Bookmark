@@ -47,16 +47,34 @@ export interface BaseReadableItem {
 
 export type BookSource = 'manual' | 'googleBooks' | 'openLibrary' | 'goodreads';
 
+/**
+ * Book readables
+ *
+ * - pageCount: total pages if known (from metadata or manual entry)
+ * - currentPage: where the reader is now (used to compute progressPercent)
+ */
 export interface BookReadable extends BaseReadableItem {
   type: 'book';
   source: BookSource;
   sourceId?: string | null;
   pageCount?: number | null;
+  currentPage?: number | null;
   genres: string[];
 }
 
 export type Ao3Rating = 'G' | 'T' | 'M' | 'E' | 'NR';
 
+/**
+ * Fanfic readables
+ *
+ * AO3-style chapter metadata:
+ * - availableChapters: chapters currently posted (left side of "X/Y")
+ * - totalChapters: total planned chapters or null when AO3 shows '?'
+ * - currentChapter: where the reader is now (used to compute progressPercent)
+ *
+ * For backwards compatibility:
+ * - chapterCount: legacy "total chapters" (we now treat as totalChapters)
+ */
 export interface FanficReadable extends BaseReadableItem {
   type: 'fanfic';
   source: 'ao3';
@@ -68,7 +86,19 @@ export interface FanficReadable extends BaseReadableItem {
   ao3Tags: string[];
   rating?: Ao3Rating | null;
   warnings: string[];
+
+  /** Legacy total-chapter count from earlier versions. Prefer totalChapters. */
   chapterCount?: number | null;
+
+  /** Chapters currently posted (X in X/Y). */
+  availableChapters?: number | null;
+
+  /** Total planned chapters (Y in X/Y) or null when AO3 shows '?'. */
+  totalChapters?: number | null;
+
+  /** Where the reader is now (chapter index). */
+  currentChapter?: number | null;
+
   complete?: boolean | null;
   wordCount?: number | null;
 }

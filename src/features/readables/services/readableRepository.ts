@@ -1,4 +1,3 @@
-// src/features/readables/services/readableRepository.ts
 import { getAllAsync, getFirstAsync, runAsync } from '@src/db/sqlite';
 import type {
   ReadableItem,
@@ -6,6 +5,7 @@ import type {
   FanficReadable,
   ReadableStatus,
   Ao3Rating,
+  ReadableType,
 } from '../types';
 import type { MoodTag } from '@src/features/moods/types';
 import type { ReadableRow } from '@src/db/schema/readables.schema';
@@ -108,6 +108,7 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
       source: (row.source as BookReadable['source']) ?? 'manual',
       sourceId: row.source_id ?? null,
       pageCount: row.page_count ?? null,
+      currentPage: row.current_page ?? null,
       genres,
     };
 
@@ -140,7 +141,10 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
     ao3Tags,
     rating,
     warnings,
-    chapterCount: row.chapter_count ?? null,
+    chapterCount: row.chapter_count ?? row.total_chapters ?? null,
+    currentChapter: row.current_chapter ?? null,
+    availableChapters: row.available_chapters ?? null,
+    totalChapters: row.total_chapters ?? row.chapter_count ?? null,
     complete: row.is_complete == null ? null : row.is_complete === 1,
     wordCount: row.word_count ?? null,
   };
@@ -155,6 +159,9 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
   const isBook = readable.type === 'book';
   const isFanfic = readable.type === 'fanfic';
 
+  const book = readable.type === 'book' ? (readable as BookReadable) : null;
+  const fanfic = readable.type === 'fanfic' ? (readable as FanficReadable) : null;
+
   return {
     id: readable.id,
     type: readable.type,
@@ -163,21 +170,25 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
     description: readable.description ?? null,
     status: readable.status,
     priority: readable.priority,
-    source: isBook ? readable.source : 'ao3',
-    source_id: isBook ? (readable.sourceId ?? null) : null,
-    page_count: isBook ? (readable.pageCount ?? null) : null,
-    ao3_work_id: isFanfic ? readable.ao3WorkId : null,
-    ao3_url: isFanfic ? readable.ao3Url : null,
-    fandoms_json: isFanfic ? JSON.stringify(readable.fandoms) : null,
-    relationships_json: isFanfic ? JSON.stringify(readable.relationships) : null,
-    characters_json: isFanfic ? JSON.stringify(readable.characters) : null,
-    ao3_tags_json: isFanfic ? JSON.stringify(readable.ao3Tags) : null,
-    rating: isFanfic ? (readable.rating ?? null) : null,
-    warnings_json: isFanfic ? JSON.stringify(readable.warnings) : null,
-    chapter_count: isFanfic ? (readable.chapterCount ?? null) : null,
-    is_complete: isFanfic ? (readable.complete == null ? null : readable.complete ? 1 : 0) : null,
-    word_count: isFanfic ? (readable.wordCount ?? null) : null,
-    genres_json: isBook ? JSON.stringify(readable.genres) : null,
+    source: isBook ? book!.source : 'ao3',
+    source_id: isBook ? (book!.sourceId ?? null) : null,
+    page_count: isBook ? (book!.pageCount ?? null) : null,
+    current_page: isBook ? (book!.currentPage ?? null) : null,
+    ao3_work_id: isFanfic ? fanfic!.ao3WorkId : null,
+    ao3_url: isFanfic ? fanfic!.ao3Url : null,
+    fandoms_json: isFanfic ? JSON.stringify(fanfic!.fandoms) : null,
+    relationships_json: isFanfic ? JSON.stringify(fanfic!.relationships) : null,
+    characters_json: isFanfic ? JSON.stringify(fanfic!.characters) : null,
+    ao3_tags_json: isFanfic ? JSON.stringify(fanfic!.ao3Tags) : null,
+    rating: isFanfic ? (fanfic!.rating ?? null) : null,
+    warnings_json: isFanfic ? JSON.stringify(fanfic!.warnings) : null,
+    chapter_count: isFanfic ? (fanfic!.totalChapters ?? fanfic!.chapterCount ?? null) : null,
+    current_chapter: isFanfic ? (fanfic!.currentChapter ?? null) : null,
+    available_chapters: isFanfic ? (fanfic!.availableChapters ?? null) : null,
+    total_chapters: isFanfic ? (fanfic!.totalChapters ?? fanfic!.chapterCount ?? null) : null,
+    is_complete: isFanfic ? (fanfic!.complete == null ? null : fanfic!.complete ? 1 : 0) : null,
+    word_count: isFanfic ? (fanfic!.wordCount ?? null) : null,
+    genres_json: isBook ? JSON.stringify(book!.genres) : null,
     mood_tags_json: JSON.stringify(readable.moodTags ?? []),
     created_at: readable.createdAt,
     updated_at: readable.updatedAt,
@@ -238,7 +249,6 @@ function buildRowFromNewReadable(
 
 /**
  * Items still in the queue (to-read only), ordered by priority and recency.
- * (Used by older code; Library view will use getAll()).
  */
 async function getAllToRead(): Promise<ReadableItem[]> {
   const rows = await getAllAsync<ReadableRow>(
@@ -271,7 +281,6 @@ async function getAll(): Promise<ReadableItem[]> {
 
 /**
  * Only finished readables, newest completions first.
- * We treat updated_at as "finished at" because status is changed when you finish.
  */
 async function getAllFinished(): Promise<ReadableItem[]> {
   const rows = await getAllAsync<ReadableRow>(
@@ -306,7 +315,7 @@ async function insert(
 ): Promise<ReadableItem> {
   const row = buildRowFromNewReadable(readable);
 
-  // 30 columns, 30 values. Must stay in sync with the table definition.
+  // 34 columns, 34 values. Must stay in sync with the table definition + migrations.
   await runAsync(
     `
     INSERT INTO readables (
@@ -320,6 +329,7 @@ async function insert(
       source,
       source_id,
       page_count,
+      current_page,
       ao3_work_id,
       ao3_url,
       fandoms_json,
@@ -329,6 +339,9 @@ async function insert(
       rating,
       warnings_json,
       chapter_count,
+      current_chapter,
+      available_chapters,
+      total_chapters,
       is_complete,
       word_count,
       genres_json,
@@ -341,7 +354,7 @@ async function insert(
       dnf_at,
       notes
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     );
   `,
     [
@@ -355,6 +368,7 @@ async function insert(
       row.source,
       row.source_id,
       row.page_count,
+      row.current_page,
       row.ao3_work_id,
       row.ao3_url,
       row.fandoms_json,
@@ -364,6 +378,9 @@ async function insert(
       row.rating,
       row.warnings_json,
       row.chapter_count,
+      row.current_chapter,
+      row.available_chapters,
+      row.total_chapters,
       row.is_complete,
       row.word_count,
       row.genres_json,
@@ -389,10 +406,6 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
 
   const now = new Date().toISOString();
 
-  // Caller (EditReadableScreen) sends a full object with updated fields,
-  // including explicit nulls for dates they want to clear.
-  // We treat that as authoritative and recompute createdAt from there,
-  // but we never move createdAt *forward* in time.
   const merged: ReadableItem = {
     ...existing,
     ...readable,
@@ -427,6 +440,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       source = ?,
       source_id = ?,
       page_count = ?,
+      current_page = ?,
       ao3_work_id = ?,
       ao3_url = ?,
       fandoms_json = ?,
@@ -436,6 +450,9 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       rating = ?,
       warnings_json = ?,
       chapter_count = ?,
+      current_chapter = ?,
+      available_chapters = ?,
+      total_chapters = ?,
       is_complete = ?,
       word_count = ?,
       genres_json = ?,
@@ -459,6 +476,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       row.source,
       row.source_id,
       row.page_count,
+      row.current_page,
       row.ao3_work_id,
       row.ao3_url,
       row.fandoms_json,
@@ -468,6 +486,9 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       row.rating,
       row.warnings_json,
       row.chapter_count,
+      row.current_chapter,
+      row.available_chapters,
+      row.total_chapters,
       row.is_complete,
       row.word_count,
       row.genres_json,
@@ -477,7 +498,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       row.finished_at,
       row.dnf_at,
       row.notes,
-      row.created_at, // NEW: persist backdated createdAt
+      row.created_at,
       row.updated_at,
       row.id,
     ],
@@ -559,7 +580,8 @@ async function updateStatus(id: string, status: ReadableStatus): Promise<void> {
 }
 
 /**
- * Update reading progress (0–100) and bump updated_at.
+ * Legacy: update reading progress (0–100) directly and bump updated_at.
+ * Kept for callers that still think in percentages.
  */
 async function updateProgress(id: string, progressPercent: number): Promise<void> {
   const clamped = Math.min(100, Math.max(0, Math.round(progressPercent)));
@@ -572,6 +594,80 @@ async function updateProgress(id: string, progressPercent: number): Promise<void
     WHERE id = ?;
   `,
     [clamped, now, id],
+  );
+}
+
+/**
+ * NEW: Update progress based on units (pages/chapters) and recompute percent.
+ *
+ * - For books: currentPage / pageCount
+ * - For fanfic: currentChapter / (totalChapters || availableChapters)
+ *
+ * If we don't know a denominator, we still store the current unit but
+ * leave progress_percent unchanged.
+ */
+async function updateProgressByUnits(args: {
+  id: string;
+  type: ReadableType;
+  currentUnit: number;
+}): Promise<void> {
+  const now = new Date().toISOString();
+  const existing = await getById(args.id);
+  if (!existing) {
+    throw new Error(`Readable with id ${args.id} not found`);
+  }
+
+  const value = Number.isFinite(args.currentUnit) ? Math.max(0, Math.round(args.currentUnit)) : 0;
+
+  if (args.type === 'book') {
+    const book = existing as BookReadable;
+    const totalPages = book.pageCount ?? null;
+    const clampedPage = totalPages != null && totalPages > 0 ? Math.min(value, totalPages) : value;
+
+    let progressPercent = book.progressPercent ?? 0;
+
+    if (totalPages != null && totalPages > 0 && clampedPage >= 0) {
+      progressPercent = Math.max(0, Math.min(100, Math.round((clampedPage / totalPages) * 100)));
+    }
+
+    await runAsync(
+      `
+      UPDATE readables
+      SET current_page = ?, progress_percent = ?, updated_at = ?
+      WHERE id = ?;
+    `,
+      [clampedPage, progressPercent, now, args.id],
+    );
+    return;
+  }
+
+  const fanfic = existing as FanficReadable;
+  const totalChapters = fanfic.totalChapters ?? fanfic.chapterCount ?? null;
+  const availableChapters = fanfic.availableChapters ?? null;
+
+  const denominator =
+    totalChapters && totalChapters > 0
+      ? totalChapters
+      : availableChapters && availableChapters > 0
+        ? availableChapters
+        : null;
+
+  const maxAllowed = denominator ?? value;
+  const clampedChapter = Math.min(value, maxAllowed);
+
+  let progressPercent = fanfic.progressPercent ?? 0;
+
+  if (denominator != null && denominator > 0) {
+    progressPercent = Math.max(0, Math.min(100, Math.round((clampedChapter / denominator) * 100)));
+  }
+
+  await runAsync(
+    `
+    UPDATE readables
+    SET current_chapter = ?, progress_percent = ?, updated_at = ?
+    WHERE id = ?;
+  `,
+    [clampedChapter, progressPercent, now, args.id],
   );
 }
 
@@ -601,5 +697,6 @@ export const readableRepository = {
   delete: remove,
   updateStatus,
   updateProgress,
+  updateProgressByUnits,
   updateNotes,
 };

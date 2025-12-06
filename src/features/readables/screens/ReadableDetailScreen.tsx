@@ -16,6 +16,7 @@ import {
   READABLE_STATUS_LABELS,
   type ReadableStatus,
   type FanficReadable,
+  type BookReadable,
 } from '@src/features/readables/types';
 import ReadingProgressSection from '../components/ReadingProgressSection';
 import FanficMetadataSection from '../components/FanficMetadataSection';
@@ -80,9 +81,14 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
-  const handleSaveProgress = async (percent: number) => {
+  // NEW: unit-based save (page/chapter) instead of raw percent
+  const handleSaveUnit = async (unit: number) => {
     try {
-      await readableRepository.updateProgress(item.id, percent);
+      await readableRepository.updateProgressByUnits({
+        id: item.id,
+        type: item.type,
+        currentUnit: unit,
+      });
       await invalidateReadablesAndStats();
       await refetch();
     } catch (e) {
@@ -105,7 +111,7 @@ const ReadableDetailScreen: React.FC = () => {
 
   const handleMarkDnf = async () => {
     try {
-      // We now rely on the last saved progress; user can update via "Save progress" first.
+      // We now rely on the last saved progress; user can update via the progress section first.
       await readableRepository.updateStatus(item.id, 'DNF');
       await invalidateReadablesAndStats();
       navigation.goBack();
@@ -194,6 +200,32 @@ const ReadableDetailScreen: React.FC = () => {
     });
   };
 
+  // ----- New: metadata for pages/chapters -----
+  const isBook = item.type === 'book';
+  const isFanfic = item.type === 'fanfic';
+
+  const book = isBook ? (item as BookReadable) : null;
+  const fanfic = isFanfic ? (item as FanficReadable) : null;
+
+  // Book metadata
+  const totalPages = book?.pageCount ?? null;
+  const currentPage = book?.currentPage ?? null;
+
+  // Fanfic metadata (AO3-style)
+  const currentChapter = fanfic?.currentChapter ?? null;
+  const availableChapters = fanfic?.availableChapters ?? null;
+  const totalChapters = fanfic?.totalChapters ?? fanfic?.chapterCount ?? null;
+
+  const chaptersLeft = availableChapters != null ? String(availableChapters) : '?';
+  const chaptersRight = totalChapters != null ? String(totalChapters) : '?';
+  const chaptersDisplay =
+    availableChapters != null || totalChapters != null ? `${chaptersLeft}/${chaptersRight}` : null;
+
+  // Progress section wiring (unit-based)
+  const unitLabel = isBook ? 'page' : 'chapter';
+  const currentUnit = isBook ? (currentPage ?? null) : (currentChapter ?? null);
+  const maxUnit = isBook ? (totalPages ?? null) : (totalChapters ?? availableChapters ?? null);
+
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -208,6 +240,26 @@ const ReadableDetailScreen: React.FC = () => {
           <Chip style={styles.chip}>Status: {READABLE_STATUS_LABELS[item.status]}</Chip>
         </View>
 
+        {/* NEW: pages/chapters metadata block */}
+        {isBook && (
+          <View style={styles.metaBlock}>
+            {totalPages != null && (
+              <Text>
+                Pages: {currentPage != null ? `${currentPage} / ` : ''}
+                {totalPages}
+              </Text>
+            )}
+            {currentPage != null && totalPages == null && <Text>Current page: {currentPage}</Text>}
+          </View>
+        )}
+
+        {isFanfic && (
+          <View style={styles.metaBlock}>
+            {chaptersDisplay && <Text>Chapters: {chaptersDisplay}</Text>}
+            {currentChapter != null && <Text>Current chapter: {currentChapter}</Text>}
+          </View>
+        )}
+
         {item.description ? (
           <Text style={styles.description}>{item.description}</Text>
         ) : (
@@ -218,8 +270,12 @@ const ReadableDetailScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>Reading progress</Text>
           <ReadingProgressSection
             status={item.status}
+            type={item.type}
             currentPercent={item.progressPercent}
-            onSaveProgress={handleSaveProgress}
+            currentUnit={currentUnit}
+            maxUnit={maxUnit}
+            unitLabel={unitLabel}
+            onSaveUnit={handleSaveUnit}
           />
         </View>
 
@@ -346,6 +402,9 @@ const styles = StyleSheet.create({
   },
   chip: {
     marginRight: 8,
+    marginBottom: 8,
+  },
+  metaBlock: {
     marginBottom: 8,
   },
   description: {
