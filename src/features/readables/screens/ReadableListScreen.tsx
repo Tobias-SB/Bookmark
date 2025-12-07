@@ -1,5 +1,4 @@
-// src/features/readables/screens/ReadableListScreen.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationProp, RouteProp } from '@react-navigation/native';
@@ -11,26 +10,20 @@ import ErrorState from '@src/components/common/ErrorState';
 import ReadableCard from '../components/ReadableCard';
 import ReadableListEmptyState from '../components/ReadableListEmptyState';
 import LibraryFilterBar from '../components/LibraryFilterBar';
+import SmartShelvesBar from '../components/SmartShelvesBar';
+
 import type { MainTabsParamList, RootStackParamList } from '@src/navigation/types';
-import type { LibraryQueryParams } from '../types/libraryQuery';
-import type { LibraryFilterState, LibrarySortField } from '../types/libraryFilters';
-import { DEFAULT_LIBRARY_FILTER_STATE } from '../types/libraryFilters';
+import {
+  DEFAULT_LIBRARY_FILTER_STATE,
+  isDefaultLibraryFilterState,
+  type LibraryFilterState,
+} from '../types/libraryFilters';
 import { useLibraryReadables } from '../hooks/useLibraryReadables';
+import { useSmartShelves } from '../hooks/useSmartShelves';
+import type { SmartShelf, SmartShelfId } from '../types/smartShelves';
 
 type RootNav = NavigationProp<RootStackParamList>;
 type LibraryRoute = RouteProp<MainTabsParamList, 'Library'>;
-
-const DEFAULT_QUERY: LibraryQueryParams = {
-  status: 'all',
-  type: undefined,
-  minPriority: undefined,
-  maxPriority: undefined,
-  searchQuery: null,
-  sort: {
-    field: 'createdAt',
-    direction: 'desc',
-  },
-};
 
 const ReadableListScreen: React.FC = () => {
   const navigation = useNavigation<RootNav>();
@@ -38,25 +31,27 @@ const ReadableListScreen: React.FC = () => {
 
   const initialQuery = route.params?.initialQuery;
 
-  const [query, setQuery] = useState<LibraryQueryParams>(DEFAULT_QUERY);
+  const [filterState, setFilterState] = useState<LibraryFilterState>(DEFAULT_LIBRARY_FILTER_STATE);
   const [activeTagLabel, setActiveTagLabel] = useState<string | null>(null);
 
-  // Seed query when arriving via a tag tap (or when params change)
+  // 'all' represents the implicit default shelf.
+  const [selectedShelfId, setSelectedShelfId] = useState<'all' | SmartShelfId>('all');
+
+  const { data: shelves = [] } = useSmartShelves();
+
+  // Seed filter when arriving via a tag tap (or when params change)
   useEffect(() => {
     if (initialQuery?.searchQuery != null || initialQuery?.tagLabel != null) {
-      setQuery((prev) => ({
+      setFilterState((prev) => ({
         ...prev,
-        searchQuery: initialQuery.searchQuery ?? null,
+        searchQuery: initialQuery.searchQuery ?? '',
       }));
       setActiveTagLabel(initialQuery.tagLabel ?? initialQuery.searchQuery ?? null);
+      setSelectedShelfId('all');
     }
   }, [initialQuery?.searchQuery, initialQuery?.tagLabel]);
 
-  // Bridge from legacy LibraryQueryParams → new LibraryFilterState
-  const filterState: LibraryFilterState = useMemo(() => mapQueryToFilterState(query), [query]);
-
-  const { items, isLoading, isError, error, refetch, isRefetching } =
-    useLibraryReadables(filterState);
+  const { items, isLoading, isError, refetch, isRefetching } = useLibraryReadables(filterState);
 
   if (isLoading && items.length === 0) {
     return (
@@ -94,22 +89,42 @@ const ReadableListScreen: React.FC = () => {
     ]);
   };
 
-  const handleQueryChange = (next: LibraryQueryParams) => {
-    setQuery(next);
+  const handleFilterChange = (next: LibraryFilterState) => {
+    setFilterState(next);
+    // Any manual filter changes means we're no longer strictly "on" a saved shelf.
+    setSelectedShelfId('all');
 
-    // If user clears search, drop any active tag label
-    if (!next.searchQuery) {
+    if (!next.searchQuery || next.searchQuery.trim().length === 0) {
       setActiveTagLabel(null);
     }
   };
 
-  const isUsingDefaultQuery = isDefaultQuery(query);
+  const handleSelectAllShelf = () => {
+    setSelectedShelfId('all');
+    setActiveTagLabel(null);
+    setFilterState(DEFAULT_LIBRARY_FILTER_STATE);
+  };
+
+  const handleSelectShelf = (shelf: SmartShelf) => {
+    setSelectedShelfId(shelf.id);
+    setActiveTagLabel(null);
+    setFilterState(shelf.filter);
+  };
+
+  const isUsingDefaultFilters = isDefaultLibraryFilterState(filterState);
 
   return (
     <Screen>
+      <SmartShelvesBar
+        shelves={shelves}
+        selectedShelfId={selectedShelfId}
+        onSelectAll={handleSelectAllShelf}
+        onSelectShelf={handleSelectShelf}
+      />
+
       <LibraryFilterBar
-        query={query}
-        onQueryChange={handleQueryChange}
+        filter={filterState}
+        onFilterChange={handleFilterChange}
         activeTagLabel={activeTagLabel}
       />
 
@@ -124,7 +139,7 @@ const ReadableListScreen: React.FC = () => {
           />
         )}
         ListEmptyComponent={
-          isUsingDefaultQuery ? (
+          isUsingDefaultFilters ? (
             // True "empty library" state
             <ReadableListEmptyState onAdd={handleAdd} />
           ) : (
@@ -138,48 +153,6 @@ const ReadableListScreen: React.FC = () => {
     </Screen>
   );
 };
-
-/**
- * Temporary bridge layer from the legacy LibraryQueryParams
- * to the new canonical LibraryFilterState.
- *
- * This lets us:
- * - Keep LibraryFilterBar + route params working as-is.
- * - Use the new normalized filter/sort "brain" underneath.
- *
- * Later, we can update LibraryFilterBar to work directly with
- * LibraryFilterState and delete this mapper.
- */
-function mapQueryToFilterState(query: LibraryQueryParams): LibraryFilterState {
-  const sortField = query.sort.field as LibrarySortField;
-
-  return {
-    ...DEFAULT_LIBRARY_FILTER_STATE,
-    searchQuery: query.searchQuery ?? '',
-    status: query.status,
-    type: query.type ?? 'all',
-    // rating & workState defaults are already in DEFAULT_LIBRARY_FILTER_STATE
-    sortField,
-    sortDirection: query.sort.direction,
-    // moodTags remains [] for now – we’ll wire mood filtering via UI later.
-  };
-}
-
-/**
- * Checks if the current UI-facing query matches the default query.
- * Used to distinguish "truly empty library" from
- * "no results because of filters/search".
- */
-function isDefaultQuery(query: LibraryQueryParams): boolean {
-  if (query.status !== DEFAULT_QUERY.status) return false;
-  if (query.type !== DEFAULT_QUERY.type) return false;
-  if (query.minPriority !== DEFAULT_QUERY.minPriority) return false;
-  if (query.maxPriority !== DEFAULT_QUERY.maxPriority) return false;
-  if (query.searchQuery !== DEFAULT_QUERY.searchQuery) return false;
-  if (query.sort.field !== DEFAULT_QUERY.sort.field) return false;
-  if (query.sort.direction !== DEFAULT_QUERY.sort.direction) return false;
-  return true;
-}
 
 const styles = StyleSheet.create({
   emptyFilteredText: {

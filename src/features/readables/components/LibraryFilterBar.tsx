@@ -1,4 +1,3 @@
-// src/features/readables/components/LibraryFilterBar.tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import {
@@ -13,11 +12,15 @@ import {
 } from 'react-native-paper';
 
 import type { LibraryFilter, ReadableType } from '../types';
-import type { LibraryQueryParams, LibrarySortField } from '../types/libraryQuery';
+import {
+  DEFAULT_LIBRARY_FILTER_STATE,
+  type LibraryFilterState,
+  type LibrarySortField,
+} from '../types/libraryFilters';
 
 export interface LibraryFilterBarProps {
-  query: LibraryQueryParams;
-  onQueryChange: (next: LibraryQueryParams) => void;
+  filter: LibraryFilterState;
+  onFilterChange: (next: LibraryFilterState) => void;
   /**
    * Optional label to show when we arrived here from a tag tap,
    * e.g. "Filtered by tag: Found Family"
@@ -27,13 +30,11 @@ export interface LibraryFilterBarProps {
 
 const STATUS_FILTERS: LibraryFilter[] = ['all', 'to-read', 'reading', 'finished', 'DNF'];
 
-const TYPE_FILTERS: { value?: ReadableType; label: string }[] = [
-  { value: undefined, label: 'All types' },
+const TYPE_FILTERS: { value: 'all' | ReadableType; label: string }[] = [
+  { value: 'all', label: 'All types' },
   { value: 'book', label: 'Books' },
   { value: 'fanfic', label: 'Fanfic' },
 ];
-
-const PRIORITY_VALUES = [1, 2, 3, 4, 5];
 
 const SORT_CONFIG: { value: LibrarySortField; label: string }[] = [
   { value: 'createdAt', label: 'Latest' },
@@ -41,12 +42,12 @@ const SORT_CONFIG: { value: LibrarySortField; label: string }[] = [
   { value: 'title', label: 'Title' },
   { value: 'author', label: 'Author' },
   { value: 'priority', label: 'Priority' },
-  { value: 'progressPercent', label: 'Progress' }, // NEW
+  { value: 'progressPercent', label: 'Progress' },
 ];
 
 const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
-  query,
-  onQueryChange,
+  filter,
+  onFilterChange,
   activeTagLabel,
 }) => {
   const theme = useTheme();
@@ -55,50 +56,29 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
 
   const [statusDialogVisible, setStatusDialogVisible] = useState(false);
   const [typeDialogVisible, setTypeDialogVisible] = useState(false);
-  const [priorityDialogVisible, setPriorityDialogVisible] = useState(false);
   const [sortDialogVisible, setSortDialogVisible] = useState(false);
 
   const handleStatusChange = (status: LibraryFilter) => {
-    onQueryChange({
-      ...query,
+    onFilterChange({
+      ...filter,
       status,
     });
     setStatusDialogVisible(false);
   };
 
   const handleTypeChange = (typeValue: string) => {
-    const type = typeValue === 'all' ? undefined : (typeValue as ReadableType);
-    onQueryChange({
-      ...query,
+    const type = typeValue as 'all' | ReadableType;
+    onFilterChange({
+      ...filter,
       type,
     });
     setTypeDialogVisible(false);
   };
 
-  const handlePriorityChange = (value: string) => {
-    if (value === 'any') {
-      onQueryChange({
-        ...query,
-        minPriority: undefined,
-        maxPriority: undefined,
-      });
-    } else {
-      const num = Number(value);
-      if (!Number.isNaN(num)) {
-        onQueryChange({
-          ...query,
-          minPriority: num,
-          maxPriority: num,
-        });
-      }
-    }
-    setPriorityDialogVisible(false);
-  };
-
   const handleSortFieldChange = (field: LibrarySortField) => {
-    let direction = query.sort.direction;
+    let direction = filter.sortDirection;
 
-    if (query.sort.field === field) {
+    if (filter.sortField === field) {
       // On repeated selection, flip direction
       direction = direction === 'asc' ? 'desc' : 'asc';
     } else {
@@ -117,52 +97,33 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
       }
     }
 
-    onQueryChange({
-      ...query,
-      sort: { field, direction },
+    onFilterChange({
+      ...filter,
+      sortField: field,
+      sortDirection: direction,
     });
     setSortDialogVisible(false);
   };
 
   const toggleSortDirection = () => {
-    const nextDirection = query.sort.direction === 'asc' ? 'desc' : 'asc';
-    onQueryChange({
-      ...query,
-      sort: {
-        ...query.sort,
-        direction: nextDirection,
-      },
+    const nextDirection = filter.sortDirection === 'asc' ? 'desc' : 'asc';
+    onFilterChange({
+      ...filter,
+      sortDirection: nextDirection,
     });
   };
 
   const handleClearAllFilters = () => {
-    onQueryChange({
-      status: 'all',
-      type: undefined,
-      minPriority: undefined,
-      maxPriority: undefined,
-      searchQuery: null,
-      sort: {
-        field: 'createdAt',
-        direction: 'desc',
-      },
-    });
+    onFilterChange(DEFAULT_LIBRARY_FILTER_STATE);
   };
 
-  const statusLabel = labelForStatus(query.status);
+  const statusLabel = labelForStatus(filter.status);
   const typeLabel = (() => {
-    if (!query.type) return 'All types';
-    return query.type === 'book' ? 'Books' : 'Fanfic';
+    if (filter.type === 'all') return 'All types';
+    return filter.type === 'book' ? 'Books' : 'Fanfic';
   })();
-  const priorityLabel = (() => {
-    if (query.minPriority == null || query.maxPriority == null) return 'Any priority';
-    if (query.minPriority === query.maxPriority) {
-      return `Priority ${query.minPriority}`;
-    }
-    return `Priority ${query.minPriority}–${query.maxPriority}`;
-  })();
-  const sortFieldLabel = SORT_CONFIG.find((s) => s.value === query.sort.field)?.label ?? 'Sort';
-  const sortDirectionIcon = query.sort.direction === 'asc' ? 'arrow-up' : 'arrow-down';
+  const sortFieldLabel = SORT_CONFIG.find((s) => s.value === filter.sortField)?.label ?? 'Sort';
+  const sortDirectionIcon = filter.sortDirection === 'asc' ? 'arrow-up' : 'arrow-down';
 
   const toggleFiltersCollapsed = () => {
     setFiltersCollapsed((prev) => !prev);
@@ -189,11 +150,11 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
 
       <Searchbar
         placeholder="Search library…"
-        value={query.searchQuery ?? ''}
+        value={filter.searchQuery}
         onChangeText={(text) => {
-          onQueryChange({
-            ...query,
-            searchQuery: text.length ? text : null,
+          onFilterChange({
+            ...filter,
+            searchQuery: text,
           });
         }}
         style={styles.searchbar}
@@ -258,14 +219,6 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
 
           <View style={styles.menuRow}>
             <FilterButton
-              icon="star-outline"
-              label={priorityLabel}
-              onPress={() => setPriorityDialogVisible(true)}
-              themeOutlineColor={theme.colors.outline}
-              style={styles.menuButton}
-            />
-
-            <FilterButton
               icon="sort"
               label={sortFieldLabel}
               onPress={() => setSortDialogVisible(true)}
@@ -300,7 +253,7 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
           <Dialog.Content>
             <RadioButton.Group
               onValueChange={(value) => handleStatusChange(value as LibraryFilter)}
-              value={query.status}
+              value={filter.status}
             >
               {STATUS_FILTERS.map((status) => (
                 <RadioButton.Item key={status} label={labelForStatus(status)} value={status} />
@@ -316,37 +269,14 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
         <Dialog visible={typeDialogVisible} onDismiss={() => setTypeDialogVisible(false)}>
           <Dialog.Title>Type filter</Dialog.Title>
           <Dialog.Content>
-            <RadioButton.Group onValueChange={handleTypeChange} value={query.type ?? 'all'}>
-              <RadioButton.Item label="All types" value="all" />
-              <RadioButton.Item label="Books" value="book" />
-              <RadioButton.Item label="Fanfic" value="fanfic" />
-            </RadioButton.Group>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setTypeDialogVisible(false)}>Close</Button>
-          </Dialog.Actions>
-        </Dialog>
-
-        {/* Priority dialog */}
-        <Dialog visible={priorityDialogVisible} onDismiss={() => setPriorityDialogVisible(false)}>
-          <Dialog.Title>Priority filter</Dialog.Title>
-          <Dialog.Content>
-            <RadioButton.Group
-              onValueChange={handlePriorityChange}
-              value={
-                query.minPriority != null && query.maxPriority != null
-                  ? String(query.minPriority)
-                  : 'any'
-              }
-            >
-              <RadioButton.Item label="Any priority" value="any" />
-              {PRIORITY_VALUES.map((value) => (
-                <RadioButton.Item key={value} label={`Priority ${value}`} value={String(value)} />
+            <RadioButton.Group onValueChange={handleTypeChange} value={filter.type}>
+              {TYPE_FILTERS.map((t) => (
+                <RadioButton.Item key={t.value} label={t.label} value={t.value} />
               ))}
             </RadioButton.Group>
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setPriorityDialogVisible(false)}>Close</Button>
+            <Button onPress={() => setTypeDialogVisible(false)}>Close</Button>
           </Dialog.Actions>
         </Dialog>
 
@@ -356,7 +286,7 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
           <Dialog.Content>
             <RadioButton.Group
               onValueChange={(value) => handleSortFieldChange(value as LibrarySortField)}
-              value={query.sort.field}
+              value={filter.sortField}
             >
               {SORT_CONFIG.map((config) => (
                 <RadioButton.Item key={config.value} label={config.label} value={config.value} />
@@ -373,7 +303,7 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
 };
 
 /**
- * Shared outlined filter button so all filters (status/type/priority/sort)
+ * Shared outlined filter button so all filters (status/type/sort)
  * look and size the same.
  */
 interface FilterButtonProps {

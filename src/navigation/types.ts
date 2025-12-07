@@ -1,7 +1,14 @@
-// src/navigation/types.ts
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { ReadableItem } from '@src/features/readables/types';
-import type { LibraryInitialQueryParams } from '@src/features/readables/types/libraryQuery';
+
+/**
+ * Parameters passed into the Library screen via navigation
+ * when we deep-link from somewhere else (e.g. tag tap).
+ */
+export interface LibraryInitialQueryParams {
+  searchQuery?: string | null;
+  tagLabel?: string | null;
+}
 
 export type MainTabsParamList = {
   Library: { initialQuery?: LibraryInitialQueryParams } | undefined;
