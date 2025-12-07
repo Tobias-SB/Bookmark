@@ -181,9 +181,14 @@ function buildItemSearchableText(item: ReadableItem): string {
       parts.push(mapAo3RatingToLabel(rating));
     }
 
-    // Completion label: "Complete" vs "Work in Progress"
-    if (typeof fanfic.complete === 'boolean') {
-      parts.push(fanfic.complete ? 'Complete' : 'Work in Progress');
+    // Completion label: mirror FanficMetadataSection logic:
+    // complete === true → "Complete"
+    // anything else      → "Work in Progress"
+    const complete = fanfic.complete as boolean | undefined;
+    if (complete === true) {
+      parts.push('Complete');
+    } else {
+      parts.push('Work in Progress');
     }
 
     if (Array.isArray(fanfic.fandoms)) parts.push(...fanfic.fandoms);
