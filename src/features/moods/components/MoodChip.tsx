@@ -1,8 +1,8 @@
-// src/features/moods/components/MoodChip.tsx
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { Chip } from 'react-native-paper';
 import type { MoodTag } from '../types';
+import { getMoodDefinition } from '../types';
 
 interface MoodChipProps {
   tag: MoodTag;
@@ -11,9 +11,11 @@ interface MoodChipProps {
 }
 
 const MoodChip: React.FC<MoodChipProps> = ({ tag, selected, onToggle }) => {
+  const mood = getMoodDefinition(tag);
+
   return (
     <Chip style={styles.chip} selected={selected} onPress={() => onToggle(tag)}>
-      {tag.replace('-', ' ')}
+      {mood.label}
     </Chip>
   );
 };

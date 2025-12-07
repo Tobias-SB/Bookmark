@@ -1,8 +1,8 @@
-// src/features/moods/components/MoodProfileCard.tsx
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Card, Chip } from 'react-native-paper';
 import type { MoodProfile } from '../types';
+import { getMoodDefinition } from '../types';
 
 interface Props {
   profile: MoodProfile;
@@ -15,11 +15,14 @@ const MoodProfileCard: React.FC<Props> = ({ profile, onSelect }) => {
       <Card.Title title={profile.label} />
       <Card.Content>
         <View style={styles.chips}>
-          {profile.tags.map((tag) => (
-            <Chip key={tag} style={styles.chip}>
-              {tag.replace('-', ' ')}
-            </Chip>
-          ))}
+          {profile.tags.map((tag) => {
+            const mood = getMoodDefinition(tag);
+            return (
+              <Chip key={tag} style={styles.chip}>
+                {mood.label}
+              </Chip>
+            );
+          })}
         </View>
       </Card.Content>
     </Card>
