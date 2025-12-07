@@ -1,5 +1,5 @@
 // src/features/readables/services/libraryFilterService.ts
-import type { ReadableItem } from '../types';
+import type { ReadableItem, Ao3Rating } from '../types';
 import type {
   LibraryFilterState,
   LibrarySortField,
@@ -9,10 +9,6 @@ import type {
 /**
  * Apply the full library filter state to a list of readables
  * and return a new filtered + sorted array.
- *
- * This function is pure and side-effect free, so it can be:
- * - used in React hooks (useMemo)
- * - reused by Smart Shelves, carousels, and "View all" screens
  */
 export function filterAndSortReadables(
   items: ReadableItem[],
@@ -27,7 +23,6 @@ export function filterAndSortReadables(
 
 /**
  * Apply only the filtering part, without sorting.
- * Useful if you want custom sort logic in a specific context.
  */
 export function filterReadables(items: ReadableItem[], filter: LibraryFilterState): ReadableItem[] {
   return items.filter((item) => matchesFilter(item, filter));
@@ -47,7 +42,7 @@ export function sortReadables(
 // ---------- Internal helpers ----------
 
 function matchesFilter(item: ReadableItem, filter: LibraryFilterState): boolean {
-  // -------- Free-text search (title/author/description/tags/moods) --------
+  // -------- Free-text search (title/author/description/tags/moods/etc.) --------
   const rawQuery = filter.searchQuery.trim();
   if (rawQuery.length > 0) {
     const normalizedQuery = normalizeForSearch(rawQuery);
@@ -94,8 +89,6 @@ function matchesFilter(item: ReadableItem, filter: LibraryFilterState): boolean 
       return false;
     }
 
-    // MoodTag is a string union in your app (e.g. 'cozy' | 'angsty' | ...),
-    // so we just compare by direct string equality.
     const filterSet = new Set(filter.moodTags);
     const itemSet = new Set(item.moodTags);
 
@@ -116,14 +109,6 @@ function matchesFilter(item: ReadableItem, filter: LibraryFilterState): boolean 
 /**
  * Derive whether an item should be considered "complete" vs "wip"
  * for filter purposes.
- *
- * For now, this uses a simple heuristic:
- * - status 'finished' → complete
- * - status 'DNF'      → complete (you are done with it)
- * - anything else     → wip
- *
- * Later, you can refine this for fanfics using AO3 metadata (isComplete flag)
- * without changing the rest of the filter system.
  */
 function isItemComplete(item: ReadableItem): boolean {
   if (item.status === 'finished' || item.status === 'DNF') {
@@ -158,12 +143,19 @@ function getItemRating(item: ReadableItem) {
 
 /**
  * Builds the string that we use for free-text search.
- * This combines:
+ * This is the canonical place to define "what search should look at".
+ *
+ * Currently matches previous applyLibraryQuery behavior:
  * - title
  * - author
  * - description
- * - mood tag values (string union)
- * - generic tags array if present (e.g. AO3 tags)
+ * - mood tags
+ * - fanfic: fandoms, relationships, characters, ao3Tags, warnings
+ * - book: genres
+ *
+ * Extended:
+ * - fanfic: human-readable rating label (e.g. "Explicit")
+ * - fanfic: completion label ("Complete" / "Work in Progress")
  */
 function buildItemSearchableText(item: ReadableItem): string {
   const parts: string[] = [];
@@ -179,17 +171,56 @@ function buildItemSearchableText(item: ReadableItem): string {
     }
   }
 
-  // Generic "tags" field if present (fanfic / book tags)
-  const anyItem = item as any;
-  if (Array.isArray(anyItem.tags)) {
-    for (const tag of anyItem.tags) {
-      if (typeof tag === 'string' && tag.trim().length > 0) {
-        parts.push(tag);
-      }
+  // Fanfic-specific fields
+  if (item.type === 'fanfic') {
+    const fanfic: any = item;
+
+    // Rating label: "General Audiences", "Teen and Up", "Mature", "Explicit", "Not Rated"
+    const rating = fanfic.rating as Ao3Rating | undefined;
+    if (rating) {
+      parts.push(mapAo3RatingToLabel(rating));
     }
+
+    // Completion label: "Complete" vs "Work in Progress"
+    if (typeof fanfic.complete === 'boolean') {
+      parts.push(fanfic.complete ? 'Complete' : 'Work in Progress');
+    }
+
+    if (Array.isArray(fanfic.fandoms)) parts.push(...fanfic.fandoms);
+    if (Array.isArray(fanfic.relationships)) parts.push(...fanfic.relationships);
+    if (Array.isArray(fanfic.characters)) parts.push(...fanfic.characters);
+    if (Array.isArray(fanfic.ao3Tags)) parts.push(...fanfic.ao3Tags);
+    if (Array.isArray(fanfic.warnings)) parts.push(...fanfic.warnings);
+  }
+
+  // Book-specific fields
+  if (item.type === 'book') {
+    const book: any = item;
+    if (Array.isArray(book.genres)) parts.push(...book.genres);
   }
 
   return parts.join(' ');
+}
+
+/**
+ * Map AO3 rating codes to the human-readable labels we show in the UI.
+ * Kept in sync with FanficMetadataSection.
+ */
+function mapAo3RatingToLabel(rating: Ao3Rating): string {
+  switch (rating) {
+    case 'G':
+      return 'General Audiences';
+    case 'T':
+      return 'Teen and Up';
+    case 'M':
+      return 'Mature';
+    case 'E':
+      return 'Explicit';
+    case 'NR':
+      return 'Not Rated';
+    default:
+      return rating;
+  }
 }
 
 /**

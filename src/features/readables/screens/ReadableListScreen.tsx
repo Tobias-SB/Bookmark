@@ -11,10 +11,11 @@ import ErrorState from '@src/components/common/ErrorState';
 import ReadableCard from '../components/ReadableCard';
 import ReadableListEmptyState from '../components/ReadableListEmptyState';
 import LibraryFilterBar from '../components/LibraryFilterBar';
-import { useReadables } from '../hooks/useReadables';
 import type { MainTabsParamList, RootStackParamList } from '@src/navigation/types';
-import type { ReadableItem } from '../types';
 import type { LibraryQueryParams } from '../types/libraryQuery';
+import type { LibraryFilterState, LibrarySortField } from '../types/libraryFilters';
+import { DEFAULT_LIBRARY_FILTER_STATE } from '../types/libraryFilters';
+import { useLibraryReadables } from '../hooks/useLibraryReadables';
 
 type RootNav = NavigationProp<RootStackParamList>;
 type LibraryRoute = RouteProp<MainTabsParamList, 'Library'>;
@@ -35,9 +36,6 @@ const ReadableListScreen: React.FC = () => {
   const navigation = useNavigation<RootNav>();
   const route = useRoute<LibraryRoute>();
 
-  const { data, isLoading, isError, refetch, isRefetching } = useReadables();
-  const items = data ?? [];
-
   const initialQuery = route.params?.initialQuery;
 
   const [query, setQuery] = useState<LibraryQueryParams>(DEFAULT_QUERY);
@@ -45,18 +43,22 @@ const ReadableListScreen: React.FC = () => {
 
   // Seed query when arriving via a tag tap (or when params change)
   useEffect(() => {
-    if (initialQuery?.searchQuery != null) {
+    if (initialQuery?.searchQuery != null || initialQuery?.tagLabel != null) {
       setQuery((prev) => ({
         ...prev,
-        searchQuery: initialQuery.searchQuery,
+        searchQuery: initialQuery.searchQuery ?? null,
       }));
       setActiveTagLabel(initialQuery.tagLabel ?? initialQuery.searchQuery ?? null);
     }
   }, [initialQuery?.searchQuery, initialQuery?.tagLabel]);
 
-  const filteredItems = useMemo(() => applyLibraryQuery(items, query), [items, query]);
+  // Bridge from legacy LibraryQueryParams → new LibraryFilterState
+  const filterState: LibraryFilterState = useMemo(() => mapQueryToFilterState(query), [query]);
 
-  if (isLoading && !data) {
+  const { items, isLoading, isError, error, refetch, isRefetching } =
+    useLibraryReadables(filterState);
+
+  if (isLoading && items.length === 0) {
     return (
       <Screen>
         <LoadingState message="Loading library…" />
@@ -101,144 +103,82 @@ const ReadableListScreen: React.FC = () => {
     }
   };
 
+  const isUsingDefaultQuery = isDefaultQuery(query);
+
   return (
     <Screen>
-      {items.length === 0 ? (
-        <ReadableListEmptyState onAdd={handleAdd} />
-      ) : (
-        <>
-          <LibraryFilterBar
-            query={query}
-            onQueryChange={handleQueryChange}
-            activeTagLabel={activeTagLabel}
-          />
+      <LibraryFilterBar
+        query={query}
+        onQueryChange={handleQueryChange}
+        activeTagLabel={activeTagLabel}
+      />
 
-          <FlatList
-            data={filteredItems}
-            keyExtractor={(item) => item.id}
-            refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-            renderItem={({ item }) => (
-              <ReadableCard
-                item={item}
-                onPress={() => navigation.navigate('ReadableDetail', { id: item.id })}
-              />
-            )}
-            ListEmptyComponent={
-              <Text style={styles.emptyFilteredText}>No readables match these filters yet.</Text>
-            }
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.id}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+        renderItem={({ item }) => (
+          <ReadableCard
+            item={item}
+            onPress={() => navigation.navigate('ReadableDetail', { id: item.id })}
           />
-          <FAB icon="plus" style={styles.fab} onPress={handleAdd} />
-        </>
-      )}
+        )}
+        ListEmptyComponent={
+          isUsingDefaultQuery ? (
+            // True "empty library" state
+            <ReadableListEmptyState onAdd={handleAdd} />
+          ) : (
+            // Filters/search applied but no matches
+            <Text style={styles.emptyFilteredText}>No readables match these filters yet.</Text>
+          )
+        }
+      />
+
+      <FAB icon="plus" style={styles.fab} onPress={handleAdd} />
     </Screen>
   );
 };
 
-function applyLibraryQuery(items: ReadableItem[], query: LibraryQueryParams): ReadableItem[] {
-  let result = items.slice();
+/**
+ * Temporary bridge layer from the legacy LibraryQueryParams
+ * to the new canonical LibraryFilterState.
+ *
+ * This lets us:
+ * - Keep LibraryFilterBar + route params working as-is.
+ * - Use the new normalized filter/sort "brain" underneath.
+ *
+ * Later, we can update LibraryFilterBar to work directly with
+ * LibraryFilterState and delete this mapper.
+ */
+function mapQueryToFilterState(query: LibraryQueryParams): LibraryFilterState {
+  const sortField = query.sort.field as LibrarySortField;
 
-  // Status
-  if (query.status && query.status !== 'all') {
-    result = result.filter((item) => item.status === query.status);
-  }
-
-  // Type (single-select)
-  if (query.type) {
-    result = result.filter((item) => item.type === query.type);
-  }
-
-  // Priority
-  if (query.minPriority != null || query.maxPriority != null) {
-    const min = query.minPriority ?? 1;
-    const max = query.maxPriority ?? 5;
-    result = result.filter((item) => item.priority >= min && item.priority <= max);
-  }
-
-  // Full-text-ish search
-  if (query.searchQuery && query.searchQuery.trim().length > 0) {
-    const q = query.searchQuery.trim().toLowerCase();
-
-    result = result.filter((item) => {
-      const haystackParts: string[] = [];
-
-      if (item.title) haystackParts.push(item.title);
-      if (item.author) haystackParts.push(item.author);
-      if (item.description) haystackParts.push(item.description);
-
-      // Mood tags (string labels or MoodTag objects)
-      if (Array.isArray(item.moodTags)) {
-        for (const mood of item.moodTags as any[]) {
-          if (typeof mood === 'string') {
-            haystackParts.push(mood);
-          } else if (mood && typeof mood.label === 'string') {
-            haystackParts.push(mood.label);
-          }
-        }
-      }
-
-      // Fanfic-specific fields
-      if (item.type === 'fanfic') {
-        haystackParts.push(...item.fandoms);
-        haystackParts.push(...item.relationships);
-        haystackParts.push(...item.characters);
-        haystackParts.push(...item.ao3Tags);
-        haystackParts.push(...item.warnings);
-      }
-
-      // Book-specific fields
-      if (item.type === 'book') {
-        haystackParts.push(...item.genres);
-      }
-
-      const haystack = haystackParts.join(' ').toLowerCase();
-      return haystack.includes(q);
-    });
-  }
-
-  // Sorting
-  result.sort((a, b) => compareReadables(a, b, query.sort));
-
-  return result;
+  return {
+    ...DEFAULT_LIBRARY_FILTER_STATE,
+    searchQuery: query.searchQuery ?? '',
+    status: query.status,
+    type: query.type ?? 'all',
+    // rating & workState defaults are already in DEFAULT_LIBRARY_FILTER_STATE
+    sortField,
+    sortDirection: query.sort.direction,
+    // moodTags remains [] for now – we’ll wire mood filtering via UI later.
+  };
 }
 
-function compareReadables(
-  a: ReadableItem,
-  b: ReadableItem,
-  sort: LibraryQueryParams['sort'],
-): number {
-  const { field, direction } = sort;
-  const dir = direction === 'asc' ? 1 : -1;
-
-  switch (field) {
-    case 'createdAt': {
-      const aDate = new Date(a.createdAt).getTime();
-      const bDate = new Date(b.createdAt).getTime();
-      if (aDate === bDate) return 0;
-      return aDate > bDate ? dir : -dir;
-    }
-    case 'updatedAt': {
-      const aDate = new Date(a.updatedAt).getTime();
-      const bDate = new Date(b.updatedAt).getTime();
-      if (aDate === bDate) return 0;
-      return aDate > bDate ? dir : -dir;
-    }
-    case 'title':
-      return compareStrings(a.title, b.title, dir);
-    case 'author':
-      return compareStrings(a.author, b.author, dir);
-    case 'priority':
-      if (a.priority === b.priority) return 0;
-      return a.priority > b.priority ? dir : -dir;
-    default:
-      return 0;
-  }
-}
-
-function compareStrings(a: string | null, b: string | null, dir: 1 | -1): number {
-  const aVal = (a ?? '').toLowerCase();
-  const bVal = (b ?? '').toLowerCase();
-  if (aVal === bVal) return 0;
-  return aVal > bVal ? dir : -dir;
+/**
+ * Checks if the current UI-facing query matches the default query.
+ * Used to distinguish "truly empty library" from
+ * "no results because of filters/search".
+ */
+function isDefaultQuery(query: LibraryQueryParams): boolean {
+  if (query.status !== DEFAULT_QUERY.status) return false;
+  if (query.type !== DEFAULT_QUERY.type) return false;
+  if (query.minPriority !== DEFAULT_QUERY.minPriority) return false;
+  if (query.maxPriority !== DEFAULT_QUERY.maxPriority) return false;
+  if (query.searchQuery !== DEFAULT_QUERY.searchQuery) return false;
+  if (query.sort.field !== DEFAULT_QUERY.sort.field) return false;
+  if (query.sort.direction !== DEFAULT_QUERY.sort.direction) return false;
+  return true;
 }
 
 const styles = StyleSheet.create({
