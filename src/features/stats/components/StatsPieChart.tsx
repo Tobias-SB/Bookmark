@@ -38,6 +38,12 @@ const StatsPieChart: React.FC<StatsPieChartProps> = ({ data }) => {
         : colors.raspberryLemonade.dark.chartPalette;
     }
 
+    if (themeVariant === 'libraryShelves') {
+      return mode === 'light'
+        ? colors.libraryShelves.light.chartPalette
+        : colors.libraryShelves.dark.chartPalette;
+    }
+
     // Default theme
     return mode === 'light' ? colors.default.light.chartPalette : colors.default.dark.chartPalette;
   }, [mode, themeVariant]);

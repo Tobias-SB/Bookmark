@@ -1,3 +1,4 @@
+// src/theme/index.tsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   MD3DarkTheme as DefaultDarkTheme,
@@ -114,6 +115,36 @@ function buildDefaultTheme(base: MD3Theme, mode: ThemeMode): MD3Theme {
   };
 }
 
+/**
+ * Library Shelves theme builder.
+ * Uses the `colors.libraryShelves` palette.
+ */
+function buildLibraryShelvesTheme(base: MD3Theme, mode: ThemeMode): MD3Theme {
+  const palette = mode === 'light' ? colors.libraryShelves.light : colors.libraryShelves.dark;
+
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: palette.primary,
+      primaryContainer: palette.primaryContainer,
+      onPrimary: palette.onPrimary,
+
+      secondary: palette.secondary,
+      secondaryContainer: palette.secondaryContainer,
+      onSecondary: palette.onSecondary,
+
+      background: palette.background,
+      surface: palette.surface,
+      surfaceVariant: palette.surfaceVariant,
+
+      outline: palette.outline,
+      onBackground: palette.onBackground,
+      onSurface: palette.onSurface,
+    },
+  };
+}
+
 export const AppThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mode, setMode] = useState<ThemeMode>('light');
   const [themeVariant, setThemeVariantState] = useState<ThemeVariant>('default');
@@ -150,6 +181,10 @@ export const AppThemeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return mode === 'light'
         ? buildRaspberryLemonadeLightTheme(base)
         : buildRaspberryLemonadeDarkTheme(base);
+    }
+
+    if (themeVariant === 'libraryShelves') {
+      return buildLibraryShelvesTheme(base, mode);
     }
 
     // Default theme: use the structured default palette.

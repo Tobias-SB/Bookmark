@@ -3,7 +3,7 @@ import { getFirstAsync, runAsync } from '@src/db/sqlite';
 import type { SettingsRow } from '@src/db/schema/settings.schema';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
-export type ThemeVariant = 'default' | 'raspberryLemonade';
+export type ThemeVariant = 'default' | 'raspberryLemonade' | 'libraryShelves';
 
 export interface Settings {
   themePreference: ThemePreference;

@@ -1,10 +1,96 @@
+// src/theme/colors.ts
+
 // Central colour definitions for Bookmark.
 //
 // - `default` is the main app theme (light + dark) built around the MD3
 //   baseline with your original primary/secondary as anchors.
 // - `raspberryLemonade` is the playful alternate palette.
+// - `libraryShelves` is the warm, wood-themed "cozy library" palette.
 // - Top-level `primary` / `secondary` are kept for backwards compatibility
 //   and mirror the default light palette.
+
+/**
+ * Library Shelves – base palette (no chart colours).
+ * Exposed in case we want to reuse these elsewhere.
+ */
+export const libraryShelvesPalette = {
+  light: {
+    primary: '#B8773C', // warm wood accent (polished oak)
+    onPrimary: '#FFF8F0',
+    primaryContainer: '#F0D5B8', // lighter wood highlight
+
+    secondary: '#D3A66C', // lighter wood / brass
+    onSecondary: '#301C0B',
+    secondaryContainer: '#E2C79B', // softer brass / label
+
+    background: '#F5F0E6', // paper / parchment
+    onBackground: '#24160A',
+
+    surface: '#EFE4D5', // desk / lighter page
+    onSurface: '#24160A',
+
+    surfaceVariant: '#D7C3A4', // shelf blocks / chips
+    onSurfaceVariant: '#3B2613',
+
+    outline: '#8A6A43',
+
+    error: '#BA1A1A',
+    onError: '#FFFFFF',
+  },
+
+  dark: {
+    primary: '#E6B27A', // candlelit highlight on wood
+    onPrimary: '#311707',
+    primaryContainer: '#5A3415', // deep wood block
+
+    secondary: '#CFA86A',
+    onSecondary: '#221307',
+    secondaryContainer: '#4D3518', // warm dark brass
+
+    background: '#120E0A', // deep library at night
+    onBackground: '#EADFCC',
+
+    surface: '#1C1712', // table / card surface
+    onSurface: '#F2E6D4',
+
+    surfaceVariant: '#3B2A18', // shelf blocks / chips
+    onSurfaceVariant: '#F0E0C8',
+
+    outline: '#9D825A',
+
+    error: '#FFB4AB',
+    onError: '#410002',
+  },
+};
+
+/**
+ * Library Shelves – chart palette.
+ * Used for stats pie charts & other categorical visuals in the wood theme.
+ */
+export const libraryChartColors: string[] = [
+  '#8C3F2B', // brick leather
+  '#C4633F', // terracotta
+  '#E28B3D', // warm amber
+  '#D4AF37', // brass / aged gold
+  '#A5673F', // mid wood
+  '#6B4B2F', // dark wood
+  '#C97F62', // clay
+  '#A89A7C', // parchment khaki
+
+  '#4E6A39', // deep leaf
+  '#689F63', // soft sage
+  '#2F6F6C', // teal ink
+  '#4E8BBE', // desaturated blue
+  '#2F4F7F', // midnight ink
+  '#3C3F58', // slate
+  '#5E6A71', // cool grey
+
+  '#5C4A7D', // muted plum
+  '#8E5A9F', // violet
+  '#B55D80', // rose
+  '#7F3F5A', // wine red
+  '#9B3F3F', // deep crimson
+];
 
 export const colors = {
   // Backwards-compat convenience (mirrors default.light primary/secondary)
@@ -162,6 +248,21 @@ export const colors = {
         '#e9a4a0', // coral
         '#f6f0f3', // near-white accent
       ],
+    },
+  },
+
+  /**
+   * Library Shelves – warm wood/paper theme.
+   * Light & dark palettes plus a shared chart palette.
+   */
+  libraryShelves: {
+    light: {
+      ...libraryShelvesPalette.light,
+      chartPalette: libraryChartColors,
+    },
+    dark: {
+      ...libraryShelvesPalette.dark,
+      chartPalette: libraryChartColors,
     },
   },
 };

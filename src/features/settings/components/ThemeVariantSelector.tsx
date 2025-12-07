@@ -26,7 +26,7 @@ const ThemeVariantSelector: React.FC = () => {
           <RadioButton value="default" />
           <View style={styles.optionText}>
             <Text>Default</Text>
-            <Text style={styles.optionDescription}>Uses the current Bookmark colours.</Text>
+            <Text style={styles.optionDescription}>Uses the standard Bookmark colour palette.</Text>
           </View>
         </View>
 
@@ -35,6 +35,16 @@ const ThemeVariantSelector: React.FC = () => {
           <View style={styles.optionText}>
             <Text>Raspberry Lemonade</Text>
             <Text style={styles.optionDescription}>Pink &amp; yellow with playful accents.</Text>
+          </View>
+        </View>
+
+        <View style={styles.optionRow}>
+          <RadioButton value="libraryShelves" />
+          <View style={styles.optionText}>
+            <Text>Library Shelves</Text>
+            <Text style={styles.optionDescription}>
+              Warm wood and parchment, cozy library feel.
+            </Text>
           </View>
         </View>
       </RadioButton.Group>
