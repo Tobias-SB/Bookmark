@@ -47,12 +47,10 @@ const ReadableListScreen: React.FC = () => {
       const term = tagOrQuery.trim();
 
       if (!term) {
-        // Nothing meaningful to seed
         return;
       }
 
       setFilterState((prev) => {
-        // Avoid duplicating the term if it's already there
         if (prev.searchTerms.includes(term)) {
           return {
             ...prev,
@@ -62,11 +60,10 @@ const ReadableListScreen: React.FC = () => {
 
         return {
           ...prev,
-          searchTerms: [...prev.searchTerms, term],
+          searchTerms: [term],
           searchQuery: '',
         };
       });
-
       setActiveTagLabel(term);
       setSelectedShelfId('all');
     }
@@ -112,7 +109,6 @@ const ReadableListScreen: React.FC = () => {
 
   const handleFilterChange = (next: LibraryFilterState) => {
     setFilterState(next);
-
     // Any manual filter changes means we're no longer strictly "on" a saved shelf.
     setSelectedShelfId('all');
 
@@ -145,6 +141,7 @@ const ReadableListScreen: React.FC = () => {
         selectedShelfId={selectedShelfId}
         onSelectAll={handleSelectAllShelf}
         onSelectShelf={handleSelectShelf}
+        currentFilter={filterState}
       />
 
       <LibraryFilterBar

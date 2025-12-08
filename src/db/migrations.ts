@@ -1,3 +1,4 @@
+// src/db/migration.ts
 import { execAsync, getAllAsync, runAsync } from './sqlite';
 
 interface Migration {
@@ -153,6 +154,18 @@ const MIGRATIONS: Migration[] = [
       WHERE available_chapters IS NULL
         AND total_chapters IS NOT NULL
         AND is_complete = 1;
+    `,
+  },
+  {
+    id: '008_smart_shelves',
+    upSql: `
+      CREATE TABLE IF NOT EXISTS smart_shelves (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        filter_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `,
   },
 ];
