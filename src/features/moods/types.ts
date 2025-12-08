@@ -118,6 +118,13 @@ export const MOOD_DEFINITIONS: MoodDefinition[] = [
     icon: 'magnify',
     colorToken: 'mood.mysterious',
   },
+  {
+    tag: 'smut',
+    label: 'Smut',
+    description: 'Explicit, sex-forward, steamy vibes.',
+    icon: 'lipstick',
+    colorToken: 'mood.smut',
+  },
 ];
 
 /**

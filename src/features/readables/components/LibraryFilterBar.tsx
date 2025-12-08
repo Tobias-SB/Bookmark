@@ -1,5 +1,5 @@
 // src/features/readables/components/LibraryFilterBar.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import {
   Button,
@@ -19,6 +19,9 @@ import {
   type LibraryFilterState,
   type LibrarySortField,
 } from '../types/libraryFilters';
+import { useSearchVocabulary } from '../hooks/useSearchVocabulary';
+import type { SearchToken } from '../services/searchVocabularyService';
+import { normalizeForSearch } from '../services/libraryFilterService';
 
 export interface LibraryFilterBarProps {
   filter: LibraryFilterState;
@@ -47,6 +50,9 @@ const SORT_CONFIG: { value: LibrarySortField; label: string }[] = [
   { value: 'progressPercent', label: 'Progress' },
 ];
 
+const MIN_SUGGESTION_CHARS = 2;
+const MAX_SUGGESTIONS = 6;
+
 const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
   filter,
   onFilterChange,
@@ -62,6 +68,13 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
 
   // Local draft for the search input. Only becomes "real" when user commits it as a term.
   const [searchDraft, setSearchDraft] = useState<string>('');
+
+  const { tokens: vocabulary } = useSearchVocabulary();
+
+  const suggestions = useMemo(
+    () => getSuggestions(vocabulary, searchDraft, filter.searchTerms),
+    [vocabulary, searchDraft, filter.searchTerms],
+  );
 
   const handleStatusChange = (status: LibraryFilter) => {
     onFilterChange({
@@ -139,7 +152,7 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
     const term = searchDraft.trim();
     if (!term) return;
 
-    // Avoid duplicates.
+    // Avoid duplicates (by raw label)
     if (filter.searchTerms.includes(term)) {
       setSearchDraft('');
       return;
@@ -148,7 +161,7 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
     onFilterChange({
       ...filter,
       searchTerms: [...filter.searchTerms, term],
-      // Legacy field kept in sync loosely if you ever want to surface it
+      // legacy field left empty; canonical is searchTerms[]
       searchQuery: '',
     });
     setSearchDraft('');
@@ -159,6 +172,24 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
       ...filter,
       searchTerms: filter.searchTerms.filter((t) => t !== term),
     });
+  };
+
+  const handleSuggestionPress = (token: SearchToken) => {
+    const label = token.label.trim();
+    if (!label) return;
+
+    // Avoid duplicates by label
+    if (filter.searchTerms.includes(label)) {
+      setSearchDraft('');
+      return;
+    }
+
+    onFilterChange({
+      ...filter,
+      searchTerms: [...filter.searchTerms, label],
+      searchQuery: '',
+    });
+    setSearchDraft('');
   };
 
   return (
@@ -190,6 +221,21 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
         onSubmitEditing={commitSearchDraft}
         style={styles.searchbar}
       />
+
+      {suggestions.length > 0 && (
+        <View style={styles.suggestionsRow}>
+          {suggestions.map((token) => (
+            <Chip
+              key={token.id}
+              style={styles.suggestionChip}
+              icon="plus"
+              onPress={() => handleSuggestionPress(token)}
+            >
+              {token.label}
+            </Chip>
+          ))}
+        </View>
+      )}
 
       {filter.searchTerms.length > 0 && (
         <View style={styles.searchTermsRow}>
@@ -404,6 +450,55 @@ function labelForStatus(status: LibraryFilter): string {
   }
 }
 
+function getSuggestions(
+  vocabulary: SearchToken[],
+  draft: string,
+  selectedTerms: string[],
+): SearchToken[] {
+  const draftNorm = normalizeForSearch(draft);
+  if (!draftNorm || draftNorm.length < MIN_SUGGESTION_CHARS) {
+    return [];
+  }
+
+  const selectedNorms = new Set(
+    selectedTerms.map((t) => normalizeForSearch(t)).filter((n) => n.length > 0),
+  );
+
+  const scored: { token: SearchToken; score: number }[] = [];
+
+  for (const token of vocabulary) {
+    if (!token.normalized) continue;
+    if (selectedNorms.has(token.normalized)) continue;
+
+    const norm = token.normalized;
+
+    let score = 0;
+
+    // Exact normalized match
+    if (norm === draftNorm) score += 1000;
+    // Prefix match
+    if (norm.startsWith(draftNorm)) score += 500;
+    // Word-prefix match (e.g. "fast" in "very fast paced")
+    if (norm.includes(` ${draftNorm}`)) score += 300;
+    // Loose substring
+    if (norm.includes(draftNorm)) score += 100;
+
+    if (score === 0) continue;
+
+    // Nudge by frequency but don't let it dominate
+    score += Math.min(token.frequency, 50);
+
+    scored.push({ token, score });
+  }
+
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.token.label.localeCompare(b.token.label, undefined, { sensitivity: 'base' });
+  });
+
+  return scored.slice(0, MAX_SUGGESTIONS).map((s) => s.token);
+}
+
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
@@ -412,6 +507,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   searchbar: {
+    marginBottom: 4,
+  },
+  suggestionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 2,
+  },
+  suggestionChip: {
+    marginRight: 6,
     marginBottom: 4,
   },
   searchTermsRow: {

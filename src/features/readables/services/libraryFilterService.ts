@@ -207,7 +207,7 @@ function buildItemSearchableText(item: ReadableItem): string {
  *
  * This makes "fast-paced" and "fast paced" normalize to the same string.
  */
-function normalizeForSearch(input: string): string {
+export function normalizeForSearch(input: string): string {
   return (
     input
       .toLowerCase()

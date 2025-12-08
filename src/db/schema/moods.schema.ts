@@ -12,7 +12,8 @@ export type MoodTag =
   | 'romantic'
   | 'funny'
   | 'epic'
-  | 'mysterious';
+  | 'mysterious'
+  | 'smut';
 
 export interface MoodProfileRow {
   id: string;
