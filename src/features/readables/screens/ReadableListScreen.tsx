@@ -1,3 +1,4 @@
+// src/features/readables/screens/ReadableListScreen.tsx
 import React, { useEffect, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -42,11 +43,15 @@ const ReadableListScreen: React.FC = () => {
   // Seed filter when arriving via a tag tap (or when params change)
   useEffect(() => {
     if (initialQuery?.searchQuery != null || initialQuery?.tagLabel != null) {
+      const tagOrQuery = initialQuery.tagLabel ?? initialQuery.searchQuery ?? '';
+      const term = tagOrQuery.trim();
+
       setFilterState((prev) => ({
         ...prev,
-        searchQuery: initialQuery.searchQuery ?? '',
+        searchTerms: term ? [term] : [],
+        searchQuery: '',
       }));
-      setActiveTagLabel(initialQuery.tagLabel ?? initialQuery.searchQuery ?? null);
+      setActiveTagLabel(term || null);
       setSelectedShelfId('all');
     }
   }, [initialQuery?.searchQuery, initialQuery?.tagLabel]);
@@ -94,7 +99,10 @@ const ReadableListScreen: React.FC = () => {
     // Any manual filter changes means we're no longer strictly "on" a saved shelf.
     setSelectedShelfId('all');
 
-    if (!next.searchQuery || next.searchQuery.trim().length === 0) {
+    const hasSearch =
+      next.searchQuery.trim().length > 0 || next.searchTerms.some((t) => t.trim().length > 0);
+
+    if (!hasSearch) {
       setActiveTagLabel(null);
     }
   };

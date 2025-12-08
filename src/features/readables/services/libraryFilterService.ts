@@ -1,5 +1,5 @@
 // src/features/readables/services/libraryFilterService.ts
-import type { ReadableItem, Ao3Rating } from '../types';
+import type { ReadableItem } from '../types';
 import type {
   LibraryFilterState,
   LibrarySortField,
@@ -42,17 +42,32 @@ export function sortReadables(
 // ---------- Internal helpers ----------
 
 function matchesFilter(item: ReadableItem, filter: LibraryFilterState): boolean {
-  // -------- Free-text search (title/author/description/tags/moods/etc.) --------
-  const rawQuery = filter.searchQuery.trim();
-  if (rawQuery.length > 0) {
-    const normalizedQuery = normalizeForSearch(rawQuery);
+  // -------- Multi-term search (title/author/description/tags/moods/etc.) --------
+  const tokens: string[] = [];
 
-    if (normalizedQuery.length > 0) {
-      const searchableText = buildItemSearchableText(item);
-      const normalizedHaystack = normalizeForSearch(searchableText);
+  if (filter.searchQuery && filter.searchQuery.trim().length > 0) {
+    tokens.push(filter.searchQuery.trim());
+  }
 
-      // This makes "fast paced" match "fast-paced", "FAST-PACED", etc.
-      if (!normalizedHaystack.includes(normalizedQuery)) {
+  if (Array.isArray(filter.searchTerms) && filter.searchTerms.length > 0) {
+    for (const term of filter.searchTerms) {
+      const trimmed = term.trim();
+      if (trimmed.length > 0) {
+        tokens.push(trimmed);
+      }
+    }
+  }
+
+  if (tokens.length > 0) {
+    const searchableText = buildItemSearchableText(item);
+    const normalizedHaystack = normalizeForSearch(searchableText);
+
+    // AND semantics: item must match all terms.
+    for (const token of tokens) {
+      const normalizedToken = normalizeForSearch(token);
+      if (normalizedToken.length === 0) continue;
+
+      if (!normalizedHaystack.includes(normalizedToken)) {
         return false;
       }
     }
@@ -115,7 +130,6 @@ function isItemComplete(item: ReadableItem): boolean {
     return true;
   }
 
-  // Optional extra heuristic: if progressPercent is 100, treat as complete.
   if (item.progressPercent >= 100) {
     return true;
   }
@@ -145,17 +159,13 @@ function getItemRating(item: ReadableItem) {
  * Builds the string that we use for free-text search.
  * This is the canonical place to define "what search should look at".
  *
- * Currently matches previous applyLibraryQuery behavior:
+ * Currently matches your old applyLibraryQuery behavior:
  * - title
  * - author
  * - description
  * - mood tags
  * - fanfic: fandoms, relationships, characters, ao3Tags, warnings
  * - book: genres
- *
- * Extended:
- * - fanfic: human-readable rating label (e.g. "Explicit")
- * - fanfic: completion label ("Complete" / "Work in Progress")
  */
 function buildItemSearchableText(item: ReadableItem): string {
   const parts: string[] = [];
@@ -173,59 +183,19 @@ function buildItemSearchableText(item: ReadableItem): string {
 
   // Fanfic-specific fields
   if (item.type === 'fanfic') {
-    const fanfic: any = item;
-
-    // Rating label: "General Audiences", "Teen and Up", "Mature", "Explicit", "Not Rated"
-    const rating = fanfic.rating as Ao3Rating | undefined;
-    if (rating) {
-      parts.push(mapAo3RatingToLabel(rating));
-    }
-
-    // Completion label: mirror FanficMetadataSection logic:
-    // complete === true → "Complete"
-    // anything else      → "Work in Progress"
-    const complete = fanfic.complete as boolean | undefined;
-    if (complete === true) {
-      parts.push('Complete');
-    } else {
-      parts.push('Work in Progress');
-    }
-
-    if (Array.isArray(fanfic.fandoms)) parts.push(...fanfic.fandoms);
-    if (Array.isArray(fanfic.relationships)) parts.push(...fanfic.relationships);
-    if (Array.isArray(fanfic.characters)) parts.push(...fanfic.characters);
-    if (Array.isArray(fanfic.ao3Tags)) parts.push(...fanfic.ao3Tags);
-    if (Array.isArray(fanfic.warnings)) parts.push(...fanfic.warnings);
+    if (Array.isArray(item.fandoms)) parts.push(...item.fandoms);
+    if (Array.isArray(item.relationships)) parts.push(...item.relationships);
+    if (Array.isArray(item.characters)) parts.push(...item.characters);
+    if (Array.isArray(item.ao3Tags)) parts.push(...item.ao3Tags);
+    if (Array.isArray(item.warnings)) parts.push(...item.warnings);
   }
 
   // Book-specific fields
   if (item.type === 'book') {
-    const book: any = item;
-    if (Array.isArray(book.genres)) parts.push(...book.genres);
+    if (Array.isArray(item.genres)) parts.push(...item.genres);
   }
 
   return parts.join(' ');
-}
-
-/**
- * Map AO3 rating codes to the human-readable labels we show in the UI.
- * Kept in sync with FanficMetadataSection.
- */
-function mapAo3RatingToLabel(rating: Ao3Rating): string {
-  switch (rating) {
-    case 'G':
-      return 'General Audiences';
-    case 'T':
-      return 'Teen and Up';
-    case 'M':
-      return 'Mature';
-    case 'E':
-      return 'Explicit';
-    case 'NR':
-      return 'Not Rated';
-    default:
-      return rating;
-  }
 }
 
 /**

@@ -1,3 +1,4 @@
+// src/features/readables/components/LibraryFilterBar.tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import {
@@ -9,6 +10,7 @@ import {
   Text,
   useTheme,
   IconButton,
+  Chip,
 } from 'react-native-paper';
 
 import type { LibraryFilter, ReadableType } from '../types';
@@ -57,6 +59,9 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
   const [statusDialogVisible, setStatusDialogVisible] = useState(false);
   const [typeDialogVisible, setTypeDialogVisible] = useState(false);
   const [sortDialogVisible, setSortDialogVisible] = useState(false);
+
+  // Local draft for the search input. Only becomes "real" when user commits it as a term.
+  const [searchDraft, setSearchDraft] = useState<string>('');
 
   const handleStatusChange = (status: LibraryFilter) => {
     onFilterChange({
@@ -115,6 +120,7 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
 
   const handleClearAllFilters = () => {
     onFilterChange(DEFAULT_LIBRARY_FILTER_STATE);
+    setSearchDraft('');
   };
 
   const statusLabel = labelForStatus(filter.status);
@@ -127,6 +133,32 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
 
   const toggleFiltersCollapsed = () => {
     setFiltersCollapsed((prev) => !prev);
+  };
+
+  const commitSearchDraft = () => {
+    const term = searchDraft.trim();
+    if (!term) return;
+
+    // Avoid duplicates.
+    if (filter.searchTerms.includes(term)) {
+      setSearchDraft('');
+      return;
+    }
+
+    onFilterChange({
+      ...filter,
+      searchTerms: [...filter.searchTerms, term],
+      // Legacy field kept in sync loosely if you ever want to surface it
+      searchQuery: '',
+    });
+    setSearchDraft('');
+  };
+
+  const handleRemoveSearchTerm = (term: string) => {
+    onFilterChange({
+      ...filter,
+      searchTerms: filter.searchTerms.filter((t) => t !== term),
+    });
   };
 
   return (
@@ -149,16 +181,29 @@ const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
       ) : null}
 
       <Searchbar
-        placeholder="Search library…"
-        value={filter.searchQuery}
-        onChangeText={(text) => {
-          onFilterChange({
-            ...filter,
-            searchQuery: text,
-          });
-        }}
+        placeholder={
+          filter.searchTerms.length === 0 ? 'Search library…' : 'Add another search term…'
+        }
+        value={searchDraft}
+        onChangeText={setSearchDraft}
+        onIconPress={commitSearchDraft}
+        onSubmitEditing={commitSearchDraft}
         style={styles.searchbar}
       />
+
+      {filter.searchTerms.length > 0 && (
+        <View style={styles.searchTermsRow}>
+          {filter.searchTerms.map((term) => (
+            <Chip
+              key={term}
+              style={styles.searchTermChip}
+              onClose={() => handleRemoveSearchTerm(term)}
+            >
+              {term}
+            </Chip>
+          ))}
+        </View>
+      )}
 
       {/* Header row: Filters chip + (when open) Clear filters */}
       <View style={styles.headerRow}>
@@ -367,6 +412,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   searchbar: {
+    marginBottom: 4,
+  },
+  searchTermsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 4,
+  },
+  searchTermChip: {
+    marginRight: 6,
     marginBottom: 4,
   },
   tagBanner: {
