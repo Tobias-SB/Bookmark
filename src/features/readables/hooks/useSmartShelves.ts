@@ -1,6 +1,6 @@
 // src/features/readables/hooks/useSmartShelves.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { shelfRepository } from '@src/features/readables/services/shelfReoisitory';
+import { shelfRepository } from '@src/features/readables/services/shelfRepository';
 import type {
   CreateSmartShelfInput,
   SmartShelf,

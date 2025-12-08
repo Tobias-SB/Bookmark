@@ -46,12 +46,28 @@ const ReadableListScreen: React.FC = () => {
       const tagOrQuery = initialQuery.tagLabel ?? initialQuery.searchQuery ?? '';
       const term = tagOrQuery.trim();
 
-      setFilterState((prev) => ({
-        ...prev,
-        searchTerms: term ? [term] : [],
-        searchQuery: '',
-      }));
-      setActiveTagLabel(term || null);
+      if (!term) {
+        // Nothing meaningful to seed
+        return;
+      }
+
+      setFilterState((prev) => {
+        // Avoid duplicating the term if it's already there
+        if (prev.searchTerms.includes(term)) {
+          return {
+            ...prev,
+            searchQuery: '',
+          };
+        }
+
+        return {
+          ...prev,
+          searchTerms: [...prev.searchTerms, term],
+          searchQuery: '',
+        };
+      });
+
+      setActiveTagLabel(term);
       setSelectedShelfId('all');
     }
   }, [initialQuery?.searchQuery, initialQuery?.tagLabel]);
@@ -96,6 +112,7 @@ const ReadableListScreen: React.FC = () => {
 
   const handleFilterChange = (next: LibraryFilterState) => {
     setFilterState(next);
+
     // Any manual filter changes means we're no longer strictly "on" a saved shelf.
     setSelectedShelfId('all');
 
