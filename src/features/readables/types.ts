@@ -34,6 +34,11 @@ export interface BaseReadableItem {
    * - DNF: how far you got when you stopped
    */
   progressPercent: number;
+
+  // Time-based progress (for audio / Kindle time)
+  timeCurrentSeconds?: number | null;
+  timeTotalSeconds?: number | null;
+
   moodTags: MoodTag[];
 
   createdAt: string;

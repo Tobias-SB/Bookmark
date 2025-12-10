@@ -56,6 +56,10 @@ export interface ReadableRow {
   // Optional user notes / review text
   notes: string | null;
 
+  // Time-based progress (for audiobooks / Kindle time)
+  time_current_seconds: number | null;
+  time_total_seconds: number | null;
+
   // Progress in percent (0–100)
   progress_percent: number;
 }

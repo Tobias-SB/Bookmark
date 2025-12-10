@@ -93,16 +93,43 @@ const ReadableDetailScreen: React.FC = () => {
       await refetch();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('Failed to update progress', e);
+      console.error('Failed to update unit-based progress', e);
+    }
+  };
+
+  // Percent-based save
+  const handleSavePercent = async (percent: number) => {
+    try {
+      await readableRepository.updateProgress(item.id, percent);
+      await invalidateReadablesAndStats();
+      await refetch();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to update percent-based progress', e);
+    }
+  };
+
+  // Time-based save (time -> percent); repo stores only progress_percent for now.
+  const handleSaveTime = async (payload: { currentSeconds: number; totalSeconds: number }) => {
+    try {
+      await readableRepository.updateProgressByTime({
+        id: item.id,
+        currentSeconds: payload.currentSeconds,
+        totalSeconds: payload.totalSeconds,
+      });
+      await invalidateReadablesAndStats();
+      await refetch();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to update time-based progress', e);
     }
   };
 
   const handleMarkFinished = async () => {
     try {
-      // updateStatus will also set progress_percent = 100
       await readableRepository.updateStatus(item.id, 'finished');
       await invalidateReadablesAndStats();
-      navigation.goBack();
+      await refetch();
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('Failed to mark as finished', e);
@@ -113,28 +140,39 @@ const ReadableDetailScreen: React.FC = () => {
     try {
       await readableRepository.updateStatus(item.id, 'DNF');
       await invalidateReadablesAndStats();
-      navigation.goBack();
+      await refetch();
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('Failed to mark as DNF', e);
     }
   };
 
-  const handleMoveToStatus = async (status: ReadableStatus) => {
+  const handleMoveBackToToRead = async () => {
     try {
-      await readableRepository.updateStatus(item.id, status);
+      await readableRepository.updateStatus(item.id, 'to-read');
       await invalidateReadablesAndStats();
       await refetch();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error(`Failed to move to status ${status}`, e);
+      console.error('Failed to move back to to-read', e);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await readableRepository.delete(item.id);
+      await invalidateReadablesAndStats();
+      navigation.goBack();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to delete readable', e);
     }
   };
 
   const confirmDelete = () => {
     Alert.alert(
-      'Delete readable',
-      'Are you sure you want to delete this readable from your library? This cannot be undone.',
+      'Delete from library',
+      'Are you sure you want to remove this readable from your library?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -146,20 +184,16 @@ const ReadableDetailScreen: React.FC = () => {
     );
   };
 
-  const handleDelete = async () => {
-    try {
-      await readableRepository.delete(item.id);
-      await invalidateReadablesAndStats();
-      navigation.goBack();
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to delete readable', e);
-      Alert.alert('Error', 'Something went wrong while deleting this item.');
-    }
+  const handleTagPress = (label: string) => {
+    navigation.navigate('RootTabs', {
+      screen: 'Library',
+      params: {
+        initialQuery: {
+          tagLabel: label,
+        },
+      },
+    });
   };
-
-  const notesTitle =
-    item.status === 'finished' ? 'Review' : item.status === 'DNF' ? 'DNF notes' : 'Notes';
 
   const handleStartEditNotes = () => {
     setNotesDraft(item.notes ?? '');
@@ -173,56 +207,38 @@ const ReadableDetailScreen: React.FC = () => {
   const handleSaveNotes = async () => {
     try {
       const trimmed = notesDraft.trim();
-      await readableRepository.updateNotes(item.id, trimmed === '' ? null : trimmed);
+      const notesToSave = trimmed.length > 0 ? trimmed : null;
+      await readableRepository.updateNotes(item.id, notesToSave);
       await invalidateReadablesAndStats();
       await refetch();
       setIsEditingNotes(false);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('Failed to update notes', e);
-      Alert.alert('Error', 'Something went wrong while saving your notes.');
+      console.error('Failed to save notes', e);
     }
   };
 
-  const handleTagPress = (rawTag: string) => {
-    const tag = rawTag.trim();
-    if (!tag) return;
-
-    navigation.navigate('RootTabs', {
-      screen: 'Library',
-      params: {
-        initialQuery: {
-          searchQuery: tag,
-          tagLabel: tag,
-        },
-      },
-    });
-  };
-
-  // ----- New: metadata for pages/chapters -----
-  const isBook = item.type === 'book';
   const isFanfic = item.type === 'fanfic';
-
-  const book = isBook ? (item as BookReadable) : null;
+  const isBook = item.type === 'book';
   const fanfic = isFanfic ? (item as FanficReadable) : null;
+  const book = isBook ? (item as BookReadable) : null;
 
-  // Book metadata
+  const notesTitle: string =
+    item.status === 'DNF' ? 'DNF notes' : item.status === 'finished' ? 'Review / notes' : 'Notes';
+
+  // Pages metadata for books
   const totalPages = book?.pageCount ?? null;
   const currentPage = book?.currentPage ?? null;
 
-  // Fanfic metadata (AO3-style)
+  // Fanfic chapters metadata (normalised)
+  let availableChapters: number | null = fanfic?.availableChapters ?? null;
+  let totalChapters: number | null = fanfic?.totalChapters ?? null;
   const currentChapter = fanfic?.currentChapter ?? null;
-  let availableChapters = fanfic?.availableChapters ?? null;
-  let totalChapters = fanfic?.totalChapters ?? null;
 
-  // If neither available nor total are set but we have a legacy chapterCount,
-  // interpret chapterCount as "available so far" and total as unknown.
   if (availableChapters == null && totalChapters == null && fanfic?.chapterCount != null) {
     availableChapters = fanfic.chapterCount;
   }
 
-  // If the work is complete and we know how many are available but not total,
-  // assume total = available (e.g. 21 → 21/21).
   if (fanfic?.complete && availableChapters != null && totalChapters == null) {
     totalChapters = availableChapters;
   }
@@ -238,7 +254,6 @@ const ReadableDetailScreen: React.FC = () => {
     if (fanfic.complete === true) {
       chapterStatusLabel = 'Complete';
     } else {
-      // Treat unknown/null as "Work in Progress" if we have any chapter info
       if (chaptersDisplay) {
         chapterStatusLabel = 'Work in Progress';
       }
@@ -305,6 +320,8 @@ const ReadableDetailScreen: React.FC = () => {
             maxUnit={maxUnit}
             unitLabel={unitLabel}
             onSaveUnit={handleSaveUnit}
+            onSavePercent={handleSavePercent}
+            onSaveTime={handleSaveTime}
           />
         </View>
 
@@ -374,11 +391,7 @@ const ReadableDetailScreen: React.FC = () => {
           )}
 
           {(item.status === 'finished' || item.status === 'DNF') && (
-            <Button
-              mode="outlined"
-              onPress={() => handleMoveToStatus('to-read')}
-              style={styles.button}
-            >
+            <Button mode="outlined" onPress={handleMoveBackToToRead} style={styles.button}>
               Move back to to-read
             </Button>
           )}

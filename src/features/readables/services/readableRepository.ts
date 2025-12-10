@@ -150,6 +150,8 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
     finishedAt: row.finished_at ?? null,
     dnfAt: row.dnf_at ?? null,
     notes: row.notes ?? null,
+    timeCurrentSeconds: row.time_current_seconds ?? null,
+    timeTotalSeconds: row.time_total_seconds ?? null,
   } as const;
 
   if (row.type === 'book') {
@@ -286,6 +288,8 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
     dnf_at: readable.dnfAt ?? null,
     notes: readable.notes ?? null,
     progress_percent: readable.progressPercent ?? 0,
+    time_current_seconds: readable.timeCurrentSeconds ?? null,
+    time_total_seconds: readable.timeTotalSeconds ?? null,
   };
 }
 
@@ -404,7 +408,7 @@ async function insert(
 ): Promise<ReadableItem> {
   const row = buildRowFromNewReadable(readable);
 
-  // 34 columns, 34 values. Must stay in sync with the table definition + migrations.
+  // 36 columns, 36 values. Must stay in sync with the table definition + migrations.
   await runAsync(
     `
     INSERT INTO readables (
@@ -438,12 +442,14 @@ async function insert(
       created_at,
       updated_at,
       progress_percent,
+      time_current_seconds,
+      time_total_seconds,
       started_at,
       finished_at,
       dnf_at,
       notes
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     );
   `,
     [
@@ -477,6 +483,8 @@ async function insert(
       row.created_at,
       row.updated_at,
       row.progress_percent,
+      row.time_current_seconds,
+      row.time_total_seconds,
       row.started_at,
       row.finished_at,
       row.dnf_at,
@@ -548,6 +556,8 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       genres_json = ?,
       mood_tags_json = ?,
       progress_percent = ?,
+      time_current_seconds = ?,
+      time_total_seconds = ?,
       started_at = ?,
       finished_at = ?,
       dnf_at = ?,
@@ -584,6 +594,8 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       row.genres_json,
       row.mood_tags_json,
       row.progress_percent,
+      row.time_current_seconds,
+      row.time_total_seconds,
       row.started_at,
       row.finished_at,
       row.dnf_at,
@@ -754,6 +766,41 @@ async function updateProgressByUnits(args: {
   );
 }
 
+// Time-based progress update: take current/total seconds, derive percent, store percent only.
+async function updateProgressByTime(params: {
+  id: string;
+  currentSeconds: number;
+  totalSeconds: number;
+}): Promise<void> {
+  const { id, currentSeconds, totalSeconds } = params;
+
+  const nowIso = new Date().toISOString();
+
+  let percent = 0;
+
+  const safeTotal = Number.isFinite(totalSeconds) && totalSeconds > 0 ? totalSeconds : 0;
+
+  if (safeTotal > 0 && Number.isFinite(currentSeconds) && currentSeconds > 0) {
+    const clampedCurrent = Math.min(Math.max(currentSeconds, 0), safeTotal);
+    percent = Math.round((clampedCurrent / safeTotal) * 100);
+  }
+
+  // Clamp final percent to [0, 100]
+  if (!Number.isFinite(percent) || percent < 0) percent = 0;
+  if (percent > 100) percent = 100;
+
+  await runAsync(
+    `
+      UPDATE readables
+      SET
+        progress_percent = ?,
+        updated_at = ?
+      WHERE id = ?
+    `,
+    [percent, nowIso, id],
+  );
+}
+
 /**
  * Update notes (review / DNF reasoning) and bump updated_at.
  */
@@ -777,9 +824,10 @@ export const readableRepository = {
   getById,
   insert,
   update,
-  delete: remove,
   updateStatus,
   updateProgress,
   updateProgressByUnits,
+  updateProgressByTime,
   updateNotes,
+  delete: remove,
 };

@@ -168,6 +168,16 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: '009_readables_time_progress',
+    upSql: `
+    ALTER TABLE readables
+    ADD COLUMN time_current_seconds INTEGER;
+
+    ALTER TABLE readables
+    ADD COLUMN time_total_seconds INTEGER;
+  `,
+  },
 ];
 
 interface MigrationMetaRow {

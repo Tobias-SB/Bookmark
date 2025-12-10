@@ -105,6 +105,8 @@ export function mapReadableRowToDomain(row: ReadableRow): ReadableItem {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     progressPercent,
+    timeCurrentSeconds: row.time_current_seconds ?? null,
+    timeTotalSeconds: row.time_total_seconds ?? null,
     startedAt: row.started_at ?? null,
     finishedAt: row.finished_at ?? null,
     dnfAt: row.dnf_at ?? null,
@@ -214,6 +216,8 @@ export function buildReadableRowFromDomain(
     dnf_at: readable.dnfAt ?? null,
     notes: readable.notes ?? null,
     progress_percent: readable.progressPercent ?? 0,
+    time_current_seconds: readable.timeCurrentSeconds ?? null,
+    time_total_seconds: readable.timeTotalSeconds ?? null,
   };
 
   if (readable.type === 'book') {
