@@ -1,4 +1,3 @@
-// src/features/readables/screens/EditReadableScreen.tsx
 import React, { useEffect, useState } from 'react';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
@@ -431,8 +430,9 @@ const EditReadableScreen: React.FC = () => {
 
       if (isEditing && data) {
         const existing = data;
+        const existingType = existing.type; // enforce immutability
 
-        if (values.type === 'book') {
+        if (existingType === 'book') {
           const updatedBook: BookReadable = {
             ...(existing as ReadableItem),
             type: 'book',
@@ -568,6 +568,8 @@ const EditReadableScreen: React.FC = () => {
   const showFinishedField = currentStatus === 'finished';
   const showDnfField = currentStatus === 'DNF';
 
+  const typeLabel = currentType === 'book' ? 'Book' : 'Fanfic';
+
   return (
     <Screen>
       <KeyboardAvoidingView
@@ -579,14 +581,19 @@ const EditReadableScreen: React.FC = () => {
           <Text variant="titleMedium" style={styles.sectionTitle}>
             Type
           </Text>
-          <SegmentedButtons
-            value={currentType}
-            onValueChange={(value) => setValue('type', value as 'book' | 'fanfic')}
-            buttons={[
-              { value: 'book', label: 'Book' },
-              { value: 'fanfic', label: 'Fanfic' },
-            ]}
-          />
+
+          {isEditing ? (
+            <Text>{typeLabel}</Text>
+          ) : (
+            <SegmentedButtons
+              value={currentType}
+              onValueChange={(value) => setValue('type', value as 'book' | 'fanfic')}
+              buttons={[
+                { value: 'book', label: 'Book' },
+                { value: 'fanfic', label: 'Fanfic' },
+              ]}
+            />
+          )}
 
           <ReadableMetadataForm
             type={currentType}
