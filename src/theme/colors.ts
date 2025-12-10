@@ -11,55 +11,70 @@
 
 /**
  * Library Shelves – base palette (no chart colours).
- * Exposed in case we want to reuse these elsewhere.
+ * Exposed in case we want to reuse these elsewhere (e.g. wood panel effects).
+ *
+ * This version is tuned to be darker and cosier:
+ * - Light mode feels like late afternoon in a library.
+ * - Dark mode is deep, warm, and low-glare.
  */
 export const libraryShelvesPalette = {
   light: {
-    primary: '#B8773C', // warm wood accent (polished oak)
-    onPrimary: '#FFF8F0',
-    primaryContainer: '#F0D5B8', // lighter wood highlight
+    primary: '#9C5F33', // darker warm wood accent
+    onPrimary: '#FFF3E2',
+    // slightly lighter than primary, used for filled buttons etc
+    primaryContainer: '#C98149',
 
-    secondary: '#D3A66C', // lighter wood / brass
-    onSecondary: '#301C0B',
-    secondaryContainer: '#E2C79B', // softer brass / label
+    secondary: '#B88446', // muted brass / lighter wood
+    onSecondary: '#2A1607',
+    // softer brass / label tone
+    secondaryContainer: '#D1A460',
 
-    background: '#F5F0E6', // paper / parchment
-    onBackground: '#24160A',
+    background: '#E7D7C3', // dim parchment, cosy
+    onBackground: '#21130A',
 
-    surface: '#EFE4D5', // desk / lighter page
-    onSurface: '#24160A',
+    surface: '#D9C4A7', // desk / card surface
+    onSurface: '#21130A',
 
-    surfaceVariant: '#D7C3A4', // shelf blocks / chips
-    onSurfaceVariant: '#3B2613',
+    surfaceVariant: '#C6A47D', // shelf panels / chips
+    onSurfaceVariant: '#301A0B',
 
-    outline: '#8A6A43',
+    outline: '#7A5B37',
 
-    error: '#BA1A1A',
+    error: '#B3261E',
     onError: '#FFFFFF',
+
+    // Optional extra wood tokens for custom styling (not part of MD3 colors)
+    woodHighlight: '#C28A51',
+    woodShadow: '#5A3A21',
   },
 
   dark: {
-    primary: '#E6B27A', // candlelit highlight on wood
-    onPrimary: '#311707',
-    primaryContainer: '#5A3415', // deep wood block
+    primary: '#D89D67', // warm highlight on dark wood
+    onPrimary: '#301506',
+    // deep wood container behind primary accents
+    primaryContainer: '#5F3417',
 
-    secondary: '#CFA86A',
-    onSecondary: '#221307',
-    secondaryContainer: '#4D3518', // warm dark brass
+    secondary: '#C2935C',
+    onSecondary: '#221106',
+    secondaryContainer: '#4C2A12',
 
-    background: '#120E0A', // deep library at night
-    onBackground: '#EADFCC',
+    background: '#0D0906', // deep cosy library
+    onBackground: '#E6D8C7',
 
-    surface: '#1C1712', // table / card surface
-    onSurface: '#F2E6D4',
+    surface: '#17100B', // card / panel
+    onSurface: '#F0E2CF',
 
-    surfaceVariant: '#3B2A18', // shelf blocks / chips
-    onSurfaceVariant: '#F0E0C8',
+    surfaceVariant: '#3A2615', // shelf / blocks
+    onSurfaceVariant: '#F1DFC8',
 
-    outline: '#9D825A',
+    outline: '#9A7A4E',
 
-    error: '#FFB4AB',
-    onError: '#410002',
+    error: '#F2B8B5',
+    onError: '#3B0908',
+
+    // Extra wood helpers
+    woodHighlight: '#A87444',
+    woodShadow: '#3A2314',
   },
 };
 
@@ -254,6 +269,9 @@ export const colors = {
   /**
    * Library Shelves – warm wood/paper theme.
    * Light & dark palettes plus a shared chart palette.
+   *
+   * Note: includes extra non-MD3 tokens (woodHighlight, woodShadow),
+   * which you can use directly from `libraryShelvesPalette` or here.
    */
   libraryShelves: {
     light: {
