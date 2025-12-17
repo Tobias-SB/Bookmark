@@ -1,7 +1,7 @@
-// src/features/readables/services/ao3MetadataService.ts
 import cheerio from 'react-native-cheerio';
 import type { Ao3Rating } from '../types';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
+import { Ao3ApiError, fetchAo3WorkHtml } from '@src/services/api/ao3Api';
 
 export interface Ao3WorkMetadata {
   title: string | null;
@@ -29,11 +29,6 @@ export interface Ao3WorkMetadata {
 
 export function extractAo3WorkId(url: string): string | null {
   return extractAo3WorkIdFromUrl(url);
-}
-
-function buildCanonicalAo3WorkUrl(workId: string): string {
-  // view_adult=true avoids the interstitial for adult works
-  return `https://archiveofourown.org/works/${workId}?view_adult=true`;
 }
 
 function mapRatingTextToCode(text: string | null): Ao3Rating | null {
@@ -84,13 +79,11 @@ function parseChapters(chaptersText: string | null): {
     const current = parseIntOrNull(currentRaw);
     const total = totalRaw === '?' ? null : parseIntOrNull(totalRaw);
 
-    // If we at least know how many chapters are currently published, keep that.
     if (current != null) {
       const isComplete = total != null ? current === total : null;
       return { chapterCount: current, complete: isComplete };
     }
 
-    // Fallback: couldn't parse current, but maybe we know a total.
     if (total != null) {
       return { chapterCount: total, complete: null };
     }
@@ -98,7 +91,6 @@ function parseChapters(chaptersText: string | null): {
     return { chapterCount: null, complete: null };
   }
 
-  // Weird/legacy case: just a single number like "21"
   const single = parseIntOrNull(raw);
   return {
     chapterCount: single,
@@ -115,32 +107,24 @@ function detectLockedWork($: any): boolean {
   return maybeLocked.length > 0;
 }
 
-export async function fetchAo3Metadata(rawUrl: string): Promise<Ao3WorkMetadata> {
-  const workId = extractAo3WorkId(rawUrl);
-  if (!workId) {
-    throw new Error('Invalid AO3 work URL');
-  }
-
-  const url = buildCanonicalAo3WorkUrl(workId);
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'User-Agent': 'BookmarkApp/1.0 (personal reading tracker)',
-    },
+function mapLockedToAo3ApiError(): Ao3ApiError {
+  return new Ao3ApiError({
+    kind: 'LOCKED',
+    message:
+      'This work is locked on AO3 and can only be viewed when logged in. Metadata cannot be fetched automatically.',
   });
+}
 
-  if (!response.ok) {
-    throw new Error(`Failed to load AO3 work page (status ${response.status})`);
-  }
+export async function fetchAo3Metadata(rawUrl: string): Promise<Ao3WorkMetadata> {
+  // Keep existing semantics: invalid URL should throw, locked should throw.
+  // But now the network is routed through src/services/api/ao3Api.ts for architectural consistency.
 
-  const html = await response.text();
+  const { html } = await fetchAo3WorkHtml(rawUrl);
+
   const $ = cheerio.load(html);
 
   if (detectLockedWork($)) {
-    throw new Error(
-      'This work is locked on AO3 and can only be viewed when logged in. Metadata cannot be fetched automatically.',
-    );
+    throw mapLockedToAo3ApiError();
   }
 
   const title = $('h2.title').first().text().trim() || null;
@@ -175,13 +159,6 @@ export async function fetchAo3Metadata(rawUrl: string): Promise<Ao3WorkMetadata>
   const chaptersText = $('dd.chapters').first().text().trim() || null;
   const { chapterCount, complete } = parseChapters(chaptersText);
 
-  // AO3 "Summary" block:
-  // <div class="summary module">
-  //   <h3>Summary:</h3>
-  //   <blockquote class="userstuff">
-  //     <p>...</p>
-  //   </blockquote>
-  // </div>
   const summaryText = $('div.summary.module blockquote.userstuff').first().text().trim() || null;
 
   return {

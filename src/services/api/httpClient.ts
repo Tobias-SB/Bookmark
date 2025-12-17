@@ -1,5 +1,3 @@
-// src/services/api/httpClient.ts
-
 export interface HttpResponse<T> {
   data: T;
 }
@@ -69,6 +67,34 @@ function mergeAbortSignals(parent?: AbortSignal, timeoutMs?: number) {
   return { signal: controller.signal, cleanup };
 }
 
+function mapFetchErrorToHttpClientError(
+  cause: unknown,
+  url: string,
+  timeoutMs?: number,
+): HttpClientError {
+  // Abort / timeout show up as AbortError in fetch implementations
+  if (
+    cause &&
+    typeof cause === 'object' &&
+    'name' in cause &&
+    (cause as any).name === 'AbortError'
+  ) {
+    const kind: HttpClientErrorKind = timeoutMs ? 'TIMEOUT' : 'ABORTED';
+    return new HttpClientError({
+      kind,
+      message:
+        kind === 'TIMEOUT' ? `Request timed out for GET ${url}` : `Request aborted for GET ${url}`,
+      cause,
+    });
+  }
+
+  return new HttpClientError({
+    kind: 'NETWORK',
+    message: `Network error for GET ${url}`,
+    cause,
+  });
+}
+
 /**
  * Real HTTP GET for JSON APIs.
  * Screens must never call fetch() directly — only this http client.
@@ -113,32 +139,52 @@ export async function httpGetJson<T>(
     }
   } catch (cause: unknown) {
     if (cause instanceof HttpClientError) throw cause;
+    throw mapFetchErrorToHttpClientError(cause, url, options?.timeoutMs);
+  } finally {
+    cleanup();
+  }
+}
 
-    // Abort / timeout show up as AbortError in fetch implementations
-    if (
-      cause &&
-      typeof cause === 'object' &&
-      'name' in cause &&
-      (cause as any).name === 'AbortError'
-    ) {
-      // We can't perfectly distinguish “user abort” vs “timeout abort” here without extra bookkeeping;
-      // we treat it as TIMEOUT if a timeout was requested, otherwise ABORTED.
-      const kind: HttpClientErrorKind = options?.timeoutMs ? 'TIMEOUT' : 'ABORTED';
+/**
+ * Real HTTP GET for text/HTML.
+ * Used for scraping pages like AO3 (until/unless you introduce a proxy).
+ */
+export async function httpGetText(
+  url: string,
+  options?: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    headers?: Record<string, string>;
+  },
+): Promise<{ status: number; text: string }> {
+  const { signal, cleanup } = mergeAbortSignals(options?.signal, options?.timeoutMs ?? 12_000);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      signal,
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ...(options?.headers ?? {}),
+      },
+    });
+
+    const status = res.status;
+
+    const text = await res.text();
+
+    if (!res.ok) {
       throw new HttpClientError({
-        kind,
-        message:
-          kind === 'TIMEOUT'
-            ? `Request timed out for GET ${url}`
-            : `Request aborted for GET ${url}`,
-        cause,
+        kind: 'HTTP',
+        statusCode: status,
+        message: `HTTP ${status} for GET ${url}`,
       });
     }
 
-    throw new HttpClientError({
-      kind: 'NETWORK',
-      message: `Network error for GET ${url}`,
-      cause,
-    });
+    return { status, text };
+  } catch (cause: unknown) {
+    if (cause instanceof HttpClientError) throw cause;
+    throw mapFetchErrorToHttpClientError(cause, url, options?.timeoutMs);
   } finally {
     cleanup();
   }
