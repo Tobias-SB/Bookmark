@@ -1,5 +1,4 @@
-// src/features/readables/services/readableMapper.ts
-import type { ReadableRow } from '../../../db/schema/readables.schema';
+import type { ReadableRow, ProgressMode } from '../../../db/schema/readables.schema';
 import type { BookReadable, FanficReadable, ReadableItem, BookSource, Ao3Rating } from '../types';
 import type { MoodTag } from '../../../db/schema/moods.schema';
 
@@ -24,22 +23,15 @@ function parseMoodTags(value: string | null): MoodTag[] {
   return parseJsonArray<MoodTag>(value);
 }
 
+function normaliseProgressMode(value: unknown): ProgressMode {
+  if (value === 'units' || value === 'time' || value === 'percent') {
+    return value;
+  }
+  return 'units';
+}
+
 /**
- * Normalise chapter fields from a DB row into AO3-style semantics:
- *
- * - availableChapters: chapters currently posted (left side of "X/Y")
- * - totalChapters: planned total chapters (right side), or null when unknown/"?"
- * - chapterCount: legacy "total chapters" (kept for backwards compatibility)
- *
- * Rules (in order):
- * 1. If we have explicit available/total, trust them.
- * 2. If neither available nor total is set but chapter_count is:
- *    - if complete: treat as X/X
- *    - else: treat as X/? (available only)
- * 3. If total is set but available is not:
- *    - if complete: available = total (X/X)
- *    - else if chapter_count == total: treat as X/? (new AO3 parser stored "current" in both)
- *    - else: treat as ?/total (we only know total)
+ * Normalise chapter fields from a DB row into AO3-style semantics.
  */
 function normaliseFanficChapterDataFromRow(row: ReadableRow): {
   chapterCount: number | null;
@@ -54,7 +46,6 @@ function normaliseFanficChapterDataFromRow(row: ReadableRow): {
   let available: number | null = row.available_chapters;
   let total: number | null = row.total_chapters;
 
-  // Case 1: no explicit available/total, but we have a legacy count
   if (available == null && total == null && legacyCount != null) {
     if (isComplete) {
       available = legacyCount;
@@ -63,19 +54,13 @@ function normaliseFanficChapterDataFromRow(row: ReadableRow): {
       available = legacyCount;
       total = null;
     }
-  }
-  // Case 2: total set, available missing
-  else if (available == null && total != null) {
+  } else if (available == null && total != null) {
     if (isComplete) {
-      // Completed work, total is definitive → X/X
       available = total;
     } else if (legacyCount != null && total === legacyCount) {
-      // New AO3 behaviour: parser gave us "current" only, and older writer
-      // stored it into both chapter_count and total_chapters. Interpret as X/?.
       available = legacyCount;
       total = null;
     }
-    // Else: ambiguous older data: we only know total → ?/total
   }
 
   const currentChapter = row.current_chapter ?? null;
@@ -105,6 +90,7 @@ export function mapReadableRowToDomain(row: ReadableRow): ReadableItem {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     progressPercent,
+    progressMode: normaliseProgressMode(row.progress_mode),
     timeCurrentSeconds: row.time_current_seconds ?? null,
     timeTotalSeconds: row.time_total_seconds ?? null,
     startedAt: row.started_at ?? null,
@@ -128,14 +114,12 @@ export function mapReadableRowToDomain(row: ReadableRow): ReadableItem {
     return book;
   }
 
-  // fanfic
   const fandoms: string[] = parseJsonArray<string>(row.fandoms_json);
   const relationships: string[] = parseJsonArray<string>(row.relationships_json);
   const characters: string[] = parseJsonArray<string>(row.characters_json);
   const ao3Tags: string[] = parseJsonArray<string>(row.ao3_tags_json);
   const warnings: string[] = parseJsonArray<string>(row.warnings_json);
 
-  // DB stores rating as string | null, we trust it's one of the Ao3Rating values.
   const rating = (row.rating as Ao3Rating | null) ?? null;
 
   const { chapterCount, availableChapters, totalChapters, complete, currentChapter } =
@@ -168,14 +152,6 @@ interface BuildRowOptions {
   now?: string;
 }
 
-/**
- * Build a ReadableRow ready for INSERT/UPDATE from a domain model.
- *
- * For fanfic:
- * - availableChapters: chapters currently posted
- * - totalChapters: planned total, null when unknown
- * - chapterCount: legacy single-number field kept mainly for backwards compatibility
- */
 export function buildReadableRowFromDomain(
   readable: ReadableItem,
   options: BuildRowOptions = {},
@@ -218,6 +194,7 @@ export function buildReadableRowFromDomain(
     progress_percent: readable.progressPercent ?? 0,
     time_current_seconds: readable.timeCurrentSeconds ?? null,
     time_total_seconds: readable.timeTotalSeconds ?? null,
+    progress_mode: readable.progressMode ?? 'units',
   };
 
   if (readable.type === 'book') {
@@ -240,7 +217,6 @@ export function buildReadableRowFromDomain(
   let total: number | null = fanfic.totalChapters ?? null;
   const isComplete = fanfic.complete ?? null;
 
-  // If we only have a single legacy number, interpret it based on completeness.
   if (available == null && total == null && legacyCount != null) {
     if (isComplete) {
       available = legacyCount;
@@ -250,7 +226,6 @@ export function buildReadableRowFromDomain(
       total = null;
     }
   } else if (available != null && total == null && isComplete) {
-    // Complete but only "available" specified → treat as X/X
     total = available;
   }
 

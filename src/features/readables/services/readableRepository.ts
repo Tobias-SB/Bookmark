@@ -1,4 +1,3 @@
-// src/features/readables/services/readableRepository.ts
 import { getAllAsync, getFirstAsync, runAsync } from '@src/db/sqlite';
 import type {
   ReadableItem,
@@ -7,6 +6,7 @@ import type {
   ReadableStatus,
   Ao3Rating,
   ReadableType,
+  ProgressMode,
 } from '../types';
 import type { MoodTag } from '@src/features/moods/types';
 import type { ReadableRow } from '@src/db/schema/readables.schema';
@@ -16,6 +16,11 @@ import type { ReadableRow } from '@src/db/schema/readables.schema';
  */
 function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normaliseProgressMode(value: unknown): ProgressMode {
+  if (value === 'units' || value === 'time' || value === 'percent') return value;
+  return 'units';
 }
 
 /**
@@ -47,9 +52,6 @@ interface CreatedAtRecalculationInput {
 
 /**
  * Ensure createdAt is never later than any of the reading dates.
- * - If there are backdated started/finished/dnf dates, createdAt
- *   becomes the earliest of them (or stays as-is if it's already earlier).
- * - If nothing is set, falls back to "now".
  */
 function computeCreatedAt({
   existingCreatedAt,
@@ -68,13 +70,11 @@ function computeCreatedAt({
     return earliest;
   }
 
-  // Fallback: nothing to go on, use now.
   return new Date().toISOString();
 }
 
 /**
- * Normalise chapter fields from a DB row into AO3-style semantics.
- * This mirrors the logic in readableRowMapper so everything stays consistent.
+ * Normalise fanfic chapter fields from a DB row into AO3-style semantics.
  */
 function normaliseFanficChapterDataFromRow(row: ReadableRow): {
   chapterCount: number | null;
@@ -89,7 +89,6 @@ function normaliseFanficChapterDataFromRow(row: ReadableRow): {
   let available: number | null = row.available_chapters;
   let total: number | null = row.total_chapters;
 
-  // Case 1: no explicit available/total, but we have a legacy count
   if (available == null && total == null && legacyCount != null) {
     if (isComplete) {
       available = legacyCount;
@@ -98,19 +97,13 @@ function normaliseFanficChapterDataFromRow(row: ReadableRow): {
       available = legacyCount;
       total = null;
     }
-  }
-  // Case 2: total set, available missing
-  else if (available == null && total != null) {
+  } else if (available == null && total != null) {
     if (isComplete) {
-      // Completed work, total is definitive → X/X
       available = total;
     } else if (legacyCount != null && total === legacyCount) {
-      // New AO3 behaviour: parser gave us "current" only, and older writer
-      // stored it into both chapter_count and total_chapters. Interpret as X/?.
       available = legacyCount;
       total = null;
     }
-    // Else: ambiguous older data: we only know total → ?/total
   }
 
   const currentChapter = row.current_chapter ?? null;
@@ -143,6 +136,7 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
     status: row.status,
     priority: row.priority,
     progressPercent,
+    progressMode: normaliseProgressMode((row as any).progress_mode),
     moodTags,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -170,7 +164,6 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
     return book;
   }
 
-  // fanfic
   const fandoms: string[] = row.fandoms_json ? (JSON.parse(row.fandoms_json) as string[]) : [];
   const relationships: string[] = row.relationships_json
     ? (JSON.parse(row.relationships_json) as string[])
@@ -181,7 +174,6 @@ function mapRowToReadable(row: ReadableRow): ReadableItem {
   const ao3Tags: string[] = row.ao3_tags_json ? (JSON.parse(row.ao3_tags_json) as string[]) : [];
   const warnings: string[] = row.warnings_json ? (JSON.parse(row.warnings_json) as string[]) : [];
 
-  // DB stores rating as string | null, we trust it's one of the Ao3Rating values.
   const rating = (row.rating as Ao3Rating | null) ?? null;
 
   const { chapterCount, availableChapters, totalChapters, complete, currentChapter } =
@@ -232,7 +224,6 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
     let total: number | null = fanfic.totalChapters ?? null;
     const complete = fanfic.complete ?? null;
 
-    // If we only have a single legacy number, interpret it based on completeness.
     if (available == null && total == null && legacyCount != null) {
       if (complete) {
         available = legacyCount;
@@ -242,7 +233,6 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
         total = null;
       }
     } else if (available != null && total == null && complete) {
-      // Complete but only "available" specified → treat as X/X
       total = available;
     }
 
@@ -290,6 +280,7 @@ function buildRowFromReadable(readable: ReadableItem): ReadableRow {
     progress_percent: readable.progressPercent ?? 0,
     time_current_seconds: readable.timeCurrentSeconds ?? null,
     time_total_seconds: readable.timeTotalSeconds ?? null,
+    progress_mode: readable.progressMode ?? 'units',
   };
 }
 
@@ -301,7 +292,6 @@ function buildRowFromNewReadable(
 ): ReadableRow {
   const now = new Date().toISOString();
 
-  // Respect any explicit dates coming in; otherwise derive from status.
   let startedAt: string | null = readable.startedAt ?? null;
   let finishedAt: string | null = readable.finishedAt ?? null;
   let dnfAt: string | null = readable.dnfAt ?? null;
@@ -316,13 +306,12 @@ function buildRowFromNewReadable(
     case 'DNF':
       if (!dnfAt) dnfAt = now;
       break;
-    case 'to-read':
     default:
       break;
   }
 
   const createdAt = computeCreatedAt({
-    existingCreatedAt: now, // baseline "added now", pulled back if dates are earlier
+    existingCreatedAt: now,
     startedAt,
     finishedAt,
     dnfAt,
@@ -336,13 +325,12 @@ function buildRowFromNewReadable(
     startedAt,
     finishedAt,
     dnfAt,
+    progressMode: readable.progressMode ?? 'units',
   };
+
   return buildRowFromReadable(withMeta);
 }
 
-/**
- * Items still in the queue (to-read only), ordered by priority and recency.
- */
 async function getAllToRead(): Promise<ReadableItem[]> {
   const rows = await getAllAsync<ReadableRow>(
     `
@@ -357,9 +345,6 @@ async function getAllToRead(): Promise<ReadableItem[]> {
   return rows.map(mapRowToReadable);
 }
 
-/**
- * All readables, regardless of status.
- */
 async function getAll(): Promise<ReadableItem[]> {
   const rows = await getAllAsync<ReadableRow>(
     `
@@ -372,9 +357,6 @@ async function getAll(): Promise<ReadableItem[]> {
   return rows.map(mapRowToReadable);
 }
 
-/**
- * Only finished readables, newest completions first.
- */
 async function getAllFinished(): Promise<ReadableItem[]> {
   const rows = await getAllAsync<ReadableRow>(
     `
@@ -408,7 +390,7 @@ async function insert(
 ): Promise<ReadableItem> {
   const row = buildRowFromNewReadable(readable);
 
-  // 36 columns, 36 values. Must stay in sync with the table definition + migrations.
+  // 37 columns, 37 values.
   await runAsync(
     `
     INSERT INTO readables (
@@ -444,12 +426,13 @@ async function insert(
       progress_percent,
       time_current_seconds,
       time_total_seconds,
+      progress_mode,
       started_at,
       finished_at,
       dnf_at,
       notes
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     );
   `,
     [
@@ -485,6 +468,7 @@ async function insert(
       row.progress_percent,
       row.time_current_seconds,
       row.time_total_seconds,
+      row.progress_mode,
       row.started_at,
       row.finished_at,
       row.dnf_at,
@@ -503,7 +487,6 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
 
   const now = new Date().toISOString();
 
-  // Caller sends a full object with updated fields.
   const merged: ReadableItem = {
     ...existing,
     ...readable,
@@ -558,6 +541,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       progress_percent = ?,
       time_current_seconds = ?,
       time_total_seconds = ?,
+      progress_mode = ?,
       started_at = ?,
       finished_at = ?,
       dnf_at = ?,
@@ -596,6 +580,7 @@ async function update(readable: ReadableItem): Promise<ReadableItem> {
       row.progress_percent,
       row.time_current_seconds,
       row.time_total_seconds,
+      row.progress_mode,
       row.started_at,
       row.finished_at,
       row.dnf_at,
@@ -620,14 +605,7 @@ async function remove(id: string): Promise<void> {
 }
 
 /**
- * Simple status update helper, also bumps updated_at.
- * When you mark as finished, this timestamp becomes your "finished at" date.
- *
- * Semantics:
- * - finished: also sets progress_percent = 100 and finished_at (if not already set)
- * - reading: sets started_at if not already set
- * - DNF: sets dnf_at if not already set
- * - to-read: leaves timestamps as-is (we preserve history)
+ * Status update helper, also bumps updated_at.
  */
 async function updateStatus(id: string, status: ReadableStatus): Promise<void> {
   const now = new Date().toISOString();
@@ -644,24 +622,16 @@ async function updateStatus(id: string, status: ReadableStatus): Promise<void> {
 
   switch (status) {
     case 'reading':
-      if (!startedAt) {
-        startedAt = now;
-      }
+      if (!startedAt) startedAt = now;
       break;
     case 'finished':
       progressPercent = 100;
-      if (!finishedAt) {
-        finishedAt = now;
-      }
+      if (!finishedAt) finishedAt = now;
       break;
     case 'DNF':
-      if (!dnfAt) {
-        dnfAt = now;
-      }
+      if (!dnfAt) dnfAt = now;
       break;
-    case 'to-read':
     default:
-      // leave timestamps + progress as-is
       break;
   }
 
@@ -682,8 +652,24 @@ async function updateStatus(id: string, status: ReadableStatus): Promise<void> {
 }
 
 /**
- * Legacy: update reading progress (0–100) directly and bump updated_at.
- * Kept for callers that still think in percentages.
+ * Update progress mode and bump updated_at.
+ */
+async function updateProgressMode(id: string, progressMode: ProgressMode): Promise<void> {
+  const now = new Date().toISOString();
+  const mode = normaliseProgressMode(progressMode);
+
+  await runAsync(
+    `
+    UPDATE readables
+    SET progress_mode = ?, updated_at = ?
+    WHERE id = ?;
+  `,
+    [mode, now, id],
+  );
+}
+
+/**
+ * Update reading progress (0–100) directly and bump updated_at.
  */
 async function updateProgress(id: string, progressPercent: number): Promise<void> {
   const clamped = Math.min(100, Math.max(0, Math.round(progressPercent)));
@@ -696,6 +682,63 @@ async function updateProgress(id: string, progressPercent: number): Promise<void
     WHERE id = ?;
   `,
     [clamped, now, id],
+  );
+}
+
+/**
+ * Set book total pages (used when missing and user provides it from progress UI).
+ * This does NOT change current_page; it only sets the total.
+ */
+async function setBookPageCount(id: string, pageCount: number): Promise<void> {
+  const now = new Date().toISOString();
+  const value = Number.isFinite(pageCount) ? Math.max(1, Math.round(pageCount)) : 1;
+
+  await runAsync(
+    `
+    UPDATE readables
+    SET page_count = ?, updated_at = ?
+    WHERE id = ?;
+  `,
+    [value, now, id],
+  );
+}
+
+/**
+ * Set fanfic total chapters (used when missing and user provides it from progress UI).
+ */
+async function setFanficTotalChapters(id: string, totalChapters: number): Promise<void> {
+  const now = new Date().toISOString();
+  const value = Number.isFinite(totalChapters) ? Math.max(1, Math.round(totalChapters)) : 1;
+
+  await runAsync(
+    `
+    UPDATE readables
+    SET total_chapters = ?, updated_at = ?
+    WHERE id = ?;
+  `,
+    [value, now, id],
+  );
+}
+
+/**
+ * Set total time seconds (editable in EditReadableScreen).
+ */
+async function setTimeTotalSeconds(id: string, totalSeconds: number | null): Promise<void> {
+  const now = new Date().toISOString();
+
+  let value: number | null = null;
+  if (totalSeconds != null) {
+    const n = Number.isFinite(totalSeconds) ? Math.max(1, Math.round(totalSeconds)) : null;
+    value = n;
+  }
+
+  await runAsync(
+    `
+    UPDATE readables
+    SET time_total_seconds = ?, updated_at = ?
+    WHERE id = ?;
+  `,
+    [value, now, id],
   );
 }
 
@@ -712,7 +755,6 @@ async function updateProgressByUnits(args: {
 
   const value = Number.isFinite(args.currentUnit) ? Math.max(0, Math.round(args.currentUnit)) : 0;
 
-  // ---- Books: page-based progress ----
   if (args.type === 'book') {
     const book = existing as BookReadable;
     const totalPages = book.pageCount ?? null;
@@ -720,7 +762,7 @@ async function updateProgressByUnits(args: {
 
     let progressPercent = book.progressPercent ?? 0;
 
-    if (totalPages != null && totalPages > 0 && clampedPage >= 0) {
+    if (totalPages != null && totalPages > 0) {
       progressPercent = Math.max(0, Math.min(100, Math.round((clampedPage / totalPages) * 100)));
     }
 
@@ -735,7 +777,6 @@ async function updateProgressByUnits(args: {
     return;
   }
 
-  // ---- Fanfic: chapter-based progress ----
   const fanfic = existing as FanficReadable;
 
   const denominator =
@@ -766,38 +807,62 @@ async function updateProgressByUnits(args: {
   );
 }
 
-// Time-based progress update: take current/total seconds, derive percent, store percent only.
+/**
+ * Fully persistent time progress update.
+ * - Always stores time_current_seconds
+ * - Stores time_total_seconds only if provided AND (existing total is null OR payload explicitly says to overwrite via Edit screen using setTimeTotalSeconds)
+ * - Updates progress_percent if total exists and > 0
+ */
 async function updateProgressByTime(params: {
   id: string;
   currentSeconds: number;
-  totalSeconds: number;
+  totalSeconds?: number | null;
 }): Promise<void> {
-  const { id, currentSeconds, totalSeconds } = params;
+  const now = new Date().toISOString();
 
-  const nowIso = new Date().toISOString();
-
-  let percent = 0;
-
-  const safeTotal = Number.isFinite(totalSeconds) && totalSeconds > 0 ? totalSeconds : 0;
-
-  if (safeTotal > 0 && Number.isFinite(currentSeconds) && currentSeconds > 0) {
-    const clampedCurrent = Math.min(Math.max(currentSeconds, 0), safeTotal);
-    percent = Math.round((clampedCurrent / safeTotal) * 100);
+  const existing = await getById(params.id);
+  if (!existing) {
+    throw new Error(`Readable with id ${params.id} not found`);
   }
 
-  // Clamp final percent to [0, 100]
-  if (!Number.isFinite(percent) || percent < 0) percent = 0;
-  if (percent > 100) percent = 100;
+  const currentRaw = Number.isFinite(params.currentSeconds)
+    ? Math.max(0, Math.round(params.currentSeconds))
+    : 0;
+
+  const existingTotal = existing.timeTotalSeconds ?? null;
+
+  // In the progress editor, total is only editable if missing, so we respect that:
+  // if existing total exists -> ignore payload total
+  // if missing -> accept provided total
+  let finalTotal: number | null = existingTotal;
+
+  if (finalTotal == null && params.totalSeconds != null) {
+    const n = Number.isFinite(params.totalSeconds)
+      ? Math.max(1, Math.round(params.totalSeconds))
+      : null;
+    finalTotal = n;
+  }
+
+  const clampedCurrent =
+    finalTotal != null && finalTotal > 0 ? Math.min(currentRaw, finalTotal) : currentRaw;
+
+  let percent = existing.progressPercent ?? 0;
+  if (finalTotal != null && finalTotal > 0) {
+    percent = Math.round((clampedCurrent / finalTotal) * 100);
+    percent = Math.max(0, Math.min(100, percent));
+  }
 
   await runAsync(
     `
-      UPDATE readables
-      SET
-        progress_percent = ?,
-        updated_at = ?
-      WHERE id = ?
-    `,
-    [percent, nowIso, id],
+    UPDATE readables
+    SET
+      time_current_seconds = ?,
+      time_total_seconds = ?,
+      progress_percent = ?,
+      updated_at = ?
+    WHERE id = ?;
+  `,
+    [clampedCurrent, finalTotal, percent, now, params.id],
   );
 }
 
@@ -825,9 +890,13 @@ export const readableRepository = {
   insert,
   update,
   updateStatus,
+  updateProgressMode,
   updateProgress,
   updateProgressByUnits,
   updateProgressByTime,
+  setBookPageCount,
+  setFanficTotalChapters,
+  setTimeTotalSeconds,
   updateNotes,
   delete: remove,
 };

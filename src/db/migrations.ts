@@ -178,6 +178,13 @@ const MIGRATIONS: Migration[] = [
     ADD COLUMN time_total_seconds INTEGER;
   `,
   },
+  {
+    id: '010_readables_progress_mode',
+    upSql: `
+      ALTER TABLE readables
+      ADD COLUMN progress_mode TEXT NOT NULL DEFAULT 'units';
+    `,
+  },
 ];
 
 interface MigrationMetaRow {
@@ -215,7 +222,6 @@ export async function runMigrations(): Promise<void> {
 
   for (const migration of MIGRATIONS) {
     if (appliedIds.has(migration.id)) {
-      // Already applied, skip
       continue;
     }
 

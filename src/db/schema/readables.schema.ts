@@ -1,6 +1,8 @@
 export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'DNF';
 export type ReadableType = 'book' | 'fanfic';
 
+export type ProgressMode = 'units' | 'time' | 'percent';
+
 export interface ReadableRow {
   id: string;
   type: ReadableType;
@@ -16,7 +18,7 @@ export interface ReadableRow {
 
   // Book-specific
   page_count: number | null;
-  current_page: number | null; // NEW: current page position
+  current_page: number | null; // current page position
 
   // Fanfic-specific fields (nullable for books)
   ao3_work_id: string | null;
@@ -34,7 +36,7 @@ export interface ReadableRow {
    */
   chapter_count: number | null;
 
-  // NEW: AO3-style chapter metadata
+  // AO3-style chapter metadata
   current_chapter: number | null;
   available_chapters: number | null;
   total_chapters: number | null;
@@ -59,6 +61,9 @@ export interface ReadableRow {
   // Time-based progress (for audiobooks / Kindle time)
   time_current_seconds: number | null;
   time_total_seconds: number | null;
+
+  // User preferred progress logging / display mode
+  progress_mode: ProgressMode;
 
   // Progress in percent (0–100)
   progress_percent: number;
