@@ -1,5 +1,3 @@
-// src/features/readables/screens/QuickAddReadableScreen.tsx
-
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Button, HelperText, SegmentedButtons, TextInput, Text } from 'react-native-paper';
@@ -8,11 +6,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
 
 import Screen from '@src/components/common/Screen';
-import type { RootStackParamList } from '@src/navigation/types';
+import type { RootStackParamList, BookMetadataCandidateNav } from '@src/navigation/types';
 import type { BookReadable, FanficReadable, ReadableStatus, ReadableType } from '../types';
 import { readableRepository } from '../services/readableRepository';
 import { fetchAo3Metadata } from '../services/ao3MetadataService';
-import { fetchBookMetadata, type BookSearchMode } from '../services/bookMetadataService';
+import { searchBookMetadataCandidates, type BookSearchMode } from '../services/bookMetadataService';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
 import { type MoodTag } from '@src/features/moods/types';
 import MoodTagSelector from '@src/features/moods/components/MoodTagSelector';
@@ -27,11 +25,47 @@ interface FormState {
   priority: string; // keep as string for TextInput
   ao3Url: string;
   moodTags: MoodTag[];
-
   bookSearchMode: BookSearchMode;
 }
 
 const DEFAULT_STATUS: ReadableStatus = 'to-read';
+
+function authorsToString(authors: string[]) {
+  const cleaned = authors.map((a) => a.trim()).filter(Boolean);
+  return cleaned.join(', ');
+}
+
+function toNavCandidates(
+  candidates: Array<{
+    id: string;
+    score: number;
+    titleScore: number;
+    authorScore: number;
+    metadata: {
+      title: string | null;
+      authors: string[];
+      pageCount: number | null;
+      genres: string[];
+      description: string | null;
+      coverUrl: string | null;
+    };
+  }>,
+): BookMetadataCandidateNav[] {
+  return candidates.map((c) => ({
+    id: c.id,
+    score: c.score,
+    titleScore: c.titleScore,
+    authorScore: c.authorScore,
+    metadata: {
+      title: c.metadata.title ?? null,
+      authors: Array.isArray(c.metadata.authors) ? c.metadata.authors : [],
+      pageCount: c.metadata.pageCount ?? null,
+      genres: Array.isArray(c.metadata.genres) ? c.metadata.genres : [],
+      description: c.metadata.description ?? null,
+      coverUrl: c.metadata.coverUrl ?? null,
+    },
+  }));
+}
 
 const QuickAddReadableScreen: React.FC = () => {
   const navigation = useNavigation<Navigation>();
@@ -145,13 +179,7 @@ const QuickAddReadableScreen: React.FC = () => {
 
     Alert.alert('Could not fetch book details', message, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Try again',
-        onPress: () => {
-          // Simply dismissing the dialog; user can tap Add again.
-          // (If you want true 1-tap retry, we can store a lastSubmit ref and invoke handleSubmit.)
-        },
-      },
+      { text: 'Try again' },
       {
         text: 'Add manually',
         onPress: () => {
@@ -173,6 +201,36 @@ const QuickAddReadableScreen: React.FC = () => {
     ]);
   }
 
+  async function insertBookFromMetadata(priority: number, moodTags: MoodTag[], meta: any) {
+    const authorString =
+      meta?.authors && Array.isArray(meta.authors) && meta.authors.length > 0
+        ? authorsToString(meta.authors)
+        : form.author.trim();
+
+    const book: Omit<BookReadable, 'id' | 'createdAt' | 'updatedAt'> = {
+      type: 'book',
+      title: meta?.title ?? form.title.trim(),
+      author: authorString,
+      description: meta?.description ?? null,
+      status: DEFAULT_STATUS,
+      priority,
+      progressPercent: 0,
+      moodTags,
+      source: 'manual',
+      sourceId: null,
+      pageCount: meta?.pageCount ?? null,
+      genres: meta?.genres ?? [],
+      progressMode: 'units',
+    };
+
+    const inserted = await readableRepository.insert(book);
+
+    await queryClient.invalidateQueries({ queryKey: ['readables'] });
+    await queryClient.invalidateQueries({ queryKey: ['stats'] });
+
+    navigation.replace('ReadableDetail', { id: inserted.id });
+  }
+
   async function handleSubmit() {
     if (!canSubmit || submitting) return;
 
@@ -184,57 +242,55 @@ const QuickAddReadableScreen: React.FC = () => {
 
     try {
       if (isBook) {
-        let metadata: Awaited<ReturnType<typeof fetchBookMetadata>> | null = null;
-        let metadataNotImplemented = false;
-
         try {
-          metadata = await fetchBookMetadata(form.title.trim(), form.author.trim(), {
-            mode: form.bookSearchMode,
-          });
-        } catch (err: unknown) {
-          if (err instanceof BooksApiError && err.kind === 'NOT_IMPLEMENTED') {
-            metadataNotImplemented = true;
-          } else if (err instanceof BooksApiError) {
-            showBookLookupErrorDialog(priority, moodTags, err.kind);
-            setSubmitting(false);
-            return;
-          } else {
-            showBookLookupErrorDialog(priority, moodTags, 'UNKNOWN');
+          const candidates = await searchBookMetadataCandidates(
+            form.title.trim(),
+            form.author.trim(),
+            {
+              mode: form.bookSearchMode,
+            },
+          );
+
+          if (candidates.length === 0) {
+            showBookNoMatchDialog(priority, moodTags);
             setSubmitting(false);
             return;
           }
-        }
 
-        if (!metadata && !metadataNotImplemented) {
-          // Implemented API returned null (no match)
-          showBookNoMatchDialog(priority, moodTags);
+          if (candidates.length === 1) {
+            await insertBookFromMetadata(priority, moodTags, candidates[0].metadata);
+            return;
+          }
+
+          const navCandidates = toNavCandidates(candidates);
+
+          navigation.navigate('ChooseBookResult', {
+            title: form.title.trim(),
+            author: form.author.trim(),
+            priority,
+            moodTags,
+            mode: form.bookSearchMode,
+            candidates: navCandidates,
+          });
+
+          setSubmitting(false);
+          return;
+        } catch (err: unknown) {
+          if (err instanceof BooksApiError && err.kind === 'NOT_IMPLEMENTED') {
+            await insertBookFromMetadata(priority, moodTags, null);
+            return;
+          }
+
+          if (err instanceof BooksApiError) {
+            showBookLookupErrorDialog(priority, moodTags, err.kind);
+            setSubmitting(false);
+            return;
+          }
+
+          showBookLookupErrorDialog(priority, moodTags, 'UNKNOWN');
           setSubmitting(false);
           return;
         }
-
-        const book: Omit<BookReadable, 'id' | 'createdAt' | 'updatedAt'> = {
-          type: 'book',
-          title: metadata?.title ?? form.title.trim(),
-          author: metadata?.author ?? form.author.trim(),
-          description: metadata?.description ?? null,
-          status: DEFAULT_STATUS,
-          priority,
-          progressPercent: 0,
-          moodTags,
-          source: 'manual',
-          sourceId: null,
-          pageCount: metadata?.pageCount ?? null,
-          genres: metadata?.genres ?? [],
-          progressMode: 'units',
-        };
-
-        const inserted = await readableRepository.insert(book);
-
-        await queryClient.invalidateQueries({ queryKey: ['readables'] });
-        await queryClient.invalidateQueries({ queryKey: ['stats'] });
-
-        navigation.replace('ReadableDetail', { id: inserted.id });
-        return;
       }
 
       // FANFIC FLOW
@@ -297,9 +353,7 @@ const QuickAddReadableScreen: React.FC = () => {
       const msg = err instanceof Error ? err.message : 'Failed to add readable.';
       setError(msg);
     } finally {
-      if (submitting) {
-        setSubmitting(false);
-      }
+      if (submitting) setSubmitting(false);
     }
   }
 
@@ -330,7 +384,7 @@ const QuickAddReadableScreen: React.FC = () => {
             />
 
             <TextInput
-              label="Author"
+              label="Author(s)"
               value={form.author}
               onChangeText={(text) => updateField('author', text)}
               style={styles.input}

@@ -24,7 +24,13 @@ export interface ExternalBook {
  */
 export interface BookMetadata {
   title: string | null;
-  author: string | null;
+
+  /**
+   * Multiple authors when available from provider.
+   * UI can choose how to display/edit these; existing storage can remain string-based for now.
+   */
+  authors: string[];
+
   pageCount: number | null;
   genres: string[];
   description: string | null;
@@ -34,6 +40,17 @@ export interface BookMetadata {
    */
   coverUrl: string | null;
 }
+
+export type BookMetadataCandidate = {
+  /**
+   * Provider-specific stable-ish ID if possible (Open Library work key), else fallback.
+   */
+  id: string;
+  score: number;
+  titleScore: number;
+  authorScore: number;
+  metadata: BookMetadata;
+};
 
 export type BooksApiErrorKind = 'NOT_IMPLEMENTED' | 'NETWORK' | 'SERVER' | 'UNKNOWN';
 
@@ -71,9 +88,8 @@ export type FetchBookMetadataParams = {
   signal?: AbortSignal;
 
   /**
-   * Controls how aggressively we accept results from Open Library.
-   * - strict: require author match (when provided in query) and higher score
-   * - flexible: allow title-only matches more often
+   * - strict: require stronger title/author agreement
+   * - flexible: allow title-heavy matches more often
    */
   mode: 'strict' | 'flexible';
 };
@@ -83,9 +99,7 @@ export type FetchBookMetadataParams = {
  * (Kept mocked for now.)
  */
 export async function searchBooks(query: string): Promise<ExternalBook[]> {
-  if (!query.trim()) {
-    return [];
-  }
+  if (!query.trim()) return [];
 
   const mock: ExternalBook[] = [
     {
@@ -103,7 +117,6 @@ export async function searchBooks(query: string): Promise<ExternalBook[]> {
 
 /**
  * Open Library Search API response shape (partial).
- * Docs: https://openlibrary.org/dev/docs/api/search
  */
 type OpenLibrarySearchDoc = {
   key?: string; // e.g. "/works/OL12345W"
@@ -117,15 +130,14 @@ type OpenLibrarySearchDoc = {
 };
 
 type OpenLibrarySearchResponse = {
-  numFound?: number;
   docs?: OpenLibrarySearchDoc[];
 };
 
 function normalizeText(s: string) {
   return s
     .toLowerCase()
-    .replace(/[\u2019']/g, '') // apostrophes
-    .replace(/[^a-z0-9\s]/g, ' ') // punctuation
+    .replace(/[\u2019']/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -136,9 +148,7 @@ function tokenOverlapScore(a: string, b: string) {
   if (ta.size === 0 || tb.size === 0) return 0;
 
   let overlap = 0;
-  for (const t of ta) {
-    if (tb.has(t)) overlap += 1;
-  }
+  for (const t of ta) if (tb.has(t)) overlap += 1;
   return overlap / Math.max(ta.size, tb.size);
 }
 
@@ -158,26 +168,29 @@ function scoreTitle(inputTitle: string, candidateTitle: string) {
   return 0;
 }
 
-function scoreAuthor(inputAuthor: string, candidateAuthor: string) {
+function scoreAuthor(inputAuthor: string, candidateAuthors: string[]) {
   const a = normalizeText(inputAuthor);
-  const b = normalizeText(candidateAuthor);
-  if (!a || !b) return 0;
+  if (!a) return 0;
 
-  if (a === b) return 6;
-  if (b.includes(a) || a.includes(b)) return 4;
+  let best = 0;
+  for (const cand of candidateAuthors) {
+    const b = normalizeText(cand);
+    if (!b) continue;
 
-  const overlap = tokenOverlapScore(a, b);
-  if (overlap >= 0.7) return 4;
-  if (overlap >= 0.5) return 3;
-  if (overlap >= 0.35) return 2;
-  return 0;
+    if (a === b) best = Math.max(best, 6);
+    else if (b.includes(a) || a.includes(b)) best = Math.max(best, 4);
+    else {
+      const overlap = tokenOverlapScore(a, b);
+      if (overlap >= 0.7) best = Math.max(best, 4);
+      else if (overlap >= 0.5) best = Math.max(best, 3);
+      else if (overlap >= 0.35) best = Math.max(best, 2);
+    }
+  }
+
+  return best;
 }
 
-function extractLikelyTitleAuthor(query: string): { title: string; author: string | null } {
-  // Service currently passes "title author" as a single query string.
-  // We can't perfectly split; we use a simple heuristic:
-  // - If there's " by " we split on it.
-  // - Else we treat the whole thing as title and author unknown.
+function extractTitleAuthorFromQuery(query: string): { title: string; author: string | null } {
   const raw = query.trim();
   const lower = raw.toLowerCase();
   const byIdx = lower.indexOf(' by ');
@@ -190,8 +203,6 @@ function extractLikelyTitleAuthor(query: string): { title: string; author: strin
 }
 
 function buildCoverUrl(doc: OpenLibrarySearchDoc): string | null {
-  // Prefer cover_i (Cover ID) — most reliable and not the rate-limited “ISBN mode” path.
-  // Covers API: https://openlibrary.org/dev/docs/api/covers
   if (typeof doc.cover_i === 'number') {
     return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
   }
@@ -206,7 +217,13 @@ function buildCoverUrl(doc: OpenLibrarySearchDoc): string | null {
 
 function docToMetadata(doc: OpenLibrarySearchDoc): BookMetadata {
   const title = doc.title?.trim() || null;
-  const author = doc.author_name?.[0]?.trim() || null;
+
+  const authors = Array.isArray(doc.author_name)
+    ? doc.author_name
+        .map((a) => a.trim())
+        .filter(Boolean)
+        .slice(0, 6)
+    : [];
 
   let description: string | null = null;
   if (typeof doc.first_sentence === 'string') {
@@ -230,7 +247,7 @@ function docToMetadata(doc: OpenLibrarySearchDoc): BookMetadata {
 
   return {
     title,
-    author,
+    authors,
     description,
     pageCount,
     genres,
@@ -238,7 +255,7 @@ function docToMetadata(doc: OpenLibrarySearchDoc): BookMetadata {
   };
 }
 
-function mapHttpClientErrorToBooksApiError(err: HttpClientError, url: string): BooksApiError {
+function mapHttpClientErrorToBooksApiError(err: HttpClientError): BooksApiError {
   if (err.kind === 'HTTP') {
     const status = err.statusCode ?? 0;
     const isServer = status >= 500 || status === 429 || status === 403;
@@ -265,21 +282,29 @@ function mapHttpClientErrorToBooksApiError(err: HttpClientError, url: string): B
   });
 }
 
-/**
- * Book metadata lookup for pre-filling a Readable (book) using Open Library.
- *
- * - Uses /search.json
- * - Picks a “best” result by a small scoring heuristic
- * - Returns null if no acceptable match is found
- */
-export async function fetchBookMetadata(
-  params: FetchBookMetadataParams,
-): Promise<BookMetadata | null> {
-  const query = params.query.trim();
-  if (!query) return null;
+function isAcceptableCandidate(candidate: BookMetadataCandidate, mode: 'strict' | 'flexible') {
+  const strict = mode === 'strict';
 
-  // Use fields= to avoid relying on Open Library's default field set.
-  // Docs: https://openlibrary.org/dev/docs/api/search
+  if (strict) {
+    const titleOk = candidate.titleScore >= 5;
+    const authorOk = candidate.authorScore >= 2; // if author exists in query we ensure it's reflected in scoring
+    const totalOk = candidate.score >= 12;
+    return titleOk && authorOk && totalOk;
+  }
+
+  return candidate.titleScore >= 4 && candidate.score >= 8;
+}
+
+/**
+ * Returns multiple candidates (sorted) so the UI can present a chooser.
+ * Returns [] when nothing meets minimal threshold.
+ */
+export async function searchBookMetadataCandidates(
+  params: FetchBookMetadataParams & { maxCandidates?: number },
+): Promise<BookMetadataCandidate[]> {
+  const query = params.query.trim();
+  if (!query) return [];
+
   const fields = [
     'key',
     'title',
@@ -294,7 +319,7 @@ export async function fetchBookMetadata(
   const url =
     `https://openlibrary.org/search.json?` +
     `q=${encodeURIComponent(query)}` +
-    `&limit=10` +
+    `&limit=12` +
     `&fields=${encodeURIComponent(fields)}`;
 
   let json: OpenLibrarySearchResponse;
@@ -305,9 +330,8 @@ export async function fetchBookMetadata(
     });
   } catch (cause: unknown) {
     if (cause instanceof HttpClientError) {
-      throw mapHttpClientErrorToBooksApiError(cause, url);
+      throw mapHttpClientErrorToBooksApiError(cause);
     }
-
     throw new BooksApiError({
       kind: 'UNKNOWN',
       message: 'Books API unexpected error while requesting Open Library',
@@ -316,46 +340,38 @@ export async function fetchBookMetadata(
   }
 
   const docs = Array.isArray(json.docs) ? json.docs : [];
-  if (docs.length === 0) return null;
+  if (docs.length === 0) return [];
 
-  // We try to score based on inferred title/author from query, but query is not perfectly structured.
-  // If you later add explicit title/author params, scoring becomes even better.
-  const inferred = extractLikelyTitleAuthor(query);
+  const inferred = extractTitleAuthorFromQuery(query);
   const inputTitle = inferred.title;
   const inputAuthor = inferred.author;
 
-  const candidates = docs
+  const candidates: BookMetadataCandidate[] = docs
     .map((doc) => {
-      const meta = docToMetadata(doc);
-      const tScore = meta.title ? scoreTitle(inputTitle, meta.title) : 0;
-      const aScore =
-        inputAuthor && meta.author ? scoreAuthor(inputAuthor, meta.author) : inputAuthor ? 0 : 1; // slight neutral when no author
-      const total = tScore * 2 + aScore;
-      return { meta, tScore, aScore, total };
+      const metadata = docToMetadata(doc);
+
+      const titleScore = metadata.title ? scoreTitle(inputTitle, metadata.title) : 0;
+      const authorScore = inputAuthor ? scoreAuthor(inputAuthor, metadata.authors) : 1; // neutral if no author
+      const score = titleScore * 2 + authorScore;
+
+      const id = doc.key ? doc.key : `${metadata.title ?? 'unknown'}-${metadata.authors.join('|')}`;
+
+      return { id, metadata, titleScore, authorScore, score };
     })
-    .sort((a, b) => b.total - a.total);
+    .filter((c) => isAcceptableCandidate(c, params.mode))
+    .sort((a, b) => b.score - a.score);
 
-  const best = candidates[0];
-  if (!best) return null;
+  const max = params.maxCandidates ?? 6;
+  return candidates.slice(0, max);
+}
 
-  // Acceptance thresholds
-  const strict = params.mode === 'strict';
-
-  // In strict mode, require:
-  // - good title score
-  // - if we have an inferred author, require some author score
-  if (strict) {
-    const titleOk = best.tScore >= 5;
-    const authorOk = inputAuthor ? best.aScore >= 2 : true;
-    const totalOk = best.total >= 12;
-
-    if (!titleOk || !authorOk || !totalOk) return null;
-    return best.meta;
-  }
-
-  // Flexible mode: accept strong title match even if author is imperfect
-  const flexibleOk = best.tScore >= 4 && best.total >= 8;
-  if (!flexibleOk) return null;
-
-  return best.meta;
+/**
+ * Convenience: return the “best” match or null.
+ * Used by code paths that don't need a chooser.
+ */
+export async function fetchBookMetadata(
+  params: FetchBookMetadataParams,
+): Promise<BookMetadata | null> {
+  const candidates = await searchBookMetadataCandidates({ ...params, maxCandidates: 1 });
+  return candidates[0]?.metadata ?? null;
 }
