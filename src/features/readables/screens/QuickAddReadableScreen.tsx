@@ -1,3 +1,5 @@
+// src/features/readables/screens/QuickAddReadableScreen.tsx
+
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Button, HelperText, SegmentedButtons, TextInput, Text } from 'react-native-paper';
@@ -10,7 +12,7 @@ import type { RootStackParamList } from '@src/navigation/types';
 import type { BookReadable, FanficReadable, ReadableStatus, ReadableType } from '../types';
 import { readableRepository } from '../services/readableRepository';
 import { fetchAo3Metadata } from '../services/ao3MetadataService';
-import { fetchBookMetadata } from '../services/bookMetadataService';
+import { fetchBookMetadata, type BookSearchMode } from '../services/bookMetadataService';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
 import { type MoodTag } from '@src/features/moods/types';
 import MoodTagSelector from '@src/features/moods/components/MoodTagSelector';
@@ -25,6 +27,8 @@ interface FormState {
   priority: string; // keep as string for TextInput
   ao3Url: string;
   moodTags: MoodTag[];
+
+  bookSearchMode: BookSearchMode;
 }
 
 const DEFAULT_STATUS: ReadableStatus = 'to-read';
@@ -40,6 +44,7 @@ const QuickAddReadableScreen: React.FC = () => {
     priority: '3',
     ao3Url: '',
     moodTags: [],
+    bookSearchMode: 'flexible',
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -80,7 +85,6 @@ const QuickAddReadableScreen: React.FC = () => {
             navigation.replace('EditReadable', {
               draft: {
                 type: 'fanfic',
-                // We don’t have title/author because AO3 blocked us
                 title: '',
                 author: '',
                 priority,
@@ -102,14 +106,51 @@ const QuickAddReadableScreen: React.FC = () => {
     const now = new Date().toISOString();
 
     const message =
-      'No matching book could be found from metadata. Please check the spelling of the title and author and try again, or add the details manually.';
+      'No matching book could be found. Please check the spelling of the title and author and try again, or add the details manually.';
 
     setError(message);
 
     Alert.alert('Book not found', message, [
+      { text: 'Check spelling', style: 'cancel' },
       {
-        text: 'Check spelling',
-        style: 'cancel',
+        text: 'Add manually',
+        onPress: () => {
+          navigation.replace('EditReadable', {
+            draft: {
+              type: 'book',
+              title: form.title.trim(),
+              author: form.author.trim(),
+              priority,
+              status: DEFAULT_STATUS,
+              createdAt: now,
+              updatedAt: now,
+              progressPercent: 0,
+              moodTags,
+            } as Partial<BookReadable>,
+          });
+        },
+      },
+    ]);
+  }
+
+  function showBookLookupErrorDialog(priority: number, moodTags: MoodTag[], kind: string) {
+    const now = new Date().toISOString();
+
+    const message =
+      kind === 'NETWORK'
+        ? 'We couldn’t reach the book metadata service. Check your connection and try again, or add it manually.'
+        : 'The book metadata service had a problem. Try again, or add it manually.';
+
+    setError(message);
+
+    Alert.alert('Could not fetch book details', message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Try again',
+        onPress: () => {
+          // Simply dismissing the dialog; user can tap Add again.
+          // (If you want true 1-tap retry, we can store a lastSubmit ref and invoke handleSubmit.)
+        },
       },
       {
         text: 'Add manually',
@@ -143,29 +184,29 @@ const QuickAddReadableScreen: React.FC = () => {
 
     try {
       if (isBook) {
-        // BOOK FLOW
         let metadata: Awaited<ReturnType<typeof fetchBookMetadata>> | null = null;
         let metadataNotImplemented = false;
-        let metadataErrored = false;
 
         try {
-          metadata = await fetchBookMetadata(form.title.trim(), form.author.trim());
+          metadata = await fetchBookMetadata(form.title.trim(), form.author.trim(), {
+            mode: form.bookSearchMode,
+          });
         } catch (err: unknown) {
-          // Current contract: booksApi throws a structured NOT_IMPLEMENTED while still stubbed.
           if (err instanceof BooksApiError && err.kind === 'NOT_IMPLEMENTED') {
             metadataNotImplemented = true;
+          } else if (err instanceof BooksApiError) {
+            showBookLookupErrorDialog(priority, moodTags, err.kind);
+            setSubmitting(false);
+            return;
           } else {
-            metadataErrored = true;
+            showBookLookupErrorDialog(priority, moodTags, 'UNKNOWN');
+            setSubmitting(false);
+            return;
           }
         }
 
-        // If the API is implemented and we got no match (null) OR we had an actual error,
-        // ask the user whether to add manually.
         if (!metadata && !metadataNotImplemented) {
-          if (metadataErrored) {
-            // Keep the existing UX: same dialog, but the user still gets a path forward.
-            // (We can add a more specific “network error” dialog later.)
-          }
+          // Implemented API returned null (no match)
           showBookNoMatchDialog(priority, moodTags);
           setSubmitting(false);
           return;
@@ -200,7 +241,6 @@ const QuickAddReadableScreen: React.FC = () => {
       try {
         const metadata = await fetchAo3Metadata(form.ao3Url.trim());
 
-        // Treat "metadata with no title and no author" as failure too
         const looksEmpty =
           !metadata ||
           ((metadata.title == null || metadata.title.trim() === '') &&
@@ -247,7 +287,6 @@ const QuickAddReadableScreen: React.FC = () => {
         navigation.replace('ReadableDetail', { id: inserted.id });
         return;
       } catch (err) {
-        // Any error from AO3 → treat as locked / unavailable
         // eslint-disable-next-line no-console
         console.error('fetchAo3Metadata failed', err);
         showAo3ErrorDialog(priority, moodTags);
@@ -258,7 +297,6 @@ const QuickAddReadableScreen: React.FC = () => {
       const msg = err instanceof Error ? err.message : 'Failed to add readable.';
       setError(msg);
     } finally {
-      // We also early-return with setSubmitting(false) in some branches
       if (submitting) {
         setSubmitting(false);
       }
@@ -297,6 +335,19 @@ const QuickAddReadableScreen: React.FC = () => {
               onChangeText={(text) => updateField('author', text)}
               style={styles.input}
             />
+
+            <Text style={styles.label}>Search mode</Text>
+            <SegmentedButtons
+              value={form.bookSearchMode}
+              onValueChange={(value) => updateField('bookSearchMode', value as BookSearchMode)}
+              buttons={[
+                { value: 'flexible', label: 'Flexible' },
+                { value: 'strict', label: 'Strict' },
+              ]}
+            />
+            <HelperText type="info" visible={true}>
+              Flexible is better for messy metadata. Strict avoids wrong matches.
+            </HelperText>
           </>
         )}
 
@@ -361,7 +412,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   label: {
-    marginTop: 8,
+    marginTop: 12,
     marginBottom: 4,
   },
   input: {
