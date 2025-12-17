@@ -1,4 +1,3 @@
-// src/features/readables/screens/QuickAddReadableScreen.tsx
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Button, HelperText, SegmentedButtons, TextInput, Text } from 'react-native-paper';
@@ -15,6 +14,7 @@ import { fetchBookMetadata } from '../services/bookMetadataService';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
 import { type MoodTag } from '@src/features/moods/types';
 import MoodTagSelector from '@src/features/moods/components/MoodTagSelector';
+import { BooksApiError } from '@src/services/api/booksApi';
 
 type Navigation = NativeStackNavigationProp<RootStackParamList, 'QuickAddReadable'>;
 
@@ -146,22 +146,26 @@ const QuickAddReadableScreen: React.FC = () => {
         // BOOK FLOW
         let metadata: Awaited<ReturnType<typeof fetchBookMetadata>> | null = null;
         let metadataNotImplemented = false;
+        let metadataErrored = false;
 
         try {
           metadata = await fetchBookMetadata(form.title.trim(), form.author.trim());
-        } catch (err: any) {
-          const msg = err?.message ?? '';
-          // Current behaviour: stub always throws "not implemented" → treat as "just insert manual"
-          if (msg.toLowerCase().includes('not implemented')) {
+        } catch (err: unknown) {
+          // Current contract: booksApi throws a structured NOT_IMPLEMENTED while still stubbed.
+          if (err instanceof BooksApiError && err.kind === 'NOT_IMPLEMENTED') {
             metadataNotImplemented = true;
           } else {
-            // Future: real API error / no match / etc.
-            metadataNotImplemented = false;
+            metadataErrored = true;
           }
         }
 
+        // If the API is implemented and we got no match (null) OR we had an actual error,
+        // ask the user whether to add manually.
         if (!metadata && !metadataNotImplemented) {
-          // Real metadata path, but no match / failure → ask user what to do
+          if (metadataErrored) {
+            // Keep the existing UX: same dialog, but the user still gets a path forward.
+            // (We can add a more specific “network error” dialog later.)
+          }
           showBookNoMatchDialog(priority, moodTags);
           setSubmitting(false);
           return;
@@ -250,8 +254,9 @@ const QuickAddReadableScreen: React.FC = () => {
         setSubmitting(false);
         return;
       }
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to add readable.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to add readable.';
+      setError(msg);
     } finally {
       // We also early-return with setSubmitting(false) in some branches
       if (submitting) {

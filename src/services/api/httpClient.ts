@@ -1,4 +1,3 @@
-// src/services/api/httpClient.ts
 export interface HttpResponse<T> {
   data: T;
 }

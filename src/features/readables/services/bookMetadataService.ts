@@ -1,26 +1,33 @@
-// src/features/readables/services/bookMetadataService.ts
-
-export interface BookMetadata {
-  title: string | null;
-  author: string | null;
-  pageCount: number | null;
-  genres: string[];
-  /**
-   * Short description / summary of the book, if available from the source API.
-   * This will be mapped into the Readable's `description` field.
-   */
-  description: string | null;
-}
+import {
+  fetchBookMetadata as fetchBookMetadataApi,
+  type BookMetadata,
+} from '@src/services/api/booksApi';
 
 /**
- * Placeholder for future book metadata lookup (Open Library, Google Books, etc.).
- * Right now this always throws so the flow falls back to manual entry.
+ * Readables-facing book metadata service.
+ *
+ * Behavioral contract (the UI relies on this):
+ * - Returns `BookMetadata` when a match is found.
+ * - Returns `null` when the lookup succeeds but no match exists.
+ * - Throws structured errors for network/server/etc (and a special NOT_IMPLEMENTED while stubbed).
+ *
+ * IMPORTANT:
+ * - This function must NOT “invent” metadata.
+ * - It should only normalize inputs and compose a query.
  */
+export type { BookMetadata };
+
 export async function fetchBookMetadata(
   title: string,
   author?: string | null,
-): Promise<BookMetadata> {
-  // TODO: Implement using an external books API.
-  // For now we signal "no metadata" by throwing.
-  throw new Error('Book metadata lookup is not implemented yet.');
+): Promise<BookMetadata | null> {
+  const t = title.trim();
+  const a = (author ?? '').trim();
+
+  // If the query is unusable, treat it as “no match” (not an error).
+  if (!t) return null;
+
+  const query = a ? `${t} ${a}` : t;
+
+  return fetchBookMetadataApi({ query });
 }
