@@ -1,12 +1,20 @@
 // src/features/readables/components/ReadingProgressSection.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Button, HelperText, Text, TextInput } from 'react-native-paper';
-import type { ReadableStatus, ReadableType } from '../types';
+import { Button, HelperText, SegmentedButtons, Text, TextInput } from 'react-native-paper';
+import type { ProgressMode, ReadableStatus, ReadableType } from '../types';
+import TimeHmsFields, {
+  hmsPartsToSeconds,
+  secondsToHmsParts,
+  type TimeHmsValue,
+} from './TimeHmsFields';
 
 interface ReadingProgressSectionProps {
   status: ReadableStatus;
   type: ReadableType;
+
+  progressMode: ProgressMode;
+  onChangeProgressMode: (mode: ProgressMode) => void | Promise<void>;
 
   /** Current progress in percent (0–100). */
   currentPercent: number;
@@ -30,8 +38,7 @@ interface ReadingProgressSectionProps {
   onSavePercent?: (percent: number) => void | Promise<void>;
 
   /**
-   * Optional: time-based editing. These are *display-only*; if omitted,
-   * the time fields will start empty.
+   * Optional: time-based editing.
    */
   timeCurrentSeconds?: number | null;
   timeTotalSeconds?: number | null;
@@ -46,74 +53,11 @@ function clampToMax(value: number, maxUnit?: number | null): number {
   return Math.round(value);
 }
 
-function secondsToHmsString(seconds?: number | null): string {
-  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) {
-    return '';
-  }
-  const total = Math.floor(seconds);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-
-  if (h > 0) {
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(
-      2,
-      '0',
-    )}`;
-  }
-
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-/**
- * Parse 'HH:MM:SS', 'MM:SS' or 'SS' into seconds.
- * Returns null for invalid input.
- */
-function hmsStringToSeconds(input: string): number | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-
-  const parts = trimmed
-    .split(':')
-    .map((p) => p.trim())
-    .filter(Boolean);
-  if (parts.length === 0 || parts.length > 3) return null;
-
-  const nums = parts.map((p) => {
-    const n = Number.parseInt(p, 10);
-    return Number.isNaN(n) || n < 0 ? NaN : n;
-  });
-
-  if (nums.some((n) => Number.isNaN(n))) return null;
-
-  let seconds = 0;
-  if (nums.length === 1) {
-    // SS
-    seconds = nums[0];
-  } else if (nums.length === 2) {
-    // MM:SS
-    const [m, s] = nums;
-    if (s >= 60) return null;
-    seconds = m * 60 + s;
-  } else {
-    // HH:MM:SS
-    const [h, m, s] = nums;
-    if (m >= 60 || s >= 60) return null;
-    seconds = h * 3600 + m * 60 + s;
-  }
-
-  return seconds;
-}
-
-/**
- * Unit + percent + optional time-based progress editor.
- *
- * - For 'reading' and 'DNF' we show editable fields.
- * - For other statuses, we only show the current values.
- */
 const ReadingProgressSection: React.FC<ReadingProgressSectionProps> = ({
   status,
   type,
+  progressMode,
+  onChangeProgressMode,
   currentPercent,
   currentUnit,
   maxUnit,
@@ -130,10 +74,13 @@ const ReadingProgressSection: React.FC<ReadingProgressSectionProps> = ({
   const [percentInput, setPercentInput] = useState<string>(
     Number.isFinite(currentPercent) ? String(currentPercent) : '0',
   );
-  const [timeCurrentText, setTimeCurrentText] = useState<string>(
-    secondsToHmsString(timeCurrentSeconds),
+
+  const [timeCurrentHms, setTimeCurrentHms] = useState<TimeHmsValue>(
+    secondsToHmsParts(timeCurrentSeconds ?? null),
   );
-  const [timeTotalText, setTimeTotalText] = useState<string>(secondsToHmsString(timeTotalSeconds));
+  const [timeTotalHms, setTimeTotalHms] = useState<TimeHmsValue>(
+    secondsToHmsParts(timeTotalSeconds ?? null),
+  );
 
   useEffect(() => {
     setUnitInput(currentUnit != null ? String(currentUnit) : '');
@@ -144,12 +91,31 @@ const ReadingProgressSection: React.FC<ReadingProgressSectionProps> = ({
   }, [currentPercent]);
 
   useEffect(() => {
-    setTimeCurrentText(secondsToHmsString(timeCurrentSeconds));
+    setTimeCurrentHms(secondsToHmsParts(timeCurrentSeconds ?? null));
   }, [timeCurrentSeconds]);
 
   useEffect(() => {
-    setTimeTotalText(secondsToHmsString(timeTotalSeconds));
+    setTimeTotalHms(secondsToHmsParts(timeTotalSeconds ?? null));
   }, [timeTotalSeconds]);
+
+  const canEdit = status === 'reading' || status === 'DNF';
+  const hasMax = maxUnit != null && maxUnit > 0;
+
+  const hasLockedTotalTime = (timeTotalSeconds ?? null) != null && (timeTotalSeconds ?? 0) > 0;
+
+  const unitFieldLabel = useMemo(() => {
+    const base = type === 'book' ? 'Current page' : 'Current chapter';
+    return hasMax ? `${base} (max ${maxUnit})` : base;
+  }, [type, hasMax, maxUnit]);
+
+  const modeButtons = useMemo(
+    () => [
+      { value: 'units', label: type === 'book' ? 'Pages' : 'Chapters' },
+      { value: 'time', label: 'Time' },
+      { value: 'percent', label: '%' },
+    ],
+    [type],
+  );
 
   const handleSaveUnit = () => {
     const numeric = Number.parseInt(unitInput.replace(/[^0-9]/g, ''), 10);
@@ -160,23 +126,24 @@ const ReadingProgressSection: React.FC<ReadingProgressSectionProps> = ({
 
   const handleSavePercent = () => {
     if (!onSavePercent) return;
+
     const numeric = Number.parseInt(percentInput.replace(/[^0-9]/g, ''), 10);
     let value = Number.isNaN(numeric) ? 0 : numeric;
     if (value < 0) value = 0;
     if (value > 100) value = 100;
+
     void onSavePercent(value);
   };
 
   const handleSaveTime = () => {
     if (!onSaveTime) return;
 
-    const currentSeconds = hmsStringToSeconds(timeCurrentText);
-    const totalSeconds = hmsStringToSeconds(timeTotalText);
+    const currentSeconds = hmsPartsToSeconds(timeCurrentHms);
+    const editedTotalSeconds = hmsPartsToSeconds(timeTotalHms);
 
-    if (currentSeconds == null || totalSeconds == null || totalSeconds <= 0) {
-      // Very lightweight validation; you can add HelperText if you want later.
-      return;
-    }
+    const totalSeconds = hasLockedTotalTime ? (timeTotalSeconds ?? null) : editedTotalSeconds;
+
+    if (currentSeconds == null || totalSeconds == null || totalSeconds <= 0) return;
 
     const clampedCurrent = Math.min(Math.max(currentSeconds, 0), totalSeconds);
 
@@ -186,22 +153,24 @@ const ReadingProgressSection: React.FC<ReadingProgressSectionProps> = ({
     });
   };
 
-  const canEdit = status === 'reading' || status === 'DNF';
-
-  const unitFieldLabel =
-    type === 'book'
-      ? `Current ${unitLabel} (${maxUnit != null ? `max ${maxUnit}` : 'no max set'})`
-      : `Current ${unitLabel}${maxUnit != null ? ` (max ${maxUnit})` : ''}`;
-
-  const hasMax = maxUnit != null && maxUnit > 0;
-
   return (
     <View>
-      <Text>Current progress: {currentPercent}%</Text>
+      <SegmentedButtons
+        value={progressMode}
+        onValueChange={(v) => void onChangeProgressMode(v as ProgressMode)}
+        buttons={modeButtons}
+      />
 
-      {canEdit && (
+      <Text style={styles.currentLine}>Current progress: {currentPercent}%</Text>
+
+      {!canEdit ? (
+        <HelperText type="info" visible style={styles.helper}>
+          Progress editing is available while status is Reading or DNF.
+        </HelperText>
+      ) : null}
+
+      {canEdit && progressMode === 'units' && (
         <>
-          {/* Unit editor */}
           <TextInput
             mode="outlined"
             label={unitFieldLabel}
@@ -210,64 +179,64 @@ const ReadingProgressSection: React.FC<ReadingProgressSectionProps> = ({
             onChangeText={setUnitInput}
             style={styles.progressInput}
           />
-          <HelperText type="info" visible={hasMax} style={styles.helper}>
+          <HelperText type="info" visible style={styles.helper}>
             {hasMax
-              ? `Maximum allowed ${unitLabel} is ${maxUnit}.`
-              : `Progress is tracked by ${unitLabel}, but total is currently unknown.`}
+              ? `Maximum allowed is ${maxUnit}.`
+              : `Total ${type === 'book' ? 'pages' : 'chapters'} is unknown, so we won’t clamp.`}
           </HelperText>
           <Button mode="outlined" onPress={handleSaveUnit} style={styles.button}>
             Save {unitLabel}
           </Button>
+        </>
+      )}
 
-          {/* Percent editor (optional) */}
-          {onSavePercent && (
-            <>
-              <Text style={styles.subheading}>Set progress by percent</Text>
-              <TextInput
-                mode="outlined"
-                label="Progress (%)"
-                keyboardType="numeric"
-                value={percentInput}
-                onChangeText={setPercentInput}
-                style={styles.progressInput}
-              />
-              <HelperText type="info" visible style={styles.helper}>
-                Enter a value between 0 and 100.
-              </HelperText>
-              <Button mode="outlined" onPress={handleSavePercent} style={styles.button}>
-                Save %
-              </Button>
-            </>
-          )}
+      {canEdit && progressMode === 'percent' && onSavePercent && (
+        <>
+          <TextInput
+            mode="outlined"
+            label="Progress (%)"
+            keyboardType="numeric"
+            value={percentInput}
+            onChangeText={setPercentInput}
+            style={styles.progressInput}
+          />
+          <HelperText type="info" visible style={styles.helper}>
+            Enter a value between 0 and 100.
+          </HelperText>
+          <Button mode="outlined" onPress={handleSavePercent} style={styles.button}>
+            Save %
+          </Button>
+        </>
+      )}
 
-          {/* Time editor (optional) */}
-          {onSaveTime && (
-            <>
-              <Text style={styles.subheading}>Set progress by time</Text>
-              <TextInput
-                mode="outlined"
-                label="Current time (HH:MM:SS, MM:SS, or SS)"
-                keyboardType="numeric"
-                value={timeCurrentText}
-                onChangeText={setTimeCurrentText}
-                style={styles.progressInput}
-              />
-              <TextInput
-                mode="outlined"
-                label="Total time (HH:MM:SS, MM:SS, or SS)"
-                keyboardType="numeric"
-                value={timeTotalText}
-                onChangeText={setTimeTotalText}
-                style={styles.progressInput}
-              />
-              <HelperText type="info" visible style={styles.helper}>
-                Time is used to calculate the %; it isn&apos;t stored separately (yet).
-              </HelperText>
-              <Button mode="outlined" onPress={handleSaveTime} style={styles.button}>
-                Save time
-              </Button>
-            </>
-          )}
+      {canEdit && progressMode === 'time' && onSaveTime && (
+        <>
+          <View style={styles.timeBlock}>
+            <TimeHmsFields
+              label="Current time"
+              value={timeCurrentHms}
+              onChange={setTimeCurrentHms}
+              helperText="This will be converted into a % based on total time."
+            />
+          </View>
+
+          <View style={styles.timeBlock}>
+            <TimeHmsFields
+              label="Total time"
+              value={timeTotalHms}
+              onChange={setTimeTotalHms}
+              helperText={
+                hasLockedTotalTime
+                  ? 'Total time is already set for this readable and is locked.'
+                  : 'Set this once to enable time-based % calculation.'
+              }
+              disabled={hasLockedTotalTime}
+            />
+          </View>
+
+          <Button mode="outlined" onPress={handleSaveTime} style={styles.button}>
+            Save time
+          </Button>
         </>
       )}
     </View>
@@ -275,9 +244,12 @@ const ReadingProgressSection: React.FC<ReadingProgressSectionProps> = ({
 };
 
 const styles = StyleSheet.create({
+  currentLine: {
+    marginTop: 8,
+  },
   progressInput: {
     marginTop: 8,
-    maxWidth: 260,
+    maxWidth: 320,
   },
   helper: {
     marginTop: 4,
@@ -286,9 +258,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     alignSelf: 'flex-start',
   },
-  subheading: {
-    marginTop: 16,
-    fontWeight: '500',
+  timeBlock: {
+    marginTop: 12,
+    maxWidth: 420,
   },
 });
 

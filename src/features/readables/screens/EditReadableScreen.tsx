@@ -1,3 +1,4 @@
+// src/features/readables/screens/EditReadableScreen.tsx
 import React, { useEffect, useState } from 'react';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
@@ -32,14 +33,22 @@ import type {
   FanficReadable,
   Ao3Rating,
   ReadableStatus,
+  ProgressMode,
 } from '../types';
 import { readableRepository } from '../services/readableRepository';
 import { ALL_MOOD_TAGS, MoodTag } from '@src/features/moods/types';
 import { extractAo3WorkIdFromUrl } from '@src/utils/text';
 import { useAppThemeMode } from '@src/theme';
+import TimeHmsFields, {
+  hmsPartsToSeconds,
+  secondsToHmsParts,
+  type TimeHmsValue,
+} from '../components/TimeHmsFields';
 
 type EditRoute = RouteProp<RootStackParamList, 'EditReadable'>;
 type RootNav = NavigationProp<RootStackParamList>;
+
+type EditProgressMode = 'units' | 'time';
 
 interface EditReadableFormValues {
   type: 'book' | 'fanfic';
@@ -58,13 +67,22 @@ interface EditReadableFormValues {
   complete: boolean;
   rating?: Ao3Rating | null;
 
-  // Manual date fields (YYYY-MM-DD or empty)
+  // Progress settings (EDIT SCREEN ONLY: units/time)
+  progressMode: EditProgressMode;
+
+  // Fanfic chapter totals (units mode)
+  availableChapters: string; // numeric or ''
+  totalChapters: string; // numeric or ''
+
+  // Total time (time mode)
+  timeTotalHms: TimeHmsValue;
+
+  // Manual date fields
   startedAt?: string | null;
   finishedAt?: string | null;
   dnfAt?: string | null;
 }
 
-// Helper: format a Date -> 'YYYY-MM-DD'
 function formatDateForField(date: Date): string {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
@@ -72,15 +90,22 @@ function formatDateForField(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// Reusable date field schema: optional, nullable, YYYY-MM-DD when present.
 const dateFieldSchema = yup
   .string()
   .nullable()
   .transform((v) => (v === '' ? null : v))
   .test('is-valid-date', 'Use YYYY-MM-DD (e.g. 2025-03-15)', (value) => {
-    if (!value) return true; // empty / null is fine
+    if (!value) return true;
     return /^\d{4}-\d{2}-\d{2}$/.test(value);
   });
+
+function parseOptionalInt(input: string | undefined): number | null {
+  const raw = (input ?? '').trim();
+  if (raw === '') return null;
+  const n = Number.parseInt(raw.replace(/[^0-9]/g, ''), 10);
+  if (Number.isNaN(n) || n < 0) return null;
+  return n;
+}
 
 const schema = yup
   .object({
@@ -126,14 +151,49 @@ const schema = yup
       .nullable()
       .optional(),
 
-    // Dates use the shared schema
+    // ✅ EDIT SCREEN ONLY: units/time
+    progressMode: yup.mixed<EditProgressMode>().oneOf(['units', 'time']).required(),
+
+    // ✅ Only required/validated when editing a fanfic in units mode
+    availableChapters: yup.string().when(['type', 'progressMode'], {
+      is: (t: EditReadableFormValues['type'], m: EditProgressMode) =>
+        t === 'fanfic' && m === 'units',
+      then: (s) =>
+        s
+          .required('Available chapters is required')
+          .test(
+            'is-non-negative-int',
+            'Must be a non-negative number',
+            (v) => parseOptionalInt(v ?? '') != null,
+          ),
+      otherwise: (s) => s.optional(),
+    }),
+    totalChapters: yup.string().when(['type', 'progressMode'], {
+      is: (t: EditReadableFormValues['type'], m: EditProgressMode) =>
+        t === 'fanfic' && m === 'units',
+      then: (s) =>
+        s.optional().test('is-empty-or-int', 'Must be a non-negative number', (v) => {
+          const raw = (v ?? '').trim();
+          if (raw === '') return true; // allow '?' by leaving blank
+          return parseOptionalInt(raw) != null;
+        }),
+      otherwise: (s) => s.optional(),
+    }),
+
+    // We keep this present always; empty parts are allowed and mean "unset".
+    timeTotalHms: yup
+      .object({
+        hh: yup.string().required(),
+        mm: yup.string().required(),
+        ss: yup.string().required(),
+      })
+      .required(),
+
     startedAt: dateFieldSchema.optional(),
     finishedAt: dateFieldSchema.optional(),
     dnfAt: dateFieldSchema.optional(),
   })
   .required() as yup.ObjectSchema<EditReadableFormValues>;
-
-// ---------- Date picker field component ----------
 
 interface DatePickerFieldProps {
   label: string;
@@ -154,7 +214,6 @@ const DatePickerField: React.FC<DatePickerFieldProps> = ({
 
   const today = new Date();
 
-  // Parse existing value, but don't let it go past today.
   let initialDate = today;
   if (value) {
     const parsed = new Date(value);
@@ -163,18 +222,11 @@ const DatePickerField: React.FC<DatePickerFieldProps> = ({
     }
   }
 
-  const handleOpen = () => {
-    setShowPicker(true);
-  };
+  const handleOpen = () => setShowPicker(true);
 
   const handleChange = (event: DateTimePickerEvent, date?: Date) => {
-    // Android: picker is a modal → hide on any interaction
-    if (Platform.OS === 'android') {
-      setShowPicker(false);
-    }
-
+    if (Platform.OS === 'android') setShowPicker(false);
     if (event.type === 'set' && date) {
-      // Just in case: clamp picked date to today too
       const clamped = date > today ? today : date;
       onChange(formatDateForField(clamped));
     }
@@ -183,7 +235,6 @@ const DatePickerField: React.FC<DatePickerFieldProps> = ({
   return (
     <View style={styles.dateField}>
       <Pressable onPress={handleOpen}>
-        {/* Let Pressable receive the touch; TextInput is just visual */}
         <View pointerEvents="none">
           <TextInput
             label={label}
@@ -215,8 +266,6 @@ const DatePickerField: React.FC<DatePickerFieldProps> = ({
     </View>
   );
 };
-
-// ---------- Screen component ----------
 
 const EditReadableScreen: React.FC = () => {
   const route = useRoute<EditRoute>();
@@ -255,6 +304,10 @@ const EditReadableScreen: React.FC = () => {
         draft && draft.type === 'fanfic'
           ? ((draft as Partial<FanficReadable>).rating ?? null)
           : null,
+      progressMode: draft?.progressMode === 'time' ? 'time' : 'units',
+      availableChapters: '',
+      totalChapters: '',
+      timeTotalHms: secondsToHmsParts(draft?.timeTotalSeconds ?? null),
       startedAt: draft?.startedAt ? draft.startedAt.slice(0, 10) : '',
       finishedAt: draft?.finishedAt ? draft.finishedAt.slice(0, 10) : '',
       dnfAt: draft?.dnfAt ? draft.dnfAt.slice(0, 10) : '',
@@ -265,19 +318,20 @@ const EditReadableScreen: React.FC = () => {
   const selectedMoodTags = watch('moodTags');
   const currentRating = watch('rating');
   const completeValue = watch('complete');
+  const progressMode = watch('progressMode');
+  const timeTotalHms = watch('timeTotalHms');
 
-  // array state for book + fanfic list fields
-  const [genresList, setGenresList] = useState<string[]>([]); // book
+  const [genresList, setGenresList] = useState<string[]>([]);
   const [fandomsList, setFandomsList] = useState<string[]>([]);
   const [relationshipsList, setRelationshipsList] = useState<string[]>([]);
   const [charactersList, setCharactersList] = useState<string[]>([]);
   const [ao3TagsList, setAo3TagsList] = useState<string[]>([]);
   const [warningsList, setWarningsList] = useState<string[]>([]);
 
-  // Editing existing readable → hydrate from DB
   useEffect(() => {
     if (data && isEditing) {
       const readable = data;
+
       const baseDefaults: Partial<EditReadableFormValues> = {
         type: readable.type,
         title: readable.title,
@@ -285,6 +339,8 @@ const EditReadableScreen: React.FC = () => {
         description: readable.description ?? '',
         priority: String(readable.priority),
         moodTags: readable.moodTags,
+        progressMode: readable.progressMode === 'time' ? 'time' : 'units',
+        timeTotalHms: secondsToHmsParts(readable.timeTotalSeconds ?? null),
         startedAt: readable.startedAt ? readable.startedAt.slice(0, 10) : '',
         finishedAt: readable.finishedAt ? readable.finishedAt.slice(0, 10) : '',
         dnfAt: readable.dnfAt ? readable.dnfAt.slice(0, 10) : '',
@@ -300,6 +356,8 @@ const EditReadableScreen: React.FC = () => {
           chapterCount: '',
           complete: false,
           rating: null,
+          availableChapters: '',
+          totalChapters: '',
         } as EditReadableFormValues);
 
         setGenresList(readable.genres ?? []);
@@ -318,6 +376,9 @@ const EditReadableScreen: React.FC = () => {
           chapterCount: readable.chapterCount ? String(readable.chapterCount) : '',
           complete: readable.complete ?? false,
           rating: readable.rating ?? null,
+          availableChapters:
+            readable.availableChapters != null ? String(readable.availableChapters) : '',
+          totalChapters: readable.totalChapters != null ? String(readable.totalChapters) : '',
         } as EditReadableFormValues);
 
         setGenresList([]);
@@ -330,7 +391,6 @@ const EditReadableScreen: React.FC = () => {
     }
   }, [data, isEditing, reset]);
 
-  // Create mode with draft (from QuickAdd fallback) → hydrate from draft
   useEffect(() => {
     if (!isEditing && draft) {
       const baseDefaults: Partial<EditReadableFormValues> = {
@@ -340,6 +400,8 @@ const EditReadableScreen: React.FC = () => {
         description: (draft.description as string | undefined) ?? '',
         priority: draft.priority != null ? String(draft.priority) : '3',
         moodTags: draft.moodTags ?? [],
+        progressMode: draft.progressMode === 'time' ? 'time' : 'units',
+        timeTotalHms: secondsToHmsParts(draft.timeTotalSeconds ?? null),
         startedAt: draft.startedAt ? draft.startedAt.slice(0, 10) : '',
         finishedAt: draft.finishedAt ? draft.finishedAt.slice(0, 10) : '',
         dnfAt: draft.dnfAt ? draft.dnfAt.slice(0, 10) : '',
@@ -356,6 +418,9 @@ const EditReadableScreen: React.FC = () => {
           chapterCount: fanficDraft.chapterCount != null ? String(fanficDraft.chapterCount) : '',
           complete: fanficDraft.complete ?? false,
           rating: fanficDraft.rating ?? null,
+          availableChapters:
+            fanficDraft.availableChapters != null ? String(fanficDraft.availableChapters) : '',
+          totalChapters: fanficDraft.totalChapters != null ? String(fanficDraft.totalChapters) : '',
         } as EditReadableFormValues);
 
         setGenresList([]);
@@ -375,6 +440,8 @@ const EditReadableScreen: React.FC = () => {
           chapterCount: '',
           complete: false,
           rating: null,
+          availableChapters: '',
+          totalChapters: '',
         } as EditReadableFormValues);
 
         setGenresList(bookDraft.genres ?? []);
@@ -404,6 +471,7 @@ const EditReadableScreen: React.FC = () => {
   const onSubmit = async (values: EditReadableFormValues) => {
     try {
       const priorityNumber = parseInt(values.priority, 10);
+
       const pageCountNumber =
         values.pageCount != null ? parseInt(values.pageCount, 10) || undefined : undefined;
       const wordCountNumber =
@@ -411,28 +479,23 @@ const EditReadableScreen: React.FC = () => {
       const chapterCountNumber =
         values.chapterCount != null ? parseInt(values.chapterCount, 10) || undefined : undefined;
 
-      const moodTags = values.moodTags;
-
-      const genres = genresList;
-      const fandoms = fandomsList;
-      const relationships = relationshipsList;
-      const characters = charactersList;
-      const ao3Tags = ao3TagsList;
-      const warnings = warningsList;
-      const complete = values.complete ?? false;
-      const rating = values.rating ?? null;
-
       const startedAt = normaliseDate(values.startedAt);
       const finishedAt = normaliseDate(values.finishedAt);
       const dnfAt = normaliseDate(values.dnfAt);
+
+      // Edit screen: total time is ALWAYS editable here.
+      const totalSeconds = hmsPartsToSeconds(values.timeTotalHms);
+      const timeTotalSeconds = totalSeconds != null && totalSeconds > 0 ? totalSeconds : null;
+
+      const availableChapters = parseOptionalInt(values.availableChapters);
+      const totalChapters = parseOptionalInt(values.totalChapters);
 
       let result: ReadableItem;
 
       if (isEditing && data) {
         const existing = data;
-        const existingType = existing.type; // enforce immutability
 
-        if (existingType === 'book') {
+        if (existing.type === 'book') {
           const updatedBook: BookReadable = {
             ...(existing as ReadableItem),
             type: 'book',
@@ -441,17 +504,22 @@ const EditReadableScreen: React.FC = () => {
             description: values.description,
             priority: priorityNumber,
             status: existing.status,
-            moodTags,
-            source: existing.type === 'book' ? existing.source : 'manual',
-            sourceId: existing.type === 'book' ? (existing.sourceId ?? null) : null,
+            moodTags: values.moodTags,
+            source: existing.source,
+            sourceId: existing.sourceId ?? null,
             pageCount: pageCountNumber ?? null,
-            genres,
+            currentPage: existing.currentPage ?? null,
+            genres: genresList,
+            progressMode: values.progressMode as ProgressMode, // stored type still allows percent, but we never set it here
+            progressPercent: existing.progressPercent,
+            timeTotalSeconds,
             startedAt,
             finishedAt,
             dnfAt,
           };
 
           result = await readableRepository.update(updatedBook);
+          await readableRepository.setTimeTotalSeconds(result.id, timeTotalSeconds);
         } else {
           const ao3Url = values.ao3Url ?? '';
           const ao3WorkId =
@@ -466,28 +534,43 @@ const EditReadableScreen: React.FC = () => {
             description: values.description,
             priority: priorityNumber,
             status: existing.status,
-            moodTags,
+            moodTags: values.moodTags,
             source: 'ao3',
             ao3Url,
             ao3WorkId,
-            fandoms,
-            relationships,
-            characters,
-            ao3Tags,
-            rating,
-            warnings,
-            chapterCount: chapterCountNumber ?? null,
-            complete,
+            fandoms: fandomsList,
+            relationships: relationshipsList,
+            characters: charactersList,
+            ao3Tags: ao3TagsList,
+            rating: values.rating ?? null,
+            warnings: warningsList,
+
+            // Keep legacy chapterCount, but align it with totalChapters when provided.
+            chapterCount: chapterCountNumber ?? totalChapters ?? existing.chapterCount ?? null,
+
+            availableChapters:
+              values.progressMode === 'units'
+                ? availableChapters
+                : (existing.availableChapters ?? null),
+            totalChapters:
+              values.progressMode === 'units' ? totalChapters : (existing.totalChapters ?? null),
+
+            currentChapter: existing.currentChapter ?? null,
+            complete: values.complete ?? false,
             wordCount: wordCountNumber ?? null,
+
+            progressMode: values.progressMode as ProgressMode,
+            progressPercent: existing.progressPercent,
+            timeTotalSeconds,
             startedAt,
             finishedAt,
             dnfAt,
           };
 
           result = await readableRepository.update(updatedFanfic);
+          await readableRepository.setTimeTotalSeconds(result.id, timeTotalSeconds);
         }
       } else {
-        // CREATE
         if (values.type === 'book') {
           const newBook: Omit<BookReadable, 'id' | 'createdAt' | 'updatedAt'> = {
             type: 'book',
@@ -497,17 +580,23 @@ const EditReadableScreen: React.FC = () => {
             status: 'to-read',
             priority: priorityNumber,
             progressPercent: 0,
-            moodTags,
+            progressMode: values.progressMode as ProgressMode,
+            moodTags: values.moodTags,
             source: 'manual',
             sourceId: null,
             pageCount: pageCountNumber ?? null,
-            genres,
+            currentPage: null,
+            genres: genresList,
+            timeCurrentSeconds: null,
+            timeTotalSeconds,
             startedAt,
             finishedAt,
             dnfAt,
+            notes: null,
           };
 
           result = await readableRepository.insert(newBook);
+          await readableRepository.setTimeTotalSeconds(result.id, timeTotalSeconds);
         } else {
           const ao3Url = values.ao3Url ?? '';
           const ao3WorkId = extractAo3WorkIdFromUrl(ao3Url) ?? `manual-${Date.now().toString()}`;
@@ -520,36 +609,44 @@ const EditReadableScreen: React.FC = () => {
             status: 'to-read',
             priority: priorityNumber,
             progressPercent: 0,
-            moodTags,
+            progressMode: values.progressMode as ProgressMode,
+            moodTags: values.moodTags,
             source: 'ao3',
             ao3WorkId,
             ao3Url,
-            fandoms,
-            relationships,
-            characters,
-            ao3Tags,
-            rating,
-            warnings,
-            chapterCount: chapterCountNumber ?? null,
-            complete,
+            fandoms: fandomsList,
+            relationships: relationshipsList,
+            characters: charactersList,
+            ao3Tags: ao3TagsList,
+            rating: values.rating ?? null,
+            warnings: warningsList,
+
+            chapterCount: chapterCountNumber ?? totalChapters ?? null,
+            availableChapters: values.progressMode === 'units' ? availableChapters : null,
+            totalChapters: values.progressMode === 'units' ? totalChapters : null,
+
+            currentChapter: null,
+            complete: values.complete ?? false,
             wordCount: wordCountNumber ?? null,
+
+            timeCurrentSeconds: null,
+            timeTotalSeconds,
             startedAt,
             finishedAt,
             dnfAt,
+            notes: null,
           };
 
           result = await readableRepository.insert(newFanfic);
+          await readableRepository.setTimeTotalSeconds(result.id, timeTotalSeconds);
         }
       }
 
       await queryClient.invalidateQueries({ queryKey: ['readables'] });
       await queryClient.invalidateQueries({ queryKey: ['stats'] });
 
-      if (isEditing) {
-        navigation.goBack();
-      } else {
-        navigation.navigate('ReadableDetail', { id: result.id });
-      }
+      if (isEditing) navigation.goBack();
+      else navigation.navigate('ReadableDetail', { id: result.id });
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to save readable', error);
@@ -557,14 +654,11 @@ const EditReadableScreen: React.FC = () => {
     }
   };
 
-  // We only want to show date fields when editing an existing readable,
-  // and only those that match its status.
   const currentStatus: ReadableStatus | null =
     isEditing && data ? (data.status as ReadableStatus) : null;
 
   const showStartedField =
     currentStatus === 'reading' || currentStatus === 'finished' || currentStatus === 'DNF';
-
   const showFinishedField = currentStatus === 'finished';
   const showDnfField = currentStatus === 'DNF';
 
@@ -595,6 +689,89 @@ const EditReadableScreen: React.FC = () => {
             />
           )}
 
+          <Text variant="titleMedium" style={styles.sectionTitle}>
+            Progress display
+          </Text>
+          <SegmentedButtons
+            value={progressMode}
+            onValueChange={(v) =>
+              setValue('progressMode', (v === 'time' ? 'time' : 'units') as EditProgressMode)
+            }
+            buttons={[
+              { value: 'units', label: currentType === 'book' ? 'Pages' : 'Chapters' },
+              { value: 'time', label: 'Time' },
+            ]}
+          />
+
+          {/* Fanfic chapter totals (units mode only) */}
+          {progressMode === 'units' && currentType === 'fanfic' && (
+            <View style={styles.section}>
+              <Text variant="titleMedium" style={styles.sectionTitle}>
+                Chapter totals
+              </Text>
+
+              <Controller
+                control={control}
+                name="availableChapters"
+                render={({ field: { onChange, value }, fieldState: { error } }) => (
+                  <>
+                    <TextInput
+                      mode="outlined"
+                      label="Available chapters (X)"
+                      keyboardType="numeric"
+                      value={value}
+                      onChangeText={onChange}
+                    />
+                    {error?.message ? (
+                      <HelperText type="error" visible>
+                        {error.message}
+                      </HelperText>
+                    ) : null}
+                  </>
+                )}
+              />
+
+              <View style={{ height: 8 }} />
+
+              <Controller
+                control={control}
+                name="totalChapters"
+                render={({ field: { onChange, value }, fieldState: { error } }) => (
+                  <>
+                    <TextInput
+                      mode="outlined"
+                      label="Total chapters (Y) — leave blank for ?"
+                      keyboardType="numeric"
+                      value={value}
+                      onChangeText={onChange}
+                    />
+                    {error?.message ? (
+                      <HelperText type="error" visible>
+                        {error.message}
+                      </HelperText>
+                    ) : null}
+                  </>
+                )}
+              />
+
+              <HelperText type="info" visible>
+                These control the X/Y display and unit-based % calculations.
+              </HelperText>
+            </View>
+          )}
+
+          {/* Total time editor (time mode only) */}
+          {progressMode === 'time' && (
+            <View style={styles.section}>
+              <TimeHmsFields
+                label="Total time"
+                value={timeTotalHms}
+                onChange={(next) => setValue('timeTotalHms', next)}
+                helperText="Editable here. The details page will lock it once set."
+              />
+            </View>
+          )}
+
           <ReadableMetadataForm
             type={currentType}
             control={control}
@@ -612,7 +789,7 @@ const EditReadableScreen: React.FC = () => {
             onChangeWarnings={setWarningsList}
             completeValue={completeValue}
             onChangeComplete={(val) => setValue('complete', val)}
-            currentRating={currentRating ?? null}
+            currentRating={(currentRating ?? null) as Ao3Rating | null}
             onChangeRating={(val) => setValue('rating', val)}
           />
 
@@ -624,7 +801,6 @@ const EditReadableScreen: React.FC = () => {
             />
           </View>
 
-          {/* Reading timeline section – only when editing, and only show applicable fields */}
           {isEditing &&
             currentStatus &&
             (showStartedField || showFinishedField || showDnfField) && (
@@ -698,6 +874,9 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginTop: 16,
     marginBottom: 4,
+  },
+  section: {
+    marginTop: 8,
   },
   moodsSection: {
     marginTop: 16,

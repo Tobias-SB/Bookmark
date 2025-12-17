@@ -14,9 +14,9 @@ import type { RootStackParamList } from '@src/navigation/types';
 import { readableRepository } from '@src/features/readables/services/readableRepository';
 import {
   READABLE_STATUS_LABELS,
-  type ReadableStatus,
   type FanficReadable,
   type BookReadable,
+  type ProgressMode,
 } from '@src/features/readables/types';
 import ReadingProgressSection from '../components/ReadingProgressSection';
 import FanficMetadataSection from '../components/FanficMetadataSection';
@@ -28,6 +28,7 @@ const ReadableDetailScreen: React.FC = () => {
   const route = useRoute<DetailRoute>();
   const navigation = useNavigation<RootNav>();
   const { id } = route.params;
+
   const { data, isLoading, isError, refetch } = useReadableById(id);
   const queryClient = useQueryClient();
 
@@ -58,6 +59,20 @@ const ReadableDetailScreen: React.FC = () => {
     await queryClient.invalidateQueries({ queryKey: ['stats'] });
   };
 
+  const handleChangeProgressMode = async (mode: ProgressMode) => {
+    try {
+      // ✅ IMPORTANT: do NOT rewrite the whole readable just to change one field.
+      // That can wipe normalized/optional fields and cause "nothing loads" symptoms.
+      await readableRepository.updateProgressMode(item.id, mode);
+
+      await invalidateReadablesAndStats();
+      await refetch();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to update progress mode', e);
+    }
+  };
+
   const handleOpenAo3 = () => {
     if (item.type === 'fanfic' && item.ao3Url) {
       Linking.openURL(item.ao3Url).catch(() => {
@@ -81,7 +96,6 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
-  // Unit-based save (page/chapter) instead of raw percent
   const handleSaveUnit = async (unit: number) => {
     try {
       await readableRepository.updateProgressByUnits({
@@ -97,7 +111,6 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
-  // Percent-based save
   const handleSavePercent = async (percent: number) => {
     try {
       await readableRepository.updateProgress(item.id, percent);
@@ -109,7 +122,6 @@ const ReadableDetailScreen: React.FC = () => {
     }
   };
 
-  // Time-based save (time -> percent); repo stores only progress_percent for now.
   const handleSaveTime = async (payload: { currentSeconds: number; totalSeconds: number }) => {
     try {
       await readableRepository.updateProgressByTime({
@@ -226,11 +238,9 @@ const ReadableDetailScreen: React.FC = () => {
   const notesTitle: string =
     item.status === 'DNF' ? 'DNF notes' : item.status === 'finished' ? 'Review / notes' : 'Notes';
 
-  // Pages metadata for books
   const totalPages = book?.pageCount ?? null;
   const currentPage = book?.currentPage ?? null;
 
-  // Fanfic chapters metadata (normalised)
   let availableChapters: number | null = fanfic?.availableChapters ?? null;
   let totalChapters: number | null = fanfic?.totalChapters ?? null;
   const currentChapter = fanfic?.currentChapter ?? null;
@@ -248,7 +258,6 @@ const ReadableDetailScreen: React.FC = () => {
   const chaptersDisplay =
     availableChapters != null || totalChapters != null ? `${chaptersLeft}/${chaptersRight}` : null;
 
-  // Status label next to chapters (Complete / Work in Progress)
   let chapterStatusLabel: string | null = null;
   if (fanfic) {
     if (fanfic.complete === true) {
@@ -260,7 +269,6 @@ const ReadableDetailScreen: React.FC = () => {
     }
   }
 
-  // Progress section wiring (unit-based)
   const unitLabel = isBook ? 'page' : 'chapter';
   const currentUnit = isBook ? (currentPage ?? null) : (currentChapter ?? null);
   const maxUnit = isBook ? (totalPages ?? null) : (totalChapters ?? availableChapters ?? null);
@@ -279,7 +287,6 @@ const ReadableDetailScreen: React.FC = () => {
           <Chip style={styles.chip}>Status: {READABLE_STATUS_LABELS[item.status]}</Chip>
         </View>
 
-        {/* Pages/chapters metadata block */}
         {isBook && (
           <View style={styles.metaBlock}>
             {totalPages != null && (
@@ -315,6 +322,8 @@ const ReadableDetailScreen: React.FC = () => {
           <ReadingProgressSection
             status={item.status}
             type={item.type}
+            progressMode={item.progressMode}
+            onChangeProgressMode={handleChangeProgressMode}
             currentPercent={item.progressPercent}
             currentUnit={currentUnit}
             maxUnit={maxUnit}
@@ -322,6 +331,8 @@ const ReadableDetailScreen: React.FC = () => {
             onSaveUnit={handleSaveUnit}
             onSavePercent={handleSavePercent}
             onSaveTime={handleSaveTime}
+            timeCurrentSeconds={item.timeCurrentSeconds ?? null}
+            timeTotalSeconds={item.timeTotalSeconds ?? null}
           />
         </View>
 
@@ -351,7 +362,6 @@ const ReadableDetailScreen: React.FC = () => {
           />
         )}
 
-        {/* Notes / review section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{notesTitle}</Text>
           {item.notes ? (

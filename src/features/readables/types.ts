@@ -4,6 +4,8 @@ export type ReadableStatus = 'to-read' | 'reading' | 'finished' | 'DNF';
 
 export type ReadableType = 'book' | 'fanfic';
 
+export type ProgressMode = 'units' | 'time' | 'percent';
+
 export const READABLE_STATUS_LABELS: Record<ReadableStatus, string> = {
   'to-read': 'To read',
   reading: 'Reading',
@@ -26,6 +28,15 @@ export interface BaseReadableItem {
   description?: string | null;
   status: ReadableStatus;
   priority: number; // 1–5
+
+  /**
+   * User-preferred progress logging & display mode.
+   * - units: pages (book) / chapters (fanfic)
+   * - time: HH:MM:SS style time progress (audiobooks)
+   * - percent: manual percent input
+   */
+  progressMode: ProgressMode;
+
   /**
    * Reading progress in percent (0–100).
    * - to-read: usually 0

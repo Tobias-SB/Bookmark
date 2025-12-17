@@ -180,6 +180,7 @@ const QuickAddReadableScreen: React.FC = () => {
           sourceId: null,
           pageCount: metadata?.pageCount ?? null,
           genres: metadata?.genres ?? [],
+          progressMode: 'units',
         };
 
         const inserted = await readableRepository.insert(book);
@@ -231,6 +232,7 @@ const QuickAddReadableScreen: React.FC = () => {
           chapterCount: metadata.chapterCount,
           complete: metadata.complete,
           wordCount: metadata.wordCount,
+          progressMode: 'units',
         };
 
         const inserted = await readableRepository.insert(fanfic);
