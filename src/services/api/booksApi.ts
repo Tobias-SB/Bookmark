@@ -127,11 +127,58 @@ type OpenLibrarySearchDoc = {
   subject?: string[];
   cover_i?: number;
   isbn?: string[];
+
+  /**
+   * Open Library search can return language tokens like:
+   * - "eng"
+   * - "en"
+   * - "/languages/eng"
+   *
+   * If missing, language is unknown.
+   */
+  language?: string[];
 };
 
 type OpenLibrarySearchResponse = {
   docs?: OpenLibrarySearchDoc[];
 };
+
+const DEFAULT_LANGUAGE = 'en';
+
+function normalizeLanguageToken(raw: string): string {
+  const s = raw.trim().toLowerCase();
+  if (!s) return '';
+
+  // handle "/languages/eng" and similar
+  const parts = s.split('/');
+  const last = parts[parts.length - 1] ?? s;
+
+  // common normalizations
+  if (last === 'eng') return 'en';
+  if (last.startsWith('en-')) return 'en';
+  if (last === 'en') return 'en';
+
+  return last;
+}
+
+/**
+ * Pipeline policy:
+ * - Exclude non-English editions by default
+ * - But if Open Library doesn't provide language, keep the doc (unknown language is allowed)
+ */
+function shouldKeepDocByLanguage(doc: OpenLibrarySearchDoc): boolean {
+  const langs = Array.isArray(doc.language) ? doc.language : [];
+
+  // If not present, don't throw away potentially-good matches.
+  if (langs.length === 0) return true;
+
+  const target = normalizeLanguageToken(DEFAULT_LANGUAGE);
+  for (const l of langs) {
+    if (normalizeLanguageToken(l) === target) return true;
+  }
+
+  return false;
+}
 
 function normalizeText(s: string) {
   return s
@@ -298,6 +345,9 @@ function isAcceptableCandidate(candidate: BookMetadataCandidate, mode: 'strict' 
 /**
  * Returns multiple candidates (sorted) so the UI can present a chooser.
  * Returns [] when nothing meets minimal threshold.
+ *
+ * Language policy (requested):
+ * - Open Library pipeline excludes non-English docs by default.
  */
 export async function searchBookMetadataCandidates(
   params: FetchBookMetadataParams & { maxCandidates?: number },
@@ -314,6 +364,7 @@ export async function searchBookMetadataCandidates(
     'subject',
     'cover_i',
     'isbn',
+    'language',
   ].join(',');
 
   const url =
@@ -339,7 +390,11 @@ export async function searchBookMetadataCandidates(
     });
   }
 
-  const docs = Array.isArray(json.docs) ? json.docs : [];
+  const docsAll = Array.isArray(json.docs) ? json.docs : [];
+  if (docsAll.length === 0) return [];
+
+  // ✅ English-by-default filtering happens here (Open Library pipeline only)
+  const docs = docsAll.filter(shouldKeepDocByLanguage);
   if (docs.length === 0) return [];
 
   const inferred = extractTitleAuthorFromQuery(query);
