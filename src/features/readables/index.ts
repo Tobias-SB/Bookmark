@@ -32,6 +32,13 @@ export {
   deleteReadable,
 } from './data/readableRepository';
 
+// ── Hooks ─────────────────────────────────────────────────────────────────────
+export type { UseReadablesResult } from './hooks/useReadables';
+export { useReadables } from './hooks/useReadables';
+
+export type { UseReadableResult } from './hooks/useReadable';
+export { useReadable } from './hooks/useReadable';
+
 // ── Screens ───────────────────────────────────────────────────────────────────
 export { LibraryScreen } from './ui/LibraryScreen';
 export { ReadableDetailScreen } from './ui/ReadableDetailScreen';
