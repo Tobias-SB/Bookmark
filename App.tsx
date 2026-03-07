@@ -1,20 +1,31 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+// App.tsx
+// §12 — Full provider tree. Order is non-negotiable (outermost → innermost):
+//   SafeAreaProvider → PaperProvider → QueryClientProvider
+//   → DatabaseProvider → AppGate → NavigationContainer
+//
+// NavigationContainer lives inside AppGate and is only rendered when
+// the database is ready (isReady = true).
+
+import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PaperProvider } from 'react-native-paper';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+import { DatabaseProvider } from './src/app/database/DatabaseProvider';
+import { AppGate } from './src/app/providers/AppGate';
+
+const queryClient = new QueryClient();
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaProvider>
+      <PaperProvider>
+        <QueryClientProvider client={queryClient}>
+          <DatabaseProvider>
+            <AppGate />
+          </DatabaseProvider>
+        </QueryClientProvider>
+      </PaperProvider>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
