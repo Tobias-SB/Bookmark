@@ -72,6 +72,8 @@ export interface UseReadablesResult {
   isLoading: boolean;
   isError: boolean;
   error: AppError | null;
+  /** Call to retry a failed query. Safe to call as fire-and-forget. */
+  refetch: () => void;
 }
 
 /**
@@ -81,7 +83,7 @@ export interface UseReadablesResult {
 export function useReadables(filters: ReadableFilters = {}): UseReadablesResult {
   const db = useDatabase();
 
-  const { data, isLoading, isError, error } = useQuery<Readable[], AppError>({
+  const { data, isLoading, isError, error, refetch } = useQuery<Readable[], AppError>({
     queryKey: readableKeys.list(filters),
     queryFn: () => listReadables(db),
     select: (all) => applyFilters(all, filters),
@@ -92,5 +94,6 @@ export function useReadables(filters: ReadableFilters = {}): UseReadablesResult 
     isLoading,
     isError,
     error: error ?? null,
+    refetch: () => { void refetch(); },
   };
 }
