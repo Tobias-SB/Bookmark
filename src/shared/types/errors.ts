@@ -1,2 +1,12 @@
-// AppError and AppErrorCode (§13)
-export {};
+// src/shared/types/errors.ts
+// §13 — Shared error type. Repositories and services catch raw errors and
+// return or throw typed AppError values. Hooks surface AppError to UI.
+// UI components do not inspect `code` for presentational logic unless the
+// distinction meaningfully changes the display.
+
+export type AppErrorCode = 'db' | 'network' | 'parse' | 'validation' | 'not_found';
+
+export interface AppError {
+  code: AppErrorCode;
+  message: string;
+}
