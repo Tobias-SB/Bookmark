@@ -18,8 +18,8 @@
 //   - Snackbar for mutation errors.
 //   - isComplete toggle shown only when kind = 'fanfic'.
 //
-// PROVISIONAL: keyboardVerticalOffset = 88 on iOS (header ~44 + status bar ~44).
-// Replace with useHeaderHeight() from @react-navigation/elements for exact value.
+// keyboardVerticalOffset uses useHeaderHeight() from @react-navigation/elements
+// for the exact rendered header height on every device.
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -43,6 +43,7 @@ import {
   TextInput,
 } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -92,10 +93,6 @@ const STATUS_LABELS: Record<ReadableStatus, string> = {
   dnf: 'DNF',
 };
 
-// PROVISIONAL: accounts for the native stack modal header on iOS.
-// ~44pt header + ~44pt status bar on notched devices.
-const KEYBOARD_OFFSET = Platform.OS === 'ios' ? 88 : 0;
-
 // ── Default values ────────────────────────────────────────────────────────────
 
 function getAddDefaultValues(): AddEditFormValues {
@@ -139,6 +136,7 @@ export function AddEditScreen({ route, navigation }: Props) {
   const { id } = route.params;
   const isEditMode = id !== undefined;
   const theme = useAppTheme();
+  const headerHeight = useHeaderHeight();
 
   // ── Load existing readable (edit mode) ──────────────────────────────────────
   // Always called — hooks must not be conditional.
@@ -329,7 +327,7 @@ export function AddEditScreen({ route, navigation }: Props) {
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={KEYBOARD_OFFSET}
+      keyboardVerticalOffset={headerHeight}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
