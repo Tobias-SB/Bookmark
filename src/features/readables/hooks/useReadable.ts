@@ -24,13 +24,15 @@ export interface UseReadableResult {
   isLoading: boolean;
   isError: boolean;
   error: AppError | null;
+  /** Manually re-run the query — useful for error retry actions. */
+  refetch: () => void;
 }
 
 /** Returns a single readable by its local id. */
 export function useReadable(id: string): UseReadableResult {
   const db = useDatabase();
 
-  const { data, isLoading, isError, error } = useQuery<Readable | null, AppError>({
+  const { data, isLoading, isError, error, refetch } = useQuery<Readable | null, AppError>({
     queryKey: readableKeys.detail(id),
     queryFn: () => getReadableById(db, id),
   });
@@ -40,5 +42,6 @@ export function useReadable(id: string): UseReadableResult {
     isLoading,
     isError,
     error: error ?? null,
+    refetch,
   };
 }
