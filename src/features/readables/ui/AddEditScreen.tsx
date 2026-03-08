@@ -19,7 +19,7 @@
 //   - isComplete toggle shown only when kind = 'fanfic'.
 //
 // PROVISIONAL: keyboardVerticalOffset = 88 on iOS (header ~44 + status bar ~44).
-// Replace with useHeaderHeight() from @react-navigation/elements if needed.
+// Replace with useHeaderHeight() from @react-navigation/elements for exact value.
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -67,6 +67,22 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddEditReadable'>;
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Converts a stored ISO 8601 string to YYYY-MM-DD using the device's local
+ * timezone. Safe to use now that the repository always writes midnight UTC of
+ * the local calendar date (localMidnightUTC), so getFullYear/Month/Date
+ * return the correct local calendar day on both read and write.
+ */
+function isoToLocalDate(iso: string): string {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<ReadableStatus, string> = {
@@ -113,8 +129,7 @@ function getEditDefaultValues(readable: Readable): AddEditFormValues {
     // Comma-separated tags for the single text field
     tags: readable.tags.join(', '),
     isComplete: readable.isComplete,
-    // Extract YYYY-MM-DD from stored ISO string (UTC date, acceptable for v1)
-    dateAdded: readable.dateAdded.slice(0, 10),
+    dateAdded: isoToLocalDate(readable.dateAdded),
   };
 }
 

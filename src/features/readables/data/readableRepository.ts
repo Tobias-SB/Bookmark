@@ -66,6 +66,25 @@ function progressUnitFromKind(kind: ReadableKind): ProgressUnit {
   return kind === 'book' ? 'pages' : 'chapters';
 }
 
+/**
+ * Returns midnight UTC of today's local calendar date as an ISO 8601 string.
+ * Used as the default dateAdded so the stored date always matches the user's
+ * local calendar day, regardless of timezone.
+ *
+ * e.g. a user in UTC+10 at 08:00 local → "2025-03-09T00:00:00.000Z"
+ *      a user in UTC-5  at 23:00 local → "2025-03-08T00:00:00.000Z"
+ *
+ * This makes slice(0,10) on the stored value reliable for display and form
+ * pre-fill without any UTC-to-local conversion on the read path.
+ */
+function localMidnightUTC(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}T00:00:00.000Z`;
+}
+
 function toDbError(cause: unknown, context: string): AppError {
   return {
     code: 'db',
@@ -121,7 +140,7 @@ export async function createReadable(
 ): Promise<Readable> {
   const id = Crypto.randomUUID();
   const now = new Date().toISOString();
-  const dateAdded = input.dateAdded ?? now;
+  const dateAdded = input.dateAdded ?? localMidnightUTC();
   const progressUnit = progressUnitFromKind(input.kind);
 
   try {
