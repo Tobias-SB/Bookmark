@@ -17,7 +17,7 @@
 //     → summary → tags → dateAdded (→ done).
 //   - beforeRemove listener for unsaved changes guard.
 //   - Validate on submit only.
-//   - Snackbar for mutation errors.
+//   - Snackbar for mutation and import errors (useSnackbar hook).
 //   - isComplete toggle shown only when kind = 'fanfic'.
 //
 // keyboardVerticalOffset uses useHeaderHeight() from @react-navigation/elements
@@ -60,6 +60,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 
 import type { RootStackParamList } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
+import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import type { ReadableStatus } from '../domain/readable';
 import { READABLE_STATUSES } from '../domain/readable';
 import { useReadable } from '../hooks/useReadable';
@@ -166,6 +167,7 @@ export function AddEditScreen({ route, navigation }: Props) {
     isLoading: isLoadingExisting,
     isError: isExistingError,
     error: existingError,
+    refetch: refetchExisting,
   } = useReadable(id ?? '');
 
   // ── Form setup ──────────────────────────────────────────────────────────────
@@ -229,7 +231,7 @@ export function AddEditScreen({ route, navigation }: Props) {
   const [importContext, setImportContext] = useState<ImportContext | null>(null);
 
   // ── Snackbar ─────────────────────────────────────────────────────────────────
-  const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null);
+  const { snackbarMessage, showSnackbar, hideSnackbar } = useSnackbar();
 
   // ── Unsaved changes guard ────────────────────────────────────────────────────
   // savedRef: set to true after a successful save so the guard is bypassed
@@ -322,7 +324,7 @@ export function AddEditScreen({ route, navigation }: Props) {
     });
 
     if (errors.length > 0) {
-      setSnackbarMessage('Imported with warnings — some fields could not be extracted.');
+      showSnackbar('Imported with warnings — some fields could not be extracted.');
     }
   }
 
@@ -338,7 +340,7 @@ export function AddEditScreen({ route, navigation }: Props) {
 
     // Total failure — no data extracted at all.
     if (Object.keys(result.data).length === 0) {
-      setSnackbarMessage(result.errors[0] ?? 'Import failed. No data could be extracted.');
+      showSnackbar(result.errors[0] ?? 'Import failed. No data could be extracted.');
       return;
     }
 
@@ -407,7 +409,7 @@ export function AddEditScreen({ route, navigation }: Props) {
           savedRef.current = true;
           navigation.goBack();
         },
-        onError: (err) => setSnackbarMessage(err.message),
+        onError: (err) => showSnackbar(err.message),
       });
     } else if (existingReadable) {
       const updateInput: UpdateReadableInput = {
@@ -430,7 +432,7 @@ export function AddEditScreen({ route, navigation }: Props) {
             savedRef.current = true;
             navigation.goBack();
           },
-          onError: (err) => setSnackbarMessage(err.message),
+          onError: (err) => showSnackbar(err.message),
         },
       );
     }
@@ -441,9 +443,15 @@ export function AddEditScreen({ route, navigation }: Props) {
   if (isEditMode && isExistingError) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text style={{ color: theme.colors.textSecondary }}>
+        <Text
+          variant="bodyMedium"
+          style={[styles.centeredMessage, { color: theme.colors.textSecondary }]}
+        >
           {existingError?.message ?? 'Failed to load readable.'}
         </Text>
+        <Button mode="outlined" onPress={refetchExisting}>
+          Try again
+        </Button>
       </View>
     );
   }
@@ -461,7 +469,12 @@ export function AddEditScreen({ route, navigation }: Props) {
   if (isEditMode && !isLoadingExisting && !existingReadable) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text style={{ color: theme.colors.textSecondary }}>Readable not found.</Text>
+        <Text
+          variant="bodyMedium"
+          style={{ color: theme.colors.textSecondary }}
+        >
+          Readable not found.
+        </Text>
       </View>
     );
   }
@@ -886,7 +899,7 @@ export function AddEditScreen({ route, navigation }: Props) {
       <Portal>
         <Snackbar
           visible={snackbarMessage !== null}
-          onDismiss={() => setSnackbarMessage(null)}
+          onDismiss={hideSnackbar}
           duration={4000}
         >
           {snackbarMessage ?? ''}
@@ -906,6 +919,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 32,
+    gap: 16,
+  },
+  centeredMessage: {
+    textAlign: 'center',
   },
   scrollContent: {
     padding: 16,

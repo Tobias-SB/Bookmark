@@ -16,6 +16,9 @@
 //     "https://archiveofourown.org/"; uses expo-linking; try/catch → snackbar.
 //   - Delete: ConfirmDialog → useDeleteReadable → navigation.goBack().
 //
+// Snackbar: uses shared useSnackbar hook — one snackbar instance for all
+// transient errors on this screen (status update, AO3 link, delete).
+//
 // Divider strategy: each conditional section (isComplete, summary, tags) owns
 // its preceding Divider so there are never two consecutive Dividers.
 // Always-present sections (dateAdded, actions) have unconditional Dividers before them.
@@ -37,6 +40,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
+import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import type { ReadableStatus } from '../domain/readable';
 import { READABLE_STATUSES } from '../domain/readable';
@@ -119,7 +123,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
 
   // ── UI state ─────────────────────────────────────────────────────────────
 
-  const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null);
+  const { snackbarMessage, showSnackbar, hideSnackbar } = useSnackbar();
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [progressEditorVisible, setProgressEditorVisible] = useState(false);
   const [progressEditorError, setProgressEditorError] = useState<string | null>(null);
@@ -165,7 +169,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
         onError: (err) => {
           // Revert optimistic update — readable.status still holds the old value.
           setLocalStatus(null);
-          setSnackbarMessage(err.message);
+          showSnackbar(err.message);
         },
       },
     );
@@ -205,7 +209,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
     try {
       await Linking.openURL(readable.sourceUrl);
     } catch {
-      setSnackbarMessage('Could not open the AO3 link.');
+      showSnackbar('Could not open the AO3 link.');
     }
   }
 
@@ -217,7 +221,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
         onSuccess: () => navigation.goBack(),
         onError: (err) => {
           setConfirmDeleteVisible(false);
-          setSnackbarMessage(err.message);
+          showSnackbar(err.message);
         },
       },
     );
@@ -516,7 +520,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
       <Portal>
         <Snackbar
           visible={snackbarMessage !== null}
-          onDismiss={() => setSnackbarMessage(null)}
+          onDismiss={hideSnackbar}
           duration={4000}
         >
           {snackbarMessage ?? ''}
