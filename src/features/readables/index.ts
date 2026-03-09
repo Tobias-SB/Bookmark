@@ -27,6 +27,7 @@ export type {
 export {
   listReadables,
   getReadableById,
+  findReadableBySourceId,
   createReadable,
   updateReadable,
   deleteReadable,

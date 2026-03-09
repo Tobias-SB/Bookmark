@@ -2,8 +2,10 @@
 // §10 — Add/edit screen for books and fanfics.
 //
 // Modes:
-//   Add: id absent from route params. kind selector visible. sourceType = 'manual'.
+//   Add: id absent from route params. kind selector visible. sourceType = 'manual'
+//        unless the user imports metadata (then 'ao3' or 'book_provider').
 //   Edit: id present. kind hidden and immutable. Form pre-filled from repository.
+//         No import functionality in edit mode.
 //
 // Form rules (§10):
 //   - Controller for every React Native Paper input.
@@ -20,6 +22,15 @@
 //
 // keyboardVerticalOffset uses useHeaderHeight() from @react-navigation/elements
 // for the exact rendered header height on every device.
+//
+// Metadata import (add mode only, §6):
+//   - Book: search-query TextInput + "Search Google Books" button above the form.
+//   - Fanfic: "Import from AO3" button below the Source URL field (reads that field).
+//   - On success: prefill form fields; show snackbar if partial errors.
+//   - On total failure: show snackbar; user continues with manual entry.
+//   - AO3: duplicate detected → Alert with "Open existing" / "Continue anyway" / "Cancel".
+//   - importContext tracks sourceType/sourceId for the submit handler.
+//   - Resets when kind changes (book ↔ fanfic) in add mode.
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -54,6 +65,7 @@ import { READABLE_STATUSES } from '../domain/readable';
 import { useReadable } from '../hooks/useReadable';
 import { useCreateReadable } from '../hooks/useCreateReadable';
 import { useUpdateReadable } from '../hooks/useUpdateReadable';
+import { useFindAo3Duplicate } from '../hooks/useFindAo3Duplicate';
 import type { CreateReadableInput } from '../data/readableRepository';
 import type { UpdateReadableInput } from '../data/readableRepository';
 import type { Readable } from '../domain/readable';
@@ -63,10 +75,18 @@ import {
   type AddEditFormValues,
   type AddEditFormOutput,
 } from './addEditSchema';
+import { useImportMetadata } from '../../metadata';
+import type { MetadataResult } from '../../metadata';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddEditReadable'>;
+
+/** Tracks which provider was used so the submit handler writes the correct sourceType/sourceId. */
+interface ImportContext {
+  sourceType: 'ao3' | 'book_provider';
+  sourceId: string | null;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -169,18 +189,24 @@ export function AddEditScreen({ route, navigation }: Props) {
     }
   }, [isEditMode, existingReadable, reset]);
 
-  // ── Kind watcher — keep isComplete in sync (add mode only) ──────────────────
-  // When kind changes to fanfic: default isComplete to false (WIP).
-  // When kind changes to book: reset isComplete to null.
-  // shouldDirty: false so automated resets don't mark the form dirty.
+  // ── Watchers ─────────────────────────────────────────────────────────────────
   const watchedKind = watch('kind');
   const watchedProgressTotal = watch('progressTotal');
   const watchedIsComplete = watch('isComplete');
+  const watchedSourceUrl = watch('sourceUrl');
+
+  // ── Kind watcher — keep isComplete in sync (add mode only) ──────────────────
+  // When kind changes to fanfic: default isComplete to false (WIP).
+  // When kind changes to book: reset isComplete to null.
+  // Also clear importContext when kind changes — a search done for book
+  // should not carry over if the user switches to fanfic and vice versa.
+  // shouldDirty: false so automated resets don't mark the form dirty.
   useEffect(() => {
     if (!isEditMode) {
       setValue('isComplete', watchedKind === 'fanfic' ? false : null, {
         shouldDirty: false,
       });
+      setImportContext(null);
     }
   }, [watchedKind, isEditMode, setValue]);
 
@@ -188,6 +214,19 @@ export function AddEditScreen({ route, navigation }: Props) {
   const { create, isPending: isCreating } = useCreateReadable();
   const { update, isPending: isUpdating } = useUpdateReadable();
   const isSaving = isCreating || isUpdating;
+
+  // ── Metadata import hooks ────────────────────────────────────────────────────
+  const { importMetadata, isImporting } = useImportMetadata();
+  const { findAo3Duplicate } = useFindAo3Duplicate();
+
+  // ── Import state ─────────────────────────────────────────────────────────────
+  /** Separate search query for Google Books (not a form field). */
+  const [bookSearchQuery, setBookSearchQuery] = useState('');
+  /**
+   * Set after a successful import. Provides sourceType and sourceId to the
+   * submit handler so the correct values are persisted. null = manual entry.
+   */
+  const [importContext, setImportContext] = useState<ImportContext | null>(null);
 
   // ── Snackbar ─────────────────────────────────────────────────────────────────
   const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null);
@@ -233,6 +272,112 @@ export function AddEditScreen({ route, navigation }: Props) {
   const tagsRef = useRef<RNTextInput>(null);
   const dateAddedRef = useRef<RNTextInput>(null);
 
+  // ── Import handlers ──────────────────────────────────────────────────────────
+
+  /**
+   * Applies a successful MetadataResult to the form and records the import context.
+   * Only sets fields that are present in result.data (partial results are fine).
+   * Shows a snackbar warning if any fields had extraction errors.
+   */
+  function applyImport(result: MetadataResult, kind: 'book' | 'fanfic') {
+    const { data, errors } = result;
+
+    if (data.title !== undefined) {
+      setValue('title', data.title, { shouldDirty: true });
+    }
+    if (data.author !== undefined) {
+      setValue('author', data.author ?? '', { shouldDirty: true });
+    }
+    if (data.summary !== undefined) {
+      setValue('summary', data.summary ?? '', { shouldDirty: true });
+    }
+    if (data.tags !== undefined) {
+      setValue('tags', data.tags.join(', '), { shouldDirty: true });
+    }
+    if (data.progressCurrent !== undefined) {
+      setValue(
+        'progressCurrent',
+        data.progressCurrent != null ? String(data.progressCurrent) : '',
+        { shouldDirty: true },
+      );
+    }
+    if (data.progressTotal !== undefined) {
+      setValue(
+        'progressTotal',
+        data.progressTotal != null ? String(data.progressTotal) : '',
+        { shouldDirty: true },
+      );
+    }
+    // isComplete is AO3-only — only set when kind is fanfic.
+    if (kind === 'fanfic' && data.isComplete !== undefined) {
+      setValue('isComplete', data.isComplete, { shouldDirty: true });
+    }
+    if (data.sourceUrl !== undefined) {
+      setValue('sourceUrl', data.sourceUrl ?? '', { shouldDirty: true });
+    }
+
+    setImportContext({
+      sourceType: kind === 'fanfic' ? 'ao3' : 'book_provider',
+      sourceId: data.sourceId ?? null,
+    });
+
+    if (errors.length > 0) {
+      setSnackbarMessage('Imported with warnings — some fields could not be extracted.');
+    }
+  }
+
+  /**
+   * Explicit user action: fetch metadata for the current kind and input.
+   * Book: uses bookSearchQuery. Fanfic: uses the sourceUrl field value.
+   * Performs AO3 duplicate detection before prefilling the form.
+   */
+  async function handleImport(kind: 'book' | 'fanfic') {
+    const input = kind === 'fanfic' ? watchedSourceUrl.trim() : bookSearchQuery.trim();
+
+    const result = await importMetadata(kind, input);
+
+    // Total failure — no data extracted at all.
+    if (Object.keys(result.data).length === 0) {
+      setSnackbarMessage(result.errors[0] ?? 'Import failed. No data could be extracted.');
+      return;
+    }
+
+    // AO3 duplicate detection (§6): check before prefilling.
+    if (kind === 'fanfic' && result.data.sourceId) {
+      let duplicate: Readable | null = null;
+      try {
+        duplicate = await findAo3Duplicate(result.data.sourceId);
+      } catch {
+        // Duplicate check failed — fail open and proceed with prefill.
+      }
+
+      if (duplicate) {
+        Alert.alert(
+          'Already in library',
+          `"${duplicate.title}" is already in your library.`,
+          [
+            {
+              text: 'Open existing',
+              onPress: () => {
+                // Bypass the unsaved-changes guard — user is intentionally navigating away.
+                savedRef.current = true;
+                navigation.navigate('ReadableDetail', { id: duplicate!.id });
+              },
+            },
+            {
+              text: 'Continue anyway',
+              onPress: () => applyImport(result, kind),
+            },
+            { text: 'Cancel', style: 'cancel' },
+          ],
+        );
+        return;
+      }
+    }
+
+    applyImport(result, kind);
+  }
+
   // ── Submit handler ───────────────────────────────────────────────────────────
   // data is AddEditFormOutput (Zod-transformed: numbers for progress, null for empty strings).
   const onSubmit = handleSubmit((data: AddEditFormOutput) => {
@@ -247,9 +392,10 @@ export function AddEditScreen({ route, navigation }: Props) {
         status: data.status,
         progressCurrent: data.progressCurrent,
         progressTotal: data.progressTotal,
-        sourceType: 'manual',
+        // Use import context when available; fall back to manual.
+        sourceType: importContext?.sourceType ?? 'manual',
         sourceUrl: data.sourceUrl,
-        sourceId: null,
+        sourceId: importContext?.sourceId ?? null,
         summary: data.summary,
         tags: data.tags,
         // isComplete is only meaningful for fanfic — always null for books.
@@ -328,6 +474,15 @@ export function AddEditScreen({ route, navigation }: Props) {
   const showIsCompleteHint =
     isFanfic && watchedIsComplete === true && watchedProgressTotal.trim() === '';
 
+  // AO3 import button: only enabled when sourceUrl looks like an AO3 works URL.
+  const canImportFromAo3 =
+    !isEditMode &&
+    isFanfic &&
+    watchedSourceUrl.trim().startsWith('https://archiveofourown.org/works/');
+
+  // Book search button: only enabled when the search query is non-empty.
+  const canSearchBooks = !isEditMode && !isFanfic && bookSearchQuery.trim().length > 0;
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
@@ -363,6 +518,44 @@ export function AddEditScreen({ route, navigation }: Props) {
                 />
               )}
             />
+          </View>
+        )}
+
+        {/* ── Book import section (add mode, kind = book only) ─────────────── */}
+        {!isEditMode && !isFanfic && (
+          <View style={[styles.section, styles.importSection, { borderColor: theme.colors.border }]}>
+            <Text
+              variant="labelLarge"
+              style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
+            >
+              Search Google Books
+            </Text>
+            <View style={styles.importRow}>
+              <TextInput
+                label="Title, author, or ISBN"
+                value={bookSearchQuery}
+                onChangeText={setBookSearchQuery}
+                returnKeyType="search"
+                onSubmitEditing={() => {
+                  if (canSearchBooks) void handleImport('book');
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[styles.input, styles.importInput]}
+                mode="outlined"
+                accessibilityLabel="Search query for Google Books"
+              />
+              <Button
+                mode="outlined"
+                onPress={() => void handleImport('book')}
+                loading={isImporting}
+                disabled={isImporting || !canSearchBooks}
+                style={styles.importButton}
+                accessibilityLabel="Search Google Books"
+              >
+                Search
+              </Button>
+            </View>
           </View>
         )}
 
@@ -453,7 +646,7 @@ export function AddEditScreen({ route, navigation }: Props) {
             <View style={styles.fieldWrapper}>
               <TextInput
                 ref={sourceUrlRef}
-                label="Source URL"
+                label={isFanfic ? 'AO3 Work URL' : 'Source URL'}
                 value={field.value}
                 onChangeText={field.onChange}
                 onBlur={field.onBlur}
@@ -465,7 +658,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                 autoCorrect={false}
                 style={styles.input}
                 mode="outlined"
-                accessibilityLabel="Source URL"
+                accessibilityLabel={isFanfic ? 'AO3 work URL' : 'Source URL'}
               />
               {fieldState.error && (
                 <HelperText type="error" visible>
@@ -475,6 +668,20 @@ export function AddEditScreen({ route, navigation }: Props) {
             </View>
           )}
         />
+
+        {/* ── AO3 import button (add mode, kind = fanfic only) ─────────────── */}
+        {!isEditMode && isFanfic && (
+          <Button
+            mode="outlined"
+            onPress={() => void handleImport('fanfic')}
+            loading={isImporting}
+            disabled={isImporting || !canImportFromAo3}
+            style={styles.ao3ImportButton}
+            accessibilityLabel="Import metadata from AO3"
+          >
+            Import from AO3
+          </Button>
+        )}
 
         {/* ── Progress ───────────────────────────────────────────────────────── */}
         <View style={styles.section}>
@@ -675,7 +882,7 @@ export function AddEditScreen({ route, navigation }: Props) {
 
       </ScrollView>
 
-      {/* ── Snackbar for mutation errors ──────────────────────────────────────── */}
+      {/* ── Snackbar for mutation and import errors/warnings ─────────────────── */}
       <Portal>
         <Snackbar
           visible={snackbarMessage !== null}
@@ -731,5 +938,27 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     marginTop: 16,
+  },
+  importSection: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  importRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  importInput: {
+    flex: 1,
+  },
+  importButton: {
+    alignSelf: 'center',
+    marginTop: 4,
+  },
+  ao3ImportButton: {
+    marginBottom: 12,
+    alignSelf: 'flex-start',
   },
 });

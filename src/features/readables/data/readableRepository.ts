@@ -131,6 +131,28 @@ export async function getReadableById(
   }
 }
 
+// ── findReadableBySourceId ────────────────────────────────────────────────────
+
+/**
+ * Returns the first readable matching the given sourceId and sourceType, or null.
+ * Used for AO3 duplicate detection before creating from an import (§6).
+ */
+export async function findReadableBySourceId(
+  db: SQLiteDatabase,
+  sourceId: string,
+  sourceType: SourceType,
+): Promise<Readable | null> {
+  try {
+    const row = await db.getFirstAsync<ReadableRow>(
+      'SELECT * FROM readables WHERE source_id = ? AND source_type = ?',
+      [sourceId, sourceType],
+    );
+    return row ? rowToReadable(row) : null;
+  } catch (cause) {
+    throw toDbError(cause, 'findReadableBySourceId');
+  }
+}
+
 // ── createReadable ────────────────────────────────────────────────────────────
 
 /** Inserts a new readable and returns the created domain object. */
