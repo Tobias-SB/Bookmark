@@ -8,6 +8,8 @@
 //   - progressCurrent reaches progressTotal (known) → auto-change to completed.
 //   - Status completed + total known → set progressCurrent = progressTotal.
 //   - Status want_to_read → clear progressCurrent.
+//   - Safety: isComplete=true with unknown total → isComplete=false (AO3 rule;
+//     form superRefine is the primary guard — this is defense in depth).
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { UseMutateFunction, UseMutateAsyncFunction } from '@tanstack/react-query';
@@ -58,10 +60,18 @@ function applyCreateConsistency(input: CreateReadableInput): CreateReadableInput
     resolvedProgressCurrent = null;
   }
 
+  // Safety: isComplete=true with unknown total is semantically impossible (AO3: Complete
+  // requires a known chapter count). The form superRefine is the primary guard; this
+  // catches any path that bypasses the form (e.g. metadata import).
+  const inputIsComplete = input.isComplete ?? null;
+  const resolvedIsComplete: boolean | null =
+    inputIsComplete === true && progressTotal === null ? false : inputIsComplete;
+
   return {
     ...input,
     status: resolvedStatus,
     progressCurrent: resolvedProgressCurrent,
+    ...(resolvedIsComplete !== inputIsComplete && { isComplete: resolvedIsComplete }),
   };
 }
 

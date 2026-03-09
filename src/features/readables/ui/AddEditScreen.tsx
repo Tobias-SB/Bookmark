@@ -174,6 +174,8 @@ export function AddEditScreen({ route, navigation }: Props) {
   // When kind changes to book: reset isComplete to null.
   // shouldDirty: false so automated resets don't mark the form dirty.
   const watchedKind = watch('kind');
+  const watchedProgressTotal = watch('progressTotal');
+  const watchedIsComplete = watch('isComplete');
   useEffect(() => {
     if (!isEditMode) {
       setValue('isComplete', watchedKind === 'fanfic' ? false : null, {
@@ -321,6 +323,10 @@ export function AddEditScreen({ route, navigation }: Props) {
   // ── Derived display values ───────────────────────────────────────────────────
   const isFanfic = watchedKind === 'fanfic';
   const progressUnit = isFanfic ? 'chapters' : 'pages';
+  // Hint shown below the Total field before submit when user has marked Complete
+  // but not yet entered a total — guides them to fill it in.
+  const showIsCompleteHint =
+    isFanfic && watchedIsComplete === true && watchedProgressTotal.trim() === '';
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -528,6 +534,11 @@ export function AddEditScreen({ route, navigation }: Props) {
                   {fieldState.error && (
                     <HelperText type="error" visible>
                       {fieldState.error.message}
+                    </HelperText>
+                  )}
+                  {!fieldState.error && showIsCompleteHint && (
+                    <HelperText type="info" visible>
+                      Set total chapters to mark as complete
                     </HelperText>
                   )}
                 </View>

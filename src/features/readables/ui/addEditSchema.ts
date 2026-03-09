@@ -8,6 +8,9 @@
 //   - tags: comma-separated string → string[]
 //   - dateAdded: validated as YYYY-MM-DD, not in the future
 //   - isComplete: boolean | null — no transform; controlled by Switch in screen
+//
+// Cross-field rules (superRefine):
+//   - isComplete=true requires progressTotal to be non-null (AO3: Complete = known total)
 
 import { z } from 'zod';
 
@@ -102,6 +105,17 @@ export const addEditSchema = z.object({
   isComplete: z.boolean().nullable(),
   /** YYYY-MM-DD local date. Converted to full ISO in the submit handler. */
   dateAdded: dateAddedField,
+}).superRefine((data, ctx) => {
+  // Cross-field rule: isComplete=true requires a known progressTotal.
+  // AO3 only shows "Complete" when total chapters are known (X/X format).
+  // superRefine receives post-transform values: progressTotal is number | null here.
+  if (data.isComplete === true && data.progressTotal === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['progressTotal'],
+      message: 'Total chapters is required when marking a work as complete',
+    });
+  }
 });
 
 // ── Form types ────────────────────────────────────────────────────────────────

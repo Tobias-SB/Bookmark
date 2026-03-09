@@ -9,6 +9,9 @@
 //   - Status completed + total known → set progressCurrent = progressTotal.
 //   - Status dnf → preserve partial progress (no action needed).
 //   - Status want_to_read → clear progressCurrent.
+//   - isComplete coherence: isComplete=true with unknown total → isComplete=false.
+//     Covers the ProgressEditor path (user clears progressTotal while isComplete was true)
+//     and self-heals any pre-existing broken records on next write.
 //
 // The caller passes `current` (the existing Readable) alongside the update input
 // so the hook can resolve effective post-update values without a redundant fetch.
@@ -57,6 +60,8 @@ function applyUpdateConsistency(
     : current.progressCurrent;
   const effectiveProgressTotal: number | null =
     'progressTotal' in input ? (input.progressTotal ?? null) : current.progressTotal;
+  const effectiveIsComplete: boolean | null =
+    'isComplete' in input ? (input.isComplete ?? null) : current.isComplete;
 
   let resolvedStatus = effectiveStatus;
   let resolvedProgressCurrent = effectiveProgressCurrent;
@@ -96,11 +101,26 @@ function applyUpdateConsistency(
   // Rule 4 (dnf): preserve partial progress — no action needed.
   // The resolved values are unchanged when status = dnf.
 
-  return {
+  // isComplete coherence: isComplete=true with unknown progressTotal is semantically
+  // impossible (AO3 "Complete" always has a known chapter count). This fires when
+  // the ProgressEditor clears progressTotal on a record that was already marked complete,
+  // and also self-heals any pre-existing broken records on next write.
+  let resolvedIsComplete = effectiveIsComplete;
+  if (resolvedIsComplete === true && effectiveProgressTotal === null) {
+    resolvedIsComplete = false;
+  }
+
+  const result: UpdateReadableInput = {
     ...input,
     status: resolvedStatus,
     progressCurrent: resolvedProgressCurrent,
   };
+  // Only write isComplete back when the rule changed it — avoids write amplification
+  // on updates that don't touch isComplete (e.g. status-only or progress-only updates).
+  if (resolvedIsComplete !== effectiveIsComplete) {
+    result.isComplete = resolvedIsComplete;
+  }
+  return result;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
