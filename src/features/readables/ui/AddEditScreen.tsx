@@ -536,7 +536,7 @@ export function AddEditScreen({ route, navigation }: Props) {
 
         {/* ── Book import section (add mode, kind = book only) ─────────────── */}
         {!isEditMode && !isFanfic && (
-          <View style={[styles.section, styles.importSection, { borderColor: theme.colors.border }]}>
+          <View style={[styles.section, styles.importSection, { borderColor: theme.colors.outline }]}>
             <Text
               variant="labelLarge"
               style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
