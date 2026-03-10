@@ -47,7 +47,7 @@ export interface UpdateReadableVariables {
  * Uses `current` to determine effective post-update values, so rules work
  * correctly whether the user is changing status, progress, or both at once.
  */
-function applyUpdateConsistency(
+export function applyUpdateConsistency(
   input: UpdateReadableInput,
   current: Readable,
 ): UpdateReadableInput {

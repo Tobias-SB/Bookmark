@@ -26,7 +26,7 @@ import { createReadable, type CreateReadableInput } from '../data/readableReposi
  * Applies §4 status/progress consistency rules to a create input.
  * Called in the hook layer — never in the repository or UI.
  */
-function applyCreateConsistency(input: CreateReadableInput): CreateReadableInput {
+export function applyCreateConsistency(input: CreateReadableInput): CreateReadableInput {
   const effectiveStatus: ReadableStatus = input.status ?? 'want_to_read';
   const progressCurrent: number | null = input.progressCurrent ?? null;
   const progressTotal: number | null = input.progressTotal ?? null;
