@@ -1,10 +1,11 @@
 // src/features/readables/ui/ReadableListItem.tsx
 // §8 — Memoized list item for the library FlatList.
-// Displays: title, author (if present), status, progress summary, kind indicator.
+// Displays: cover thumbnail (when available), title, author (if present),
+// status, progress summary, kind indicator.
 // No tags, summaries, or heavy metadata — keeps items lightweight and fast.
 
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { Text, TouchableRipple } from 'react-native-paper';
 
 import { useAppTheme } from '../../../app/theme';
@@ -20,14 +21,13 @@ const STATUS_LABELS: Record<ReadableStatus, string> = {
 };
 
 /**
- * Formats progress as "current / total unit" per §4.
- * Returns null when both current and total are null (no progress to show).
- * "?" is used for unknown totals.
+ * Formats the user's reading progress.
+ * Returns null when no progress data is available (nothing to show).
  */
 function formatProgress(readable: Readable): string | null {
   const { progressCurrent, progressTotal, progressUnit } = readable;
   if (progressCurrent === null && progressTotal === null) return null;
-  const current = progressCurrent ?? 0;
+  const current = progressCurrent !== null ? String(progressCurrent) : '--';
   const total = progressTotal !== null ? String(progressTotal) : '?';
   return `${current} / ${total} ${progressUnit}`;
 }
@@ -45,6 +45,7 @@ export const ReadableListItem = React.memo(function ReadableListItem({
 }: Props) {
   const theme = useAppTheme();
   const progress = formatProgress(item);
+  const hasCover = item.coverUrl !== null;
 
   return (
     <TouchableRipple
@@ -57,58 +58,70 @@ export const ReadableListItem = React.memo(function ReadableListItem({
       }
     >
       <View style={styles.container}>
-        {/* Row 1: title + kind badge */}
-        <View style={styles.topRow}>
-          <Text
-            variant="bodyLarge"
-            style={[styles.title, { color: theme.colors.textPrimary }]}
-            numberOfLines={2}
-          >
-            {item.title}
-          </Text>
-          <View
-            style={[
-              styles.kindBadge,
-              { backgroundColor: theme.colors.surfaceVariant },
-            ]}
-          >
+        {/* Cover thumbnail — only when available */}
+        {hasCover && (
+          <Image
+            source={{ uri: item.coverUrl! }}
+            style={[styles.cover, { backgroundColor: theme.colors.surfaceVariant }]}
+            resizeMode="cover"
+          />
+        )}
+
+        {/* Text content */}
+        <View style={styles.content}>
+          {/* Row 1: title + kind badge */}
+          <View style={styles.topRow}>
+            <Text
+              variant="bodyLarge"
+              style={[styles.title, { color: theme.colors.textPrimary }]}
+              numberOfLines={2}
+            >
+              {item.title}
+            </Text>
+            <View
+              style={[
+                styles.kindBadge,
+                { backgroundColor: theme.colors.surfaceVariant },
+              ]}
+            >
+              <Text
+                variant="labelSmall"
+                style={{ color: theme.colors.textSecondary }}
+              >
+                {item.kind === 'book' ? 'Book' : 'Fanfic'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Row 2: author */}
+          {item.author !== null && (
+            <Text
+              variant="bodySmall"
+              style={[styles.author, { color: theme.colors.textSecondary }]}
+              numberOfLines={1}
+            >
+              {item.author}
+            </Text>
+          )}
+
+          {/* Row 3: status · progress */}
+          <View style={styles.metaRow}>
             <Text
               variant="labelSmall"
               style={{ color: theme.colors.textSecondary }}
             >
-              {item.kind === 'book' ? 'Book' : 'Fanfic'}
+              {STATUS_LABELS[item.status]}
             </Text>
+            {progress !== null && (
+              <Text
+                variant="labelSmall"
+                style={{ color: theme.colors.textDisabled }}
+              >
+                {' · '}
+                {progress}
+              </Text>
+            )}
           </View>
-        </View>
-
-        {/* Row 2: author */}
-        {item.author !== null && (
-          <Text
-            variant="bodySmall"
-            style={[styles.author, { color: theme.colors.textSecondary }]}
-            numberOfLines={1}
-          >
-            {item.author}
-          </Text>
-        )}
-
-        {/* Row 3: status · progress */}
-        <View style={styles.metaRow}>
-          <Text
-            variant="labelSmall"
-            style={{ color: theme.colors.textSecondary }}
-          >
-            {STATUS_LABELS[item.status]}
-          </Text>
-          {progress !== null && (
-            <Text
-              variant="labelSmall"
-              style={{ color: theme.colors.textDisabled }}
-            >
-              {' · '}
-              {progress}
-            </Text>
-          )}
         </View>
       </View>
     </TouchableRipple>
@@ -119,8 +132,20 @@ export const ReadableListItem = React.memo(function ReadableListItem({
 
 const styles = StyleSheet.create({
   container: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    gap: 12,
+  },
+  cover: {
+    width: 48,
+    height: 64,
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  content: {
+    flex: 1,
     gap: 2,
   },
   topRow: {

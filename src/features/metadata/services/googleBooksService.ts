@@ -1,11 +1,20 @@
 // src/features/metadata/services/googleBooksService.ts
 // §6 — Google Books metadata service.
-// Returns Promise<MetadataResult>. Never throws — all errors caught internally.
+// Returns Promise<MetadataResult> (single) or Promise<BookSearchResponse> (multiple).
+// Never throws — all errors caught internally.
 // Per-field extraction so partial results succeed.
+//
+// API notes:
+//   - authors[]: all contributors without role differentiation. Illustrators,
+//     editors, and translators appear alongside the primary author with no
+//     role label. We extract all and surface them in BookSearchResult.allContributors.
+//   - Binding format (hardcover/paperback): not a structured API field. May appear
+//     in subtitle for some editions.
+//   - Cover thumbnails: Google Books returns http:// URLs — converted to https://.
 
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import type { MetadataResult } from './types';
+import type { BookSearchResponse, BookSearchResult, MetadataResult } from './types';
 
 const GOOGLE_BOOKS_BASE_URL = 'https://www.googleapis.com/books/v1/volumes';
 
@@ -13,13 +22,28 @@ const GOOGLE_BOOKS_BASE_URL = 'https://www.googleapis.com/books/v1/volumes';
 // Google Books API response types (minimal — only fields we use)
 // ---------------------------------------------------------------------------
 
+interface GoogleBooksIndustryIdentifier {
+  type: string;       // "ISBN_10" | "ISBN_13" | "OTHER"
+  identifier: string;
+}
+
+interface GoogleBooksImageLinks {
+  thumbnail?: string;
+  smallThumbnail?: string;
+}
+
 interface GoogleBooksVolumeInfo {
   title?: string;
+  subtitle?: string;
   authors?: string[];
   description?: string;
   categories?: string[];
   pageCount?: number;
+  publisher?: string;
+  publishedDate?: string;
   infoLink?: string;
+  industryIdentifiers?: GoogleBooksIndustryIdentifier[];
+  imageLinks?: GoogleBooksImageLinks;
 }
 
 interface GoogleBooksVolume {
@@ -43,26 +67,12 @@ function getApiKey(): string {
     : (extra?.googleBooksApiKeyIos ?? '');
 }
 
-/**
- * Returns the platform-specific restriction headers required by each API key.
- *
- * Android key restriction: X-Android-Package + X-Android-Cert
- *   Package name comes from the Expo config (android.package in app.json).
- *   SHA-1 cert comes from GOOGLE_BOOKS_ANDROID_CERT env var (signing secret).
- *
- * iOS key restriction: X-Ios-Bundle-Identifier
- *   Bundle ID comes from the Expo config (ios.bundleIdentifier in app.json).
- *
- * Returns an empty object if the required values are not configured — the
- * request will still be sent; Google will reject it with a 403 if the key
- * has restrictions that don't match.
- */
 function getRestrictionHeaders(): Record<string, string> {
   const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
 
   if (Platform.OS === 'android') {
     const packageName = Constants.expoConfig?.android?.package ?? '';
-    const cert = extra?.googleBooksAndroidCert ?? '';
+    const cert = (extra?.googleBooksAndroidCert ?? '').replace(/:/g, '').toLowerCase();
     if (!packageName || !cert) return {};
     return {
       'X-Android-Package': packageName,
@@ -75,6 +85,40 @@ function getRestrictionHeaders(): Record<string, string> {
   return {
     'X-Ios-Bundle-Identifier': bundleId,
   };
+}
+
+/**
+ * Extracts the preferred ISBN from industry identifiers.
+ * Prefers ISBN-13; falls back to ISBN-10; returns null if neither is present.
+ */
+function extractIsbn(identifiers?: GoogleBooksIndustryIdentifier[]): string | null {
+  if (!identifiers?.length) return null;
+  const isbn13 = identifiers.find((i) => i.type === 'ISBN_13');
+  if (isbn13) return isbn13.identifier;
+  const isbn10 = identifiers.find((i) => i.type === 'ISBN_10');
+  return isbn10?.identifier ?? null;
+}
+
+/**
+ * Converts a Google Books image URL to HTTPS.
+ * Google Books returns http:// thumbnail URLs; Android blocks cleartext traffic.
+ */
+function toHttps(url: string | undefined): string | null {
+  if (!url) return null;
+  return url.replace(/^http:\/\//, 'https://');
+}
+
+function buildDisplayInfo(info: GoogleBooksVolumeInfo): string {
+  const parts: string[] = [];
+  if (info.publisher?.trim()) parts.push(info.publisher.trim());
+  if (info.publishedDate?.trim()) {
+    const year = info.publishedDate.trim().slice(0, 4);
+    if (year) parts.push(year);
+  }
+  if (typeof info.pageCount === 'number' && info.pageCount > 0) {
+    parts.push(`${info.pageCount} pages`);
+  }
+  return parts.join(' · ');
 }
 
 function mapVolumeToMetadata(volume: GoogleBooksVolume): MetadataResult {
@@ -91,7 +135,6 @@ function mapVolumeToMetadata(volume: GoogleBooksVolume): MetadataResult {
   }
 
   try {
-    // Use first author only; null when authors array is absent or empty.
     data.author = info.authors?.[0]?.trim() ?? null;
   } catch {
     errors.push('Error extracting author.');
@@ -116,11 +159,9 @@ function mapVolumeToMetadata(volume: GoogleBooksVolume): MetadataResult {
     errors.push('Error extracting page count.');
   }
 
-  // Google Books provides no reading progress — always null.
   data.progressCurrent = null;
-
-  // books are never AO3 works — isComplete is always null.
   data.isComplete = null;
+  data.availableChapters = null;
 
   try {
     data.sourceUrl = info.infoLink?.trim() ?? null;
@@ -134,7 +175,56 @@ function mapVolumeToMetadata(volume: GoogleBooksVolume): MetadataResult {
     errors.push('Error extracting volume ID.');
   }
 
+  try {
+    data.isbn = extractIsbn(info.industryIdentifiers);
+  } catch {
+    errors.push('Error extracting ISBN.');
+  }
+
+  try {
+    data.coverUrl = toHttps(info.imageLinks?.thumbnail);
+  } catch {
+    errors.push('Error extracting cover URL.');
+  }
+
   return { data, errors };
+}
+
+function mapVolumeToBookSearchResult(volume: GoogleBooksVolume): BookSearchResult {
+  const info = volume.volumeInfo ?? {};
+  const { data } = mapVolumeToMetadata(volume);
+  return {
+    displayTitle: info.title?.trim() ?? 'Unknown title',
+    allContributors: info.authors?.map((a) => a.trim()).filter(Boolean) ?? [],
+    subtitle: info.subtitle?.trim() ?? null,
+    displayInfo: buildDisplayInfo(info),
+    isbn: extractIsbn(info.industryIdentifiers),
+    coverUrl: toHttps(info.imageLinks?.thumbnail),
+    metadata: data,
+  };
+}
+
+async function fetchVolumes(
+  query: string,
+  maxResults: number,
+): Promise<{ items: GoogleBooksVolume[]; error?: string }> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return { items: [], error: 'Google Books API key is not configured.' };
+  }
+
+  try {
+    const url = `${GOOGLE_BOOKS_BASE_URL}?q=${encodeURIComponent(query)}&maxResults=${maxResults}&key=${apiKey}`;
+    const response = await fetch(url, { headers: getRestrictionHeaders() });
+    if (!response.ok) {
+      return { items: [], error: `Google Books request failed with status ${response.status}.` };
+    }
+    const json = (await response.json()) as GoogleBooksApiResponse;
+    return { items: json.items ?? [] };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Unknown error';
+    return { items: [], error: `Failed to fetch Google Books data: ${message}` };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,30 +241,27 @@ export async function searchGoogleBooks(query: string): Promise<MetadataResult> 
     return { data: {}, errors: ['Search query must not be empty.'] };
   }
 
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    return { data: {}, errors: ['Google Books API key is not configured.'] };
+  const { items, error } = await fetchVolumes(query.trim(), 1);
+  if (error) return { data: {}, errors: [error] };
+  if (!items.length) return { data: {}, errors: ['No results found on Google Books.'] };
+
+  return mapVolumeToMetadata(items[0]);
+}
+
+/**
+ * Search Google Books and return up to 5 results for the user to choose from.
+ * Each result includes contributor list, subtitle, edition info, ISBN, and
+ * cover URL to help distinguish editions. Never throws.
+ */
+export async function searchGoogleBooksMultiple(query: string): Promise<BookSearchResponse> {
+  if (!query.trim()) {
+    return { results: [], errors: ['Search query must not be empty.'] };
   }
 
-  let responseJson: GoogleBooksApiResponse;
-  try {
-    const url = `${GOOGLE_BOOKS_BASE_URL}?q=${encodeURIComponent(query)}&maxResults=1&key=${apiKey}`;
-    const response = await fetch(url, { headers: getRestrictionHeaders() });
-    if (!response.ok) {
-      return {
-        data: {},
-        errors: [`Google Books request failed with status ${response.status}.`],
-      };
-    }
-    responseJson = (await response.json()) as GoogleBooksApiResponse;
-  } catch (e) {
-    const message = e instanceof Error ? e.message : 'Unknown error';
-    return { data: {}, errors: [`Failed to fetch Google Books data: ${message}`] };
-  }
+  const { items, error } = await fetchVolumes(query.trim(), 5);
+  if (error) return { results: [], errors: [error] };
+  if (!items.length) return { results: [], errors: ['No results found on Google Books.'] };
 
-  if (!responseJson.items?.length) {
-    return { data: {}, errors: ['No results found on Google Books.'] };
-  }
-
-  return mapVolumeToMetadata(responseJson.items[0]);
+  const results = items.map(mapVolumeToBookSearchResult);
+  return { results, errors: [] };
 }

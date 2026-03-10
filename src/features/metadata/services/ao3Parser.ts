@@ -7,8 +7,12 @@
 // Rating and archive-warning tags are excluded as they carry no reading-tracker value.
 // (Provisional — confirm if different tag selection is desired.)
 //
-// isComplete is derived from chapter counts (progressTotal is source of truth):
-//   isComplete = progressCurrent === progressTotal (both known and equal).
+// Chapter extraction:
+//   AO3 format "X/Y" where X = chapters published, Y = planned total (or "?").
+//   X → availableChapters (author's published count; NOT the user's reading position).
+//   Y → progressTotal (planned final count; null when "?").
+//   progressCurrent is never set from import — it is the user's reading position only.
+//   isComplete = availableChapters === progressTotal (both known and equal).
 
 import type { MetadataResult } from './types';
 
@@ -42,35 +46,22 @@ function cleanHtml(html: string): string {
     .trim();
 }
 
-/**
- * AO3 title lives in: <h2 class="title heading">Title</h2>
- * The h2 content may include whitespace-only text nodes; cleanHtml handles that.
- */
 function parseTitle(html: string): string | null {
   const match = html.match(/<h2[^>]*class="title heading"[^>]*>([\s\S]*?)<\/h2>/i);
   if (!match) return null;
   return cleanHtml(match[1]) || null;
 }
 
-/**
- * AO3 author lives in an <a rel="author"> link in the byline heading.
- * Anonymous works have no such link — returns null (correct per domain model).
- */
 function parseAuthor(html: string): string | null {
   const match = html.match(/<a[^>]*rel="author"[^>]*>([\s\S]*?)<\/a>/i);
   if (!match) return null;
   return cleanHtml(match[1]) || null;
 }
 
-/**
- * AO3 summary lives inside a blockquote.userstuff within div.summary.module.
- * Uses string offsets rather than regex to avoid nested-div termination problems.
- */
 function parseSummary(html: string): string | null {
   const markerIdx = html.indexOf('class="summary module"');
   if (markerIdx === -1) return null;
 
-  // Grab a forward window — summary modules are short.
   const area = html.substring(markerIdx, markerIdx + 6000);
 
   const bqOpenIdx = area.indexOf('<blockquote');
@@ -83,12 +74,7 @@ function parseSummary(html: string): string | null {
   return cleanHtml(area.substring(contentStart, contentEnd)) || null;
 }
 
-/**
- * Extract all <a class="tag"> text values from a specific <dd> class in the work meta block.
- * ddClass example: "freeform tags", "relationship tags"
- */
 function extractTagsFromDd(html: string, ddClass: string): string[] {
-  // Escape spaces in the class string for regex.
   const escapedClass = ddClass.replace(/\s+/g, '\\s+');
   const ddMatch = html.match(
     new RegExp(`<dd[^>]*class="[^"]*${escapedClass}[^"]*">([\\s\\S]*?)<\\/dd>`, 'i'),
@@ -103,10 +89,6 @@ function extractTagsFromDd(html: string, ddClass: string): string[] {
   return tags;
 }
 
-/**
- * Collect tags from fandom, relationship, character, and freeform (additional) tag categories.
- * Returns a flat string array.
- */
 function parseTags(html: string): string[] {
   const categories = ['fandom tags', 'relationship tags', 'character tags', 'freeform tags'];
   const all: string[] = [];
@@ -117,30 +99,32 @@ function parseTags(html: string): string[] {
 }
 
 interface ChapterCounts {
-  current: number | null;
+  /** Chapters currently published by the author → availableChapters. */
+  published: number | null;
+  /** Planned final chapter count → progressTotal. null when "?". */
   total: number | null;
 }
 
 /**
  * AO3 chapter counts live in: <dd class="chapters">3/5</dd> or <dd class="chapters">3/?</dd>
- * The current chapter count may be wrapped in an <a> link — cleanHtml strips it.
+ * The published chapter count may be wrapped in an <a> link — cleanHtml strips it.
  */
 function parseChapters(html: string): ChapterCounts {
   const match = html.match(/<dd[^>]*class="chapters"[^>]*>([\s\S]*?)<\/dd>/i);
-  if (!match) return { current: null, total: null };
+  if (!match) return { published: null, total: null };
 
   const text = cleanHtml(match[1]); // e.g. "3/5" or "3/?"
   const slashIdx = text.indexOf('/');
-  if (slashIdx === -1) return { current: null, total: null };
+  if (slashIdx === -1) return { published: null, total: null };
 
-  const currentStr = text.substring(0, slashIdx).trim();
+  const publishedStr = text.substring(0, slashIdx).trim();
   const totalStr = text.substring(slashIdx + 1).trim();
 
-  const current = parseInt(currentStr, 10);
+  const published = parseInt(publishedStr, 10);
   const total = totalStr === '?' ? null : parseInt(totalStr, 10);
 
   return {
-    current: isNaN(current) ? null : current,
+    published: isNaN(published) ? null : published,
     total: total !== null && isNaN(total) ? null : total,
   };
 }
@@ -160,10 +144,7 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
     return { data: {}, errors: ['URL does not appear to be a valid AO3 work URL.'] };
   }
 
-  // Canonical source URL — strip any query params or path suffixes from the input.
   const canonicalUrl = `${AO3_BASE_URL}${workId}`;
-
-  // view_adult=true bypasses the age-check interstitial for explicit-rated works.
   const fetchUrl = `${canonicalUrl}?view_adult=true`;
 
   let html: string;
@@ -183,9 +164,13 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
   const data: MetadataResult['data'] = {};
   const errors: string[] = [];
 
-  // sourceId and sourceUrl are derived from the validated URL — set unconditionally.
   data.sourceId = workId;
   data.sourceUrl = canonicalUrl;
+  // Books-only fields — always null for AO3.
+  data.isbn = null;
+  data.coverUrl = null;
+  // progressCurrent is never set from import — it is the user's reading position only.
+  data.progressCurrent = null;
 
   try {
     const title = parseTitle(html);
@@ -196,14 +181,12 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
   }
 
   try {
-    // null is a valid value (anonymous work).
     data.author = parseAuthor(html);
   } catch {
     errors.push('Error extracting author.');
   }
 
   try {
-    // null is a valid value (no summary).
     data.summary = parseSummary(html);
   } catch {
     errors.push('Error extracting summary.');
@@ -216,12 +199,13 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
   }
 
   try {
-    const { current, total } = parseChapters(html);
-    data.progressCurrent = current;
+    const { published, total } = parseChapters(html);
+    // published = chapters the author has posted → availableChapters (not user progress).
+    // total = planned final chapter count → progressTotal (null when ongoing/unknown).
+    data.availableChapters = published;
     data.progressTotal = total;
-    // isComplete is derived from chapter counts — not from the "Completed" status label.
-    // true only when both counts are known and current has reached total.
-    data.isComplete = current !== null && total !== null ? current === total : false;
+    // isComplete: true only when all planned chapters are published.
+    data.isComplete = published !== null && total !== null ? published === total : false;
   } catch {
     errors.push('Error extracting chapter counts.');
   }

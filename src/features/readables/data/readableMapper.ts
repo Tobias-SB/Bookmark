@@ -29,6 +29,9 @@ export interface ReadableRow {
   summary: string | null;
   tags: string;
   is_complete: number | null; // SQLite INTEGER: 1 = true, 0 = false, null = null
+  isbn: string | null;
+  cover_url: string | null;
+  available_chapters: number | null;
   date_added: string;
   date_created: string;
   date_updated: string;
@@ -76,6 +79,9 @@ export function rowToReadable(row: ReadableRow): Readable {
     summary: row.summary,
     tags: parseTags(row.tags),
     isComplete: booleanFromSQLite(row.is_complete),
+    isbn: row.isbn,
+    coverUrl: row.cover_url,
+    availableChapters: row.available_chapters,
     dateAdded: row.date_added,
     dateCreated: row.date_created,
     dateUpdated: row.date_updated,

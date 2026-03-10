@@ -2,6 +2,13 @@
 // §3, §4 — Canonical readable model. Do not reinvent between sessions.
 // ReadableStatus, ReadableKind, ProgressUnit, Readable, and ReadableFilters
 // are fixed for v1 — do not extend without explicit instruction.
+//
+// Extensions from base spec (user-confirmed scope expansions):
+//   isbn              — ISBN-13 or ISBN-10 from import; null for manual/AO3 entries.
+//   coverUrl          — Remote image URL from import; null for manual/AO3 entries.
+//   availableChapters — Fanfic only: chapters published at import time (distinct from
+//                       progressCurrent = user's reading position and
+//                       progressTotal = planned final chapter count).
 
 // ── Kind ─────────────────────────────────────────────────────────────────────
 
@@ -45,9 +52,9 @@ export interface Readable {
   /** null for anonymous or unknown authors. */
   author: string | null;
   status: ReadableStatus;
-  /** Current page (books) or chapter (fanfic). */
+  /** User's current reading position: page (books) or chapter (fanfic). */
   progressCurrent: number | null;
-  /** Total pages or chapters; null if unknown. */
+  /** Total pages or chapters; null if unknown. For fanfics this is the planned final count. */
   progressTotal: number | null;
   /** Derived from kind. Written by repository. Never accepted from user input. */
   progressUnit: ProgressUnit;
@@ -62,6 +69,16 @@ export interface Readable {
   tags: string[];
   /** AO3 only: false = WIP, true = Complete. Always null for books. */
   isComplete: boolean | null;
+  /** ISBN-13 preferred, ISBN-10 fallback. Set from import only; null for manual/AO3. */
+  isbn: string | null;
+  /** Remote cover image URL (HTTPS). Set from import only; null for manual/AO3. */
+  coverUrl: string | null;
+  /**
+   * Fanfic only: chapters published by the author at import time.
+   * Distinct from progressCurrent (user's reading position) and progressTotal
+   * (planned final chapter count). Set from AO3 import; null for books and manual.
+   */
+  availableChapters: number | null;
   /** ISO 8601. User-facing. Supports backdating. No future dates. */
   dateAdded: string;
   /** ISO 8601. Set once at creation. Never edited. */

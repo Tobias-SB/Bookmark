@@ -7,7 +7,7 @@
 // Content area states:
 //   isLoading  → ActivityIndicator
 //   isError    → EmptyState with retry action
-//   empty lib  → EmptyState with "Add your first book" CTA
+//   empty lib  → EmptyState with "Add your first read" CTA
 //   no results → EmptyState with "Reset filters" action
 //   has data   → FlatList of ReadableListItem
 //
@@ -171,7 +171,7 @@ export function LibraryScreen() {
         <EmptyState
           title="Your library is empty"
           message="Add a book or fanfic to get started."
-          action={{ label: 'Add your first book', onPress: handleAddPress }}
+          action={{ label: 'Add your first read', onPress: handleAddPress }}
         />
       );
     }

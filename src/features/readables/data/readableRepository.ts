@@ -7,6 +7,8 @@
 //   - sourceId is never overwritten by updateReadable.
 //   - dateUpdated is always new Date().toISOString() on every write.
 //   - id is generated via Crypto.randomUUID() in createReadable.
+//   - isbn, coverUrl, and availableChapters are set at creation from import;
+//     not overwritten by user edits.
 
 import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -42,6 +44,12 @@ export interface CreateReadableInput {
   isComplete?: boolean | null;
   /** ISO 8601. Defaults to today's date if not provided. */
   dateAdded?: string;
+  /** ISBN-13 preferred, ISBN-10 fallback. null for manual/AO3. */
+  isbn?: string | null;
+  /** Remote cover image URL (HTTPS). null for manual/AO3. */
+  coverUrl?: string | null;
+  /** Fanfic only: chapters published at import time. null for books and manual. */
+  availableChapters?: number | null;
 }
 
 export interface UpdateReadableInput {
@@ -57,7 +65,8 @@ export interface UpdateReadableInput {
   /** ISO 8601. Supports backdating; no future dates enforced by repository. */
   dateAdded?: string;
   // Intentionally omitted — immutable after creation:
-  //   kind, progressUnit, sourceType, sourceId, id, dateCreated
+  //   kind, progressUnit, sourceType, sourceId, id, dateCreated,
+  //   isbn, coverUrl, availableChapters
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -66,17 +75,6 @@ function progressUnitFromKind(kind: ReadableKind): ProgressUnit {
   return kind === 'book' ? 'pages' : 'chapters';
 }
 
-/**
- * Returns midnight UTC of today's local calendar date as an ISO 8601 string.
- * Used as the default dateAdded so the stored date always matches the user's
- * local calendar day, regardless of timezone.
- *
- * e.g. a user in UTC+10 at 08:00 local → "2025-03-09T00:00:00.000Z"
- *      a user in UTC-5  at 23:00 local → "2025-03-08T00:00:00.000Z"
- *
- * This makes slice(0,10) on the stored value reliable for display and form
- * pre-fill without any UTC-to-local conversion on the read path.
- */
 function localMidnightUTC(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -133,10 +131,6 @@ export async function getReadableById(
 
 // ── findReadableBySourceId ────────────────────────────────────────────────────
 
-/**
- * Returns the first readable matching the given sourceId and sourceType, or null.
- * Used for AO3 duplicate detection before creating from an import (§6).
- */
 export async function findReadableBySourceId(
   db: SQLiteDatabase,
   sourceId: string,
@@ -172,9 +166,11 @@ export async function createReadable(
         progress_current, progress_total, progress_unit,
         source_type, source_url, source_id,
         summary, tags, is_complete,
+        isbn, cover_url, available_chapters,
         date_added, date_created, date_updated
       ) VALUES (
         ?, ?, ?, ?, ?,
+        ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?,
@@ -195,9 +191,12 @@ export async function createReadable(
         input.summary ?? null,
         JSON.stringify(input.tags ?? []),
         booleanToSQLite(input.isComplete ?? null),
+        input.isbn ?? null,
+        input.coverUrl ?? null,
+        input.availableChapters ?? null,
         dateAdded,
-        now, // dateCreated
-        now, // dateUpdated
+        now,
+        now,
       ],
     );
 
@@ -214,13 +213,6 @@ export async function createReadable(
 
 // ── updateReadable ────────────────────────────────────────────────────────────
 
-/**
- * Updates an existing readable and returns the updated domain object.
- *
- * Fetches the existing record first so we can merge only the provided fields
- * while writing all columns — this avoids dynamic SQL and keeps the update
- * path predictable. progressUnit and sourceId are never touched here.
- */
 export async function updateReadable(
   db: SQLiteDatabase,
   id: string,
@@ -234,9 +226,6 @@ export async function updateReadable(
 
   const dateUpdated = new Date().toISOString();
 
-  // For optional nullable fields, 'key' in input distinguishes "not provided"
-  // (undefined) from "explicitly set to null". For required non-null fields,
-  // undefined means "keep existing".
   const title = input.title ?? existing.title;
   const author = 'author' in input ? (input.author ?? null) : existing.author;
   const status = input.status ?? existing.status;
@@ -253,13 +242,20 @@ export async function updateReadable(
     'isComplete' in input ? (input.isComplete ?? null) : existing.isComplete;
   const dateAdded = input.dateAdded ?? existing.dateAdded;
 
+  // Preserve import-only fields — not user-editable.
+  const isbn = existing.isbn;
+  const coverUrl = existing.coverUrl;
+  const availableChapters = existing.availableChapters;
+
   try {
     await db.runAsync(
       `UPDATE readables SET
         title = ?, author = ?, status = ?,
         progress_current = ?, progress_total = ?,
         source_url = ?, summary = ?, tags = ?,
-        is_complete = ?, date_added = ?, date_updated = ?
+        is_complete = ?, date_added = ?,
+        isbn = ?, cover_url = ?, available_chapters = ?,
+        date_updated = ?
       WHERE id = ?`,
       [
         title,
@@ -272,6 +268,9 @@ export async function updateReadable(
         JSON.stringify(tags),
         booleanToSQLite(isComplete),
         dateAdded,
+        isbn,
+        coverUrl,
+        availableChapters,
         dateUpdated,
         id,
       ],

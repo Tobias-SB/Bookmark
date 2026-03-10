@@ -7,34 +7,16 @@
 //   Edit: id present. kind hidden and immutable. Form pre-filled from repository.
 //         No import functionality in edit mode.
 //
-// Form rules (§10):
-//   - Controller for every React Native Paper input.
-//   - Progress fields: string TextInput → number | null via Zod transform.
-//   - keyboardType="number-pad" for progress fields.
-//   - KeyboardAvoidingView: padding on iOS, height on Android.
-//   - Content wrapped in ScrollView.
-//   - Focus chaining: title → author → sourceUrl → progressCurrent → progressTotal
-//     → summary → tags → dateAdded (→ done).
-//   - beforeRemove listener for unsaved changes guard.
-//   - Validate on submit only.
-//   - Snackbar for mutation and import errors (useSnackbar hook).
-//   - isComplete toggle shown only when kind = 'fanfic'.
-//
-// keyboardVerticalOffset uses useHeaderHeight() from @react-navigation/elements
-// for the exact rendered header height on every device.
-//
-// Metadata import (add mode only, §6):
-//   - Book: search-query TextInput + "Search Google Books" button above the form.
-//   - Fanfic: "Import from AO3" button below the Source URL field (reads that field).
-//   - On success: prefill form fields; show snackbar if partial errors.
-//   - On total failure: show snackbar; user continues with manual entry.
-//   - AO3: duplicate detected → Alert with "Open existing" / "Continue anyway" / "Cancel".
-//   - importContext tracks sourceType/sourceId for the submit handler.
-//   - Resets when kind changes (book ↔ fanfic) in add mode.
+// Book import flow (add mode):
+//   Search → edition picker modal (up to 5 results, each with cover thumbnail,
+//   all contributors, subtitle, edition info, ISBN) → user selects → form prefilled.
+//   isbn, coverUrl, and availableChapters are stored in importContext and passed
+//   to createReadable (not form fields — import-only values).
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -45,13 +27,16 @@ import {
 import {
   ActivityIndicator,
   Button,
+  Divider,
   HelperText,
+  Modal,
   Portal,
   SegmentedButtons,
   Snackbar,
   Switch,
   Text,
   TextInput,
+  TouchableRipple,
 } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -77,26 +62,23 @@ import {
   type AddEditFormOutput,
 } from './addEditSchema';
 import { useImportMetadata } from '../../metadata';
-import type { MetadataResult } from '../../metadata';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+import type { BookSearchResult, MetadataResult } from '../../metadata';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddEditReadable'>;
 
-/** Tracks which provider was used so the submit handler writes the correct sourceType/sourceId. */
+/**
+ * Tracks which provider was used so the submit handler writes the correct
+ * sourceType/sourceId. Also carries import-only fields (isbn, coverUrl,
+ * availableChapters) so they can be persisted without being form fields.
+ */
 interface ImportContext {
   sourceType: 'ao3' | 'book_provider';
   sourceId: string | null;
+  isbn: string | null;
+  coverUrl: string | null;
+  availableChapters: number | null;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Converts a stored ISO 8601 string to YYYY-MM-DD using the device's local
- * timezone. Safe to use now that the repository always writes midnight UTC of
- * the local calendar date (localMidnightUTC), so getFullYear/Month/Date
- * return the correct local calendar day on both read and write.
- */
 function isoToLocalDate(iso: string): string {
   const d = new Date(iso);
   const y = d.getFullYear();
@@ -105,16 +87,12 @@ function isoToLocalDate(iso: string): string {
   return `${y}-${m}-${day}`;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
 const STATUS_LABELS: Record<ReadableStatus, string> = {
   want_to_read: 'Want',
   reading: 'Reading',
   completed: 'Done',
   dnf: 'DNF',
 };
-
-// ── Default values ────────────────────────────────────────────────────────────
 
 function getAddDefaultValues(): AddEditFormValues {
   return {
@@ -138,20 +116,15 @@ function getEditDefaultValues(readable: Readable): AddEditFormValues {
     title: readable.title,
     author: readable.author ?? '',
     status: readable.status,
-    progressCurrent:
-      readable.progressCurrent != null ? String(readable.progressCurrent) : '',
-    progressTotal:
-      readable.progressTotal != null ? String(readable.progressTotal) : '',
+    progressCurrent: readable.progressCurrent != null ? String(readable.progressCurrent) : '',
+    progressTotal: readable.progressTotal != null ? String(readable.progressTotal) : '',
     sourceUrl: readable.sourceUrl ?? '',
     summary: readable.summary ?? '',
-    // Comma-separated tags for the single text field
     tags: readable.tags.join(', '),
     isComplete: readable.isComplete,
     dateAdded: isoToLocalDate(readable.dateAdded),
   };
 }
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export function AddEditScreen({ route, navigation }: Props) {
   const { id } = route.params;
@@ -159,9 +132,6 @@ export function AddEditScreen({ route, navigation }: Props) {
   const theme = useAppTheme();
   const headerHeight = useHeaderHeight();
 
-  // ── Load existing readable (edit mode) ──────────────────────────────────────
-  // Always called — hooks must not be conditional.
-  // In add mode, id = '' and the query returns null quickly.
   const {
     readable: existingReadable,
     isLoading: isLoadingExisting,
@@ -170,19 +140,15 @@ export function AddEditScreen({ route, navigation }: Props) {
     refetch: refetchExisting,
   } = useReadable(id ?? '');
 
-  // ── Form setup ──────────────────────────────────────────────────────────────
   const { control, handleSubmit, formState, watch, setValue, reset } =
     useForm<AddEditFormValues, unknown, AddEditFormOutput>({
       resolver: zodResolver(addEditSchema),
       defaultValues: getAddDefaultValues(),
     });
 
-  // isFormReady gates the form render in edit mode until pre-fill is complete.
-  // In add mode, the form is always ready immediately.
   const [isFormReady, setIsFormReady] = useState(!isEditMode);
   const hasResetRef = useRef(false);
 
-  // Pre-fill form exactly once when the readable loads in edit mode.
   useEffect(() => {
     if (isEditMode && existingReadable && !hasResetRef.current) {
       hasResetRef.current = true;
@@ -191,53 +157,35 @@ export function AddEditScreen({ route, navigation }: Props) {
     }
   }, [isEditMode, existingReadable, reset]);
 
-  // ── Watchers ─────────────────────────────────────────────────────────────────
   const watchedKind = watch('kind');
   const watchedProgressTotal = watch('progressTotal');
   const watchedIsComplete = watch('isComplete');
   const watchedSourceUrl = watch('sourceUrl');
 
-  // ── Kind watcher — keep isComplete in sync (add mode only) ──────────────────
-  // When kind changes to fanfic: default isComplete to false (WIP).
-  // When kind changes to book: reset isComplete to null.
-  // Also clear importContext when kind changes — a search done for book
-  // should not carry over if the user switches to fanfic and vice versa.
-  // shouldDirty: false so automated resets don't mark the form dirty.
   useEffect(() => {
     if (!isEditMode) {
-      setValue('isComplete', watchedKind === 'fanfic' ? false : null, {
-        shouldDirty: false,
-      });
+      setValue('isComplete', watchedKind === 'fanfic' ? false : null, { shouldDirty: false });
       setImportContext(null);
+      clearBookResults();
     }
+    // clearBookResults is stable (useCallback in the hook).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchedKind, isEditMode, setValue]);
 
-  // ── Mutation hooks ───────────────────────────────────────────────────────────
   const { create, isPending: isCreating } = useCreateReadable();
   const { update, isPending: isUpdating } = useUpdateReadable();
   const isSaving = isCreating || isUpdating;
 
-  // ── Metadata import hooks ────────────────────────────────────────────────────
-  const { importMetadata, isImporting } = useImportMetadata();
+  const { importMetadata, searchBooks, bookSearchResults, clearBookResults, isImporting } =
+    useImportMetadata();
   const { findAo3Duplicate } = useFindAo3Duplicate();
 
-  // ── Import state ─────────────────────────────────────────────────────────────
-  /** Separate search query for Google Books (not a form field). */
   const [bookSearchQuery, setBookSearchQuery] = useState('');
-  /**
-   * Set after a successful import. Provides sourceType and sourceId to the
-   * submit handler so the correct values are persisted. null = manual entry.
-   */
   const [importContext, setImportContext] = useState<ImportContext | null>(null);
 
-  // ── Snackbar ─────────────────────────────────────────────────────────────────
   const { snackbarMessage, showSnackbar, hideSnackbar } = useSnackbar();
 
-  // ── Unsaved changes guard ────────────────────────────────────────────────────
-  // savedRef: set to true after a successful save so the guard is bypassed
-  // when navigation.goBack() triggers beforeRemove.
   const savedRef = useRef(false);
-  // isDirtyRef: stable ref read inside the event listener (avoids stale closure).
   const isDirtyRef = useRef(formState.isDirty);
   useEffect(() => {
     isDirtyRef.current = formState.isDirty;
@@ -252,20 +200,13 @@ export function AddEditScreen({ route, navigation }: Props) {
         'You have unsaved changes. They will be lost if you go back.',
         [
           { text: 'Keep editing', style: 'cancel' },
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: () => navigation.dispatch(e.data.action),
-          },
+          { text: 'Discard', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
         ],
       );
     });
     return unsubscribe;
   }, [navigation]);
 
-  // ── Focus refs ───────────────────────────────────────────────────────────────
-  // Per §10: useRef<TextInput> from react-native (not Paper) for the type.
-  // Paper's TextInput forwards its ref to the underlying native TextInput.
   const authorRef = useRef<RNTextInput>(null);
   const sourceUrlRef = useRef<RNTextInput>(null);
   const progressCurrentRef = useRef<RNTextInput>(null);
@@ -274,53 +215,30 @@ export function AddEditScreen({ route, navigation }: Props) {
   const tagsRef = useRef<RNTextInput>(null);
   const dateAddedRef = useRef<RNTextInput>(null);
 
-  // ── Import handlers ──────────────────────────────────────────────────────────
-
-  /**
-   * Applies a successful MetadataResult to the form and records the import context.
-   * Only sets fields that are present in result.data (partial results are fine).
-   * Shows a snackbar warning if any fields had extraction errors.
-   */
   function applyImport(result: MetadataResult, kind: 'book' | 'fanfic') {
     const { data, errors } = result;
 
-    if (data.title !== undefined) {
-      setValue('title', data.title, { shouldDirty: true });
-    }
-    if (data.author !== undefined) {
-      setValue('author', data.author ?? '', { shouldDirty: true });
-    }
-    if (data.summary !== undefined) {
-      setValue('summary', data.summary ?? '', { shouldDirty: true });
-    }
-    if (data.tags !== undefined) {
-      setValue('tags', data.tags.join(', '), { shouldDirty: true });
-    }
+    if (data.title !== undefined) setValue('title', data.title, { shouldDirty: true });
+    if (data.author !== undefined) setValue('author', data.author ?? '', { shouldDirty: true });
+    if (data.summary !== undefined) setValue('summary', data.summary ?? '', { shouldDirty: true });
+    if (data.tags !== undefined) setValue('tags', data.tags.join(', '), { shouldDirty: true });
     if (data.progressCurrent !== undefined) {
-      setValue(
-        'progressCurrent',
-        data.progressCurrent != null ? String(data.progressCurrent) : '',
-        { shouldDirty: true },
-      );
+      setValue('progressCurrent', data.progressCurrent != null ? String(data.progressCurrent) : '', { shouldDirty: true });
     }
     if (data.progressTotal !== undefined) {
-      setValue(
-        'progressTotal',
-        data.progressTotal != null ? String(data.progressTotal) : '',
-        { shouldDirty: true },
-      );
+      setValue('progressTotal', data.progressTotal != null ? String(data.progressTotal) : '', { shouldDirty: true });
     }
-    // isComplete is AO3-only — only set when kind is fanfic.
     if (kind === 'fanfic' && data.isComplete !== undefined) {
       setValue('isComplete', data.isComplete, { shouldDirty: true });
     }
-    if (data.sourceUrl !== undefined) {
-      setValue('sourceUrl', data.sourceUrl ?? '', { shouldDirty: true });
-    }
+    if (data.sourceUrl !== undefined) setValue('sourceUrl', data.sourceUrl ?? '', { shouldDirty: true });
 
     setImportContext({
       sourceType: kind === 'fanfic' ? 'ao3' : 'book_provider',
       sourceId: data.sourceId ?? null,
+      isbn: data.isbn ?? null,
+      coverUrl: data.coverUrl ?? null,
+      availableChapters: data.availableChapters ?? null,
     });
 
     if (errors.length > 0) {
@@ -328,29 +246,34 @@ export function AddEditScreen({ route, navigation }: Props) {
     }
   }
 
-  /**
-   * Explicit user action: fetch metadata for the current kind and input.
-   * Book: uses bookSearchQuery. Fanfic: uses the sourceUrl field value.
-   * Performs AO3 duplicate detection before prefilling the form.
-   */
+  function handleSelectBookResult(result: BookSearchResult) {
+    clearBookResults();
+    applyImport({ data: result.metadata, errors: [] }, 'book');
+  }
+
   async function handleImport(kind: 'book' | 'fanfic') {
-    const input = kind === 'fanfic' ? watchedSourceUrl.trim() : bookSearchQuery.trim();
+    if (kind === 'book') {
+      const { results, errors } = await searchBooks(bookSearchQuery.trim());
+      if (results.length === 0) {
+        showSnackbar(errors[0] ?? 'No results found on Google Books.');
+      }
+      return;
+    }
 
-    const result = await importMetadata(kind, input);
+    const input = watchedSourceUrl.trim();
+    const result = await importMetadata('fanfic', input);
 
-    // Total failure — no data extracted at all.
     if (Object.keys(result.data).length === 0) {
       showSnackbar(result.errors[0] ?? 'Import failed. No data could be extracted.');
       return;
     }
 
-    // AO3 duplicate detection (§6): check before prefilling.
-    if (kind === 'fanfic' && result.data.sourceId) {
+    if (result.data.sourceId) {
       let duplicate: Readable | null = null;
       try {
         duplicate = await findAo3Duplicate(result.data.sourceId);
       } catch {
-        // Duplicate check failed — fail open and proceed with prefill.
+        // Fail open — proceed with prefill.
       }
 
       if (duplicate) {
@@ -361,15 +284,11 @@ export function AddEditScreen({ route, navigation }: Props) {
             {
               text: 'Open existing',
               onPress: () => {
-                // Bypass the unsaved-changes guard — user is intentionally navigating away.
                 savedRef.current = true;
                 navigation.navigate('ReadableDetail', { id: duplicate!.id });
               },
             },
-            {
-              text: 'Continue anyway',
-              onPress: () => applyImport(result, kind),
-            },
+            { text: 'Continue anyway', onPress: () => applyImport(result, kind) },
             { text: 'Cancel', style: 'cancel' },
           ],
         );
@@ -380,10 +299,7 @@ export function AddEditScreen({ route, navigation }: Props) {
     applyImport(result, kind);
   }
 
-  // ── Submit handler ───────────────────────────────────────────────────────────
-  // data is AddEditFormOutput (Zod-transformed: numbers for progress, null for empty strings).
   const onSubmit = handleSubmit((data: AddEditFormOutput) => {
-    // Convert YYYY-MM-DD to full ISO (UTC midnight) for storage consistency.
     const isoDateAdded = new Date(data.dateAdded + 'T00:00:00.000Z').toISOString();
 
     if (!isEditMode) {
@@ -394,21 +310,19 @@ export function AddEditScreen({ route, navigation }: Props) {
         status: data.status,
         progressCurrent: data.progressCurrent,
         progressTotal: data.progressTotal,
-        // Use import context when available; fall back to manual.
         sourceType: importContext?.sourceType ?? 'manual',
         sourceUrl: data.sourceUrl,
         sourceId: importContext?.sourceId ?? null,
         summary: data.summary,
         tags: data.tags,
-        // isComplete is only meaningful for fanfic — always null for books.
         isComplete: data.kind === 'fanfic' ? data.isComplete : null,
         dateAdded: isoDateAdded,
+        isbn: importContext?.isbn ?? null,
+        coverUrl: importContext?.coverUrl ?? null,
+        availableChapters: importContext?.availableChapters ?? null,
       };
       create(createInput, {
-        onSuccess: () => {
-          savedRef.current = true;
-          navigation.goBack();
-        },
+        onSuccess: () => { savedRef.current = true; navigation.goBack(); },
         onError: (err) => showSnackbar(err.message),
       });
     } else if (existingReadable) {
@@ -421,42 +335,30 @@ export function AddEditScreen({ route, navigation }: Props) {
         sourceUrl: data.sourceUrl,
         summary: data.summary,
         tags: data.tags,
-        // Enforce isComplete nullability for books using the immutable kind.
         isComplete: existingReadable.kind === 'fanfic' ? data.isComplete : null,
         dateAdded: isoDateAdded,
       };
       update(
         { id: existingReadable.id, input: updateInput, current: existingReadable },
         {
-          onSuccess: () => {
-            savedRef.current = true;
-            navigation.goBack();
-          },
+          onSuccess: () => { savedRef.current = true; navigation.goBack(); },
           onError: (err) => showSnackbar(err.message),
         },
       );
     }
   });
 
-  // ── Loading / error states ───────────────────────────────────────────────────
-
   if (isEditMode && isExistingError) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text
-          variant="bodyMedium"
-          style={[styles.centeredMessage, { color: theme.colors.textSecondary }]}
-        >
+        <Text variant="bodyMedium" style={[styles.centeredMessage, { color: theme.colors.textSecondary }]}>
           {existingError?.message ?? 'Failed to load readable.'}
         </Text>
-        <Button mode="outlined" onPress={refetchExisting}>
-          Try again
-        </Button>
+        <Button mode="outlined" onPress={refetchExisting}>Try again</Button>
       </View>
     );
   }
 
-  // Edit mode: show spinner while fetching + waiting for reset to complete.
   if (!isFormReady) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
@@ -465,58 +367,33 @@ export function AddEditScreen({ route, navigation }: Props) {
     );
   }
 
-  // Edit mode: readable not found after successful fetch.
   if (isEditMode && !isLoadingExisting && !existingReadable) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text
-          variant="bodyMedium"
-          style={{ color: theme.colors.textSecondary }}
-        >
-          Readable not found.
-        </Text>
+        <Text variant="bodyMedium" style={{ color: theme.colors.textSecondary }}>Readable not found.</Text>
       </View>
     );
   }
 
-  // ── Derived display values ───────────────────────────────────────────────────
   const isFanfic = watchedKind === 'fanfic';
   const progressUnit = isFanfic ? 'chapters' : 'pages';
-  // Hint shown below the Total field before submit when user has marked Complete
-  // but not yet entered a total — guides them to fill it in.
-  const showIsCompleteHint =
-    isFanfic && watchedIsComplete === true && watchedProgressTotal.trim() === '';
-
-  // AO3 import button: only enabled when sourceUrl looks like an AO3 works URL.
-  const canImportFromAo3 =
-    !isEditMode &&
-    isFanfic &&
-    watchedSourceUrl.trim().startsWith('https://archiveofourown.org/works/');
-
-  // Book search button: only enabled when the search query is non-empty.
+  const showIsCompleteHint = isFanfic && watchedIsComplete === true && watchedProgressTotal.trim() === '';
+  const canImportFromAo3 = !isEditMode && isFanfic && watchedSourceUrl.trim().startsWith('https://archiveofourown.org/works/');
   const canSearchBooks = !isEditMode && !isFanfic && bookSearchQuery.trim().length > 0;
+  const showEditionPicker = bookSearchResults !== null && bookSearchResults.length > 0;
 
-  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={headerHeight}
     >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
 
         {/* ── Kind selector (add mode only) ────────────────────────────────── */}
         {!isEditMode && (
           <View style={styles.section}>
-            <Text
-              variant="labelLarge"
-              style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-            >
-              Kind *
-            </Text>
+            <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Kind *</Text>
             <Controller
               control={control}
               name="kind"
@@ -524,10 +401,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                 <SegmentedButtons
                   value={field.value}
                   onValueChange={field.onChange}
-                  buttons={[
-                    { value: 'book', label: 'Book' },
-                    { value: 'fanfic', label: 'Fanfic' },
-                  ]}
+                  buttons={[{ value: 'book', label: 'Book' }, { value: 'fanfic', label: 'Fanfic' }]}
                 />
               )}
             />
@@ -537,10 +411,7 @@ export function AddEditScreen({ route, navigation }: Props) {
         {/* ── Book import section (add mode, kind = book only) ─────────────── */}
         {!isEditMode && !isFanfic && (
           <View style={[styles.section, styles.importSection, { borderColor: theme.colors.outline }]}>
-            <Text
-              variant="labelLarge"
-              style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-            >
+            <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>
               Search Google Books
             </Text>
             <View style={styles.importRow}>
@@ -549,9 +420,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                 value={bookSearchQuery}
                 onChangeText={setBookSearchQuery}
                 returnKeyType="search"
-                onSubmitEditing={() => {
-                  if (canSearchBooks) void handleImport('book');
-                }}
+                onSubmitEditing={() => { if (canSearchBooks) void handleImport('book'); }}
                 autoCapitalize="none"
                 autoCorrect={false}
                 style={[styles.input, styles.importInput]}
@@ -578,23 +447,8 @@ export function AddEditScreen({ route, navigation }: Props) {
           name="title"
           render={({ field, fieldState }) => (
             <View style={styles.fieldWrapper}>
-              <TextInput
-                label="Title *"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="next"
-                onSubmitEditing={() => authorRef.current?.focus()}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Title, required"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>
-                  {fieldState.error.message}
-                </HelperText>
-              )}
+              <TextInput label="Title *" value={field.value} onChangeText={field.onChange} onBlur={field.onBlur} error={!!fieldState.error} returnKeyType="next" onSubmitEditing={() => authorRef.current?.focus()} style={styles.input} mode="outlined" accessibilityLabel="Title, required" />
+              {fieldState.error && <HelperText type="error" visible>{fieldState.error.message}</HelperText>}
             </View>
           )}
         />
@@ -605,36 +459,15 @@ export function AddEditScreen({ route, navigation }: Props) {
           name="author"
           render={({ field, fieldState }) => (
             <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={authorRef}
-                label="Author"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="next"
-                onSubmitEditing={() => sourceUrlRef.current?.focus()}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Author"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>
-                  {fieldState.error.message}
-                </HelperText>
-              )}
+              <TextInput ref={authorRef} label="Author" value={field.value} onChangeText={field.onChange} onBlur={field.onBlur} error={!!fieldState.error} returnKeyType="next" onSubmitEditing={() => sourceUrlRef.current?.focus()} style={styles.input} mode="outlined" accessibilityLabel="Author" />
+              {fieldState.error && <HelperText type="error" visible>{fieldState.error.message}</HelperText>}
             </View>
           )}
         />
 
         {/* ── Status ─────────────────────────────────────────────────────────── */}
         <View style={styles.section}>
-          <Text
-            variant="labelLarge"
-            style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-          >
-            Status *
-          </Text>
+          <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Status *</Text>
           <Controller
             control={control}
             name="status"
@@ -642,10 +475,7 @@ export function AddEditScreen({ route, navigation }: Props) {
               <SegmentedButtons
                 value={field.value}
                 onValueChange={field.onChange}
-                buttons={READABLE_STATUSES.map((s) => ({
-                  value: s,
-                  label: STATUS_LABELS[s],
-                }))}
+                buttons={READABLE_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
               />
             )}
           />
@@ -657,78 +487,30 @@ export function AddEditScreen({ route, navigation }: Props) {
           name="sourceUrl"
           render={({ field, fieldState }) => (
             <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={sourceUrlRef}
-                label={isFanfic ? 'AO3 Work URL' : 'Source URL'}
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="next"
-                onSubmitEditing={() => progressCurrentRef.current?.focus()}
-                keyboardType="url"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel={isFanfic ? 'AO3 work URL' : 'Source URL'}
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>
-                  {fieldState.error.message}
-                </HelperText>
-              )}
+              <TextInput ref={sourceUrlRef} label={isFanfic ? 'AO3 Work URL' : 'Source URL'} value={field.value} onChangeText={field.onChange} onBlur={field.onBlur} error={!!fieldState.error} returnKeyType="next" onSubmitEditing={() => progressCurrentRef.current?.focus()} keyboardType="url" autoCapitalize="none" autoCorrect={false} style={styles.input} mode="outlined" accessibilityLabel={isFanfic ? 'AO3 work URL' : 'Source URL'} />
+              {fieldState.error && <HelperText type="error" visible>{fieldState.error.message}</HelperText>}
             </View>
           )}
         />
 
         {/* ── AO3 import button (add mode, kind = fanfic only) ─────────────── */}
         {!isEditMode && isFanfic && (
-          <Button
-            mode="outlined"
-            onPress={() => void handleImport('fanfic')}
-            loading={isImporting}
-            disabled={isImporting || !canImportFromAo3}
-            style={styles.ao3ImportButton}
-            accessibilityLabel="Import metadata from AO3"
-          >
+          <Button mode="outlined" onPress={() => void handleImport('fanfic')} loading={isImporting} disabled={isImporting || !canImportFromAo3} style={styles.ao3ImportButton} accessibilityLabel="Import metadata from AO3">
             Import from AO3
           </Button>
         )}
 
         {/* ── Progress ───────────────────────────────────────────────────────── */}
         <View style={styles.section}>
-          <Text
-            variant="labelLarge"
-            style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-          >
-            Progress ({progressUnit})
-          </Text>
+          <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Progress ({progressUnit})</Text>
           <View style={styles.progressRow}>
             <Controller
               control={control}
               name="progressCurrent"
               render={({ field, fieldState }) => (
                 <View style={styles.progressField}>
-                  <TextInput
-                    ref={progressCurrentRef}
-                    label="Current"
-                    value={field.value}
-                    onChangeText={field.onChange}
-                    onBlur={field.onBlur}
-                    error={!!fieldState.error}
-                    keyboardType="number-pad"
-                    returnKeyType="next"
-                    onSubmitEditing={() => progressTotalRef.current?.focus()}
-                    style={styles.input}
-                    mode="outlined"
-                    accessibilityLabel={`Current ${progressUnit}`}
-                  />
-                  {fieldState.error && (
-                    <HelperText type="error" visible>
-                      {fieldState.error.message}
-                    </HelperText>
-                  )}
+                  <TextInput ref={progressCurrentRef} label="Current" value={field.value} onChangeText={field.onChange} onBlur={field.onBlur} error={!!fieldState.error} keyboardType="number-pad" returnKeyType="next" onSubmitEditing={() => progressTotalRef.current?.focus()} style={styles.input} mode="outlined" accessibilityLabel={`Current ${progressUnit}`} />
+                  {fieldState.error && <HelperText type="error" visible>{fieldState.error.message}</HelperText>}
                 </View>
               )}
             />
@@ -737,30 +519,9 @@ export function AddEditScreen({ route, navigation }: Props) {
               name="progressTotal"
               render={({ field, fieldState }) => (
                 <View style={styles.progressField}>
-                  <TextInput
-                    ref={progressTotalRef}
-                    label="Total"
-                    value={field.value}
-                    onChangeText={field.onChange}
-                    onBlur={field.onBlur}
-                    error={!!fieldState.error}
-                    keyboardType="number-pad"
-                    returnKeyType="next"
-                    onSubmitEditing={() => summaryRef.current?.focus()}
-                    style={styles.input}
-                    mode="outlined"
-                    accessibilityLabel={`Total ${progressUnit}`}
-                  />
-                  {fieldState.error && (
-                    <HelperText type="error" visible>
-                      {fieldState.error.message}
-                    </HelperText>
-                  )}
-                  {!fieldState.error && showIsCompleteHint && (
-                    <HelperText type="info" visible>
-                      Set total chapters to mark as complete
-                    </HelperText>
-                  )}
+                  <TextInput ref={progressTotalRef} label="Total" value={field.value} onChangeText={field.onChange} onBlur={field.onBlur} error={!!fieldState.error} keyboardType="number-pad" returnKeyType="next" onSubmitEditing={() => summaryRef.current?.focus()} style={styles.input} mode="outlined" accessibilityLabel={`Total ${progressUnit}`} />
+                  {fieldState.error && <HelperText type="error" visible>{fieldState.error.message}</HelperText>}
+                  {!fieldState.error && showIsCompleteHint && <HelperText type="info" visible>Set total chapters to mark as complete</HelperText>}
                 </View>
               )}
             />
@@ -770,28 +531,16 @@ export function AddEditScreen({ route, navigation }: Props) {
         {/* ── isComplete toggle (fanfic only) ────────────────────────────────── */}
         {isFanfic && (
           <View style={styles.section}>
-            <Text
-              variant="labelLarge"
-              style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-            >
-              Completion status
-            </Text>
+            <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Completion status</Text>
             <Controller
               control={control}
               name="isComplete"
               render={({ field }) => (
                 <View style={styles.switchRow}>
-                  <Text
-                    variant="bodyMedium"
-                    style={{ color: theme.colors.textPrimary }}
-                  >
+                  <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
                     {field.value === true ? 'Complete' : 'WIP (work in progress)'}
                   </Text>
-                  <Switch
-                    value={field.value === true}
-                    onValueChange={(v) => field.onChange(v)}
-                    accessibilityLabel="Mark as complete"
-                  />
+                  <Switch value={field.value === true} onValueChange={(v) => field.onChange(v)} accessibilityLabel="Mark as complete" />
                 </View>
               )}
             />
@@ -804,24 +553,8 @@ export function AddEditScreen({ route, navigation }: Props) {
           name="summary"
           render={({ field, fieldState }) => (
             <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={summaryRef}
-                label="Summary"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                multiline
-                numberOfLines={4}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Summary"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>
-                  {fieldState.error.message}
-                </HelperText>
-              )}
+              <TextInput ref={summaryRef} label="Summary" value={field.value} onChangeText={field.onChange} onBlur={field.onBlur} error={!!fieldState.error} multiline numberOfLines={4} style={styles.input} mode="outlined" accessibilityLabel="Summary" />
+              {fieldState.error && <HelperText type="error" visible>{fieldState.error.message}</HelperText>}
             </View>
           )}
         />
@@ -832,24 +565,8 @@ export function AddEditScreen({ route, navigation }: Props) {
           name="tags"
           render={({ field, fieldState }) => (
             <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={tagsRef}
-                label="Tags (comma-separated)"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="next"
-                onSubmitEditing={() => dateAddedRef.current?.focus()}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Tags, comma separated"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>
-                  {fieldState.error.message}
-                </HelperText>
-              )}
+              <TextInput ref={tagsRef} label="Tags (comma-separated)" value={field.value} onChangeText={field.onChange} onBlur={field.onBlur} error={!!fieldState.error} returnKeyType="next" onSubmitEditing={() => dateAddedRef.current?.focus()} style={styles.input} mode="outlined" accessibilityLabel="Tags, comma separated" />
+              {fieldState.error && <HelperText type="error" visible>{fieldState.error.message}</HelperText>}
             </View>
           )}
         />
@@ -860,48 +577,85 @@ export function AddEditScreen({ route, navigation }: Props) {
           name="dateAdded"
           render={({ field, fieldState }) => (
             <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={dateAddedRef}
-                label="Date Added (YYYY-MM-DD)"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="done"
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Date added in format YYYY-MM-DD"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>
-                  {fieldState.error.message}
-                </HelperText>
-              )}
+              <TextInput ref={dateAddedRef} label="Date Added (YYYY-MM-DD)" value={field.value} onChangeText={field.onChange} onBlur={field.onBlur} error={!!fieldState.error} returnKeyType="done" style={styles.input} mode="outlined" accessibilityLabel="Date added in format YYYY-MM-DD" />
+              {fieldState.error && <HelperText type="error" visible>{fieldState.error.message}</HelperText>}
             </View>
           )}
         />
 
         {/* ── Submit button ─────────────────────────────────────────────────────── */}
-        <Button
-          mode="contained"
-          onPress={onSubmit}
-          loading={isSaving}
-          disabled={isSaving}
-          style={styles.submitButton}
-          accessibilityLabel={isEditMode ? 'Save changes' : 'Add to library'}
-        >
+        <Button mode="contained" onPress={onSubmit} loading={isSaving} disabled={isSaving} style={styles.submitButton} accessibilityLabel={isEditMode ? 'Save changes' : 'Add to library'}>
           {isEditMode ? 'Save Changes' : 'Add to Library'}
         </Button>
 
       </ScrollView>
 
-      {/* ── Snackbar for mutation and import errors/warnings ─────────────────── */}
+      {/* ── Edition picker modal ──────────────────────────────────────────────── */}
       <Portal>
-        <Snackbar
-          visible={snackbarMessage !== null}
-          onDismiss={hideSnackbar}
-          duration={4000}
+        <Modal
+          visible={showEditionPicker}
+          onDismiss={clearBookResults}
+          contentContainerStyle={[styles.modalContainer, { backgroundColor: theme.colors.surface }]}
         >
+          <Text variant="titleMedium" style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
+            Select Edition
+          </Text>
+          <ScrollView>
+            {(bookSearchResults ?? []).map((result, index) => (
+              <React.Fragment key={index}>
+                <TouchableRipple
+                  onPress={() => handleSelectBookResult(result)}
+                  accessibilityLabel={`Select ${result.displayTitle}`}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.editionItem}>
+                    {result.coverUrl !== null && (
+                      <Image
+                        source={{ uri: result.coverUrl }}
+                        style={[styles.editionCover, { backgroundColor: theme.colors.surfaceVariant }]}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <View style={styles.editionDetails}>
+                      <Text variant="bodyLarge" style={{ color: theme.colors.textPrimary }} numberOfLines={2}>
+                        {result.displayTitle}
+                      </Text>
+                      {result.subtitle !== null && (
+                        <Text variant="bodySmall" style={{ color: theme.colors.textSecondary }} numberOfLines={1}>
+                          {result.subtitle}
+                        </Text>
+                      )}
+                      {result.allContributors.length > 0 && (
+                        <Text variant="bodySmall" style={{ color: theme.colors.textSecondary }} numberOfLines={2}>
+                          {result.allContributors.join(', ')}
+                        </Text>
+                      )}
+                      {result.displayInfo !== '' && (
+                        <Text variant="bodySmall" style={{ color: theme.colors.textDisabled }} numberOfLines={1}>
+                          {result.displayInfo}
+                        </Text>
+                      )}
+                      {result.isbn !== null && (
+                        <Text variant="bodySmall" style={{ color: theme.colors.textDisabled }} numberOfLines={1}>
+                          ISBN: {result.isbn}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </TouchableRipple>
+                {index < (bookSearchResults ?? []).length - 1 && <Divider />}
+              </React.Fragment>
+            ))}
+          </ScrollView>
+          <Button mode="text" onPress={clearBookResults} style={styles.modalCancelButton} accessibilityLabel="Cancel edition selection">
+            Cancel
+          </Button>
+        </Modal>
+      </Portal>
+
+      {/* ── Snackbar ─────────────────────────────────────────────────────────── */}
+      <Portal>
+        <Snackbar visible={snackbarMessage !== null} onDismiss={hideSnackbar} duration={4000}>
           {snackbarMessage ?? ''}
         </Snackbar>
       </Portal>
@@ -909,74 +663,28 @@ export function AddEditScreen({ route, navigation }: Props) {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    gap: 16,
-  },
-  centeredMessage: {
-    textAlign: 'center',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  section: {
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    marginBottom: 8,
-  },
-  fieldWrapper: {
-    marginBottom: 4,
-  },
-  input: {
-    // Paper TextInput handles internal padding
-  },
-  progressRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  progressField: {
-    flex: 1,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  submitButton: {
-    marginTop: 16,
-  },
-  importSection: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  importRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  importInput: {
-    flex: 1,
-  },
-  importButton: {
-    alignSelf: 'center',
-    marginTop: 4,
-  },
-  ao3ImportButton: {
-    marginBottom: 12,
-    alignSelf: 'flex-start',
-  },
+  container: { flex: 1 },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
+  centeredMessage: { textAlign: 'center' },
+  scrollContent: { padding: 16, paddingBottom: 40 },
+  section: { marginBottom: 12 },
+  sectionLabel: { marginBottom: 8 },
+  fieldWrapper: { marginBottom: 4 },
+  input: {},
+  progressRow: { flexDirection: 'row', gap: 12 },
+  progressField: { flex: 1 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
+  submitButton: { marginTop: 16 },
+  importSection: { borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 16 },
+  importRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  importInput: { flex: 1 },
+  importButton: { alignSelf: 'center', marginTop: 4 },
+  ao3ImportButton: { marginBottom: 12, alignSelf: 'flex-start' },
+  modalContainer: { margin: 24, borderRadius: 12, padding: 16, maxHeight: '80%' },
+  modalTitle: { marginBottom: 12 },
+  editionItem: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12, paddingHorizontal: 4, gap: 12 },
+  editionCover: { width: 40, height: 53, borderRadius: 3, flexShrink: 0 },
+  editionDetails: { flex: 1, gap: 2 },
+  modalCancelButton: { marginTop: 8, alignSelf: 'flex-end' },
 });
