@@ -4,6 +4,7 @@
 // Per-field extraction so partial results succeed.
 
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import type { MetadataResult } from './types';
 
 const GOOGLE_BOOKS_BASE_URL = 'https://www.googleapis.com/books/v1/volumes';
@@ -36,7 +37,44 @@ interface GoogleBooksApiResponse {
 // ---------------------------------------------------------------------------
 
 function getApiKey(): string {
-  return (Constants.expoConfig?.extra?.googleBooksApiKey as string | undefined) ?? '';
+  const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
+  return Platform.OS === 'android'
+    ? (extra?.googleBooksApiKeyAndroid ?? '')
+    : (extra?.googleBooksApiKeyIos ?? '');
+}
+
+/**
+ * Returns the platform-specific restriction headers required by each API key.
+ *
+ * Android key restriction: X-Android-Package + X-Android-Cert
+ *   Package name comes from the Expo config (android.package in app.json).
+ *   SHA-1 cert comes from GOOGLE_BOOKS_ANDROID_CERT env var (signing secret).
+ *
+ * iOS key restriction: X-Ios-Bundle-Identifier
+ *   Bundle ID comes from the Expo config (ios.bundleIdentifier in app.json).
+ *
+ * Returns an empty object if the required values are not configured — the
+ * request will still be sent; Google will reject it with a 403 if the key
+ * has restrictions that don't match.
+ */
+function getRestrictionHeaders(): Record<string, string> {
+  const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
+
+  if (Platform.OS === 'android') {
+    const packageName = Constants.expoConfig?.android?.package ?? '';
+    const cert = extra?.googleBooksAndroidCert ?? '';
+    if (!packageName || !cert) return {};
+    return {
+      'X-Android-Package': packageName,
+      'X-Android-Cert': cert,
+    };
+  }
+
+  const bundleId = Constants.expoConfig?.ios?.bundleIdentifier ?? '';
+  if (!bundleId) return {};
+  return {
+    'X-Ios-Bundle-Identifier': bundleId,
+  };
 }
 
 function mapVolumeToMetadata(volume: GoogleBooksVolume): MetadataResult {
@@ -121,7 +159,7 @@ export async function searchGoogleBooks(query: string): Promise<MetadataResult> 
   let responseJson: GoogleBooksApiResponse;
   try {
     const url = `${GOOGLE_BOOKS_BASE_URL}?q=${encodeURIComponent(query)}&maxResults=1&key=${apiKey}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: getRestrictionHeaders() });
     if (!response.ok) {
       return {
         data: {},

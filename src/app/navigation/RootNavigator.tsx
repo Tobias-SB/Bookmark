@@ -23,12 +23,15 @@ export function RootNavigator() {
       <Stack.Screen
         name="ReadableDetail"
         component={ReadableDetailScreen}
-        options={{ presentation: 'modal', title: 'Detail' }}
+        options={{ presentation: 'modal', title: '' }}
       />
       <Stack.Screen
         name="AddEditReadable"
         component={AddEditScreen}
-        options={{ presentation: 'modal', title: 'Add / Edit' }}
+        options={({ route }) => ({
+          presentation: 'modal',
+          title: route.params?.id !== undefined ? 'Edit' : 'Add',
+        })}
       />
     </Stack.Navigator>
   );
