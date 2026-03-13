@@ -11,12 +11,17 @@
 //   - Binding format (hardcover/paperback): not a structured API field. May appear
 //     in subtitle for some editions.
 //   - Cover thumbnails: Google Books returns http:// URLs — converted to https://.
+//
+// Pagination:
+//   searchGoogleBooksMultiple accepts a startIndex param (default 0). Pass
+//   response.nextStartIndex for subsequent pages when response.hasMore is true.
 
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import type { BookSearchResponse, BookSearchResult, MetadataResult } from './types';
 
 const GOOGLE_BOOKS_BASE_URL = 'https://www.googleapis.com/books/v1/volumes';
+const PAGE_SIZE = 5;
 
 // ---------------------------------------------------------------------------
 // Google Books API response types (minimal — only fields we use)
@@ -207,23 +212,24 @@ function mapVolumeToBookSearchResult(volume: GoogleBooksVolume): BookSearchResul
 async function fetchVolumes(
   query: string,
   maxResults: number,
-): Promise<{ items: GoogleBooksVolume[]; error?: string }> {
+  startIndex: number,
+): Promise<{ items: GoogleBooksVolume[]; totalItems: number; error?: string }> {
   const apiKey = getApiKey();
   if (!apiKey) {
-    return { items: [], error: 'Google Books API key is not configured.' };
+    return { items: [], totalItems: 0, error: 'Google Books API key is not configured.' };
   }
 
   try {
-    const url = `${GOOGLE_BOOKS_BASE_URL}?q=${encodeURIComponent(query)}&maxResults=${maxResults}&key=${apiKey}`;
+    const url = `${GOOGLE_BOOKS_BASE_URL}?q=${encodeURIComponent(query)}&maxResults=${maxResults}&startIndex=${startIndex}&key=${apiKey}`;
     const response = await fetch(url, { headers: getRestrictionHeaders() });
     if (!response.ok) {
-      return { items: [], error: `Google Books request failed with status ${response.status}.` };
+      return { items: [], totalItems: 0, error: `Google Books request failed with status ${response.status}.` };
     }
     const json = (await response.json()) as GoogleBooksApiResponse;
-    return { items: json.items ?? [] };
+    return { items: json.items ?? [], totalItems: json.totalItems ?? 0 };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
-    return { items: [], error: `Failed to fetch Google Books data: ${message}` };
+    return { items: [], totalItems: 0, error: `Failed to fetch Google Books data: ${message}` };
   }
 }
 
@@ -241,7 +247,7 @@ export async function searchGoogleBooks(query: string): Promise<MetadataResult> 
     return { data: {}, errors: ['Search query must not be empty.'] };
   }
 
-  const { items, error } = await fetchVolumes(query.trim(), 1);
+  const { items, error } = await fetchVolumes(query.trim(), 1, 0);
   if (error) return { data: {}, errors: [error] };
   if (!items.length) return { data: {}, errors: ['No results found on Google Books.'] };
 
@@ -250,18 +256,26 @@ export async function searchGoogleBooks(query: string): Promise<MetadataResult> 
 
 /**
  * Search Google Books and return up to 5 results for the user to choose from.
+ * Supports pagination: pass startIndex from a previous response's nextStartIndex
+ * to fetch the next page. Check hasMore to know if further pages exist.
+ *
  * Each result includes contributor list, subtitle, edition info, ISBN, and
  * cover URL to help distinguish editions. Never throws.
  */
-export async function searchGoogleBooksMultiple(query: string): Promise<BookSearchResponse> {
+export async function searchGoogleBooksMultiple(
+  query: string,
+  startIndex: number = 0,
+): Promise<BookSearchResponse> {
   if (!query.trim()) {
-    return { results: [], errors: ['Search query must not be empty.'] };
+    return { results: [], errors: ['Search query must not be empty.'], hasMore: false, nextStartIndex: 0 };
   }
 
-  const { items, error } = await fetchVolumes(query.trim(), 5);
-  if (error) return { results: [], errors: [error] };
-  if (!items.length) return { results: [], errors: ['No results found on Google Books.'] };
+  const { items, totalItems, error } = await fetchVolumes(query.trim(), PAGE_SIZE, startIndex);
+  if (error) return { results: [], errors: [error], hasMore: false, nextStartIndex: 0 };
+  if (!items.length) return { results: [], errors: ['No results found on Google Books.'], hasMore: false, nextStartIndex: 0 };
 
   const results = items.map(mapVolumeToBookSearchResult);
-  return { results, errors: [] };
+  const nextIdx = startIndex + results.length;
+  const hasMore = nextIdx < totalItems;
+  return { results, errors: [], hasMore, nextStartIndex: nextIdx };
 }

@@ -65,4 +65,11 @@ export interface BookSearchResult {
 export interface BookSearchResponse {
   results: BookSearchResult[];
   errors: string[];
+  /**
+   * True if more results are available from the API for the same query.
+   * Pass nextStartIndex to searchGoogleBooksMultiple to fetch the next page.
+   */
+  hasMore: boolean;
+  /** startIndex value to pass for the next page. 0 when hasMore is false. */
+  nextStartIndex: number;
 }

@@ -53,3 +53,4 @@ export { useDeleteReadable } from './hooks/useDeleteReadable';
 export { LibraryScreen } from './ui/LibraryScreen';
 export { ReadableDetailScreen } from './ui/ReadableDetailScreen';
 export { AddEditScreen } from './ui/AddEditScreen';
+export { QuickAddScreen } from './ui/QuickAddScreen';

@@ -102,7 +102,7 @@ export function LibraryScreen() {
   );
 
   const handleAddPress = useCallback(
-    () => navigation.navigate('AddEditReadable', {}),
+    () => navigation.navigate('QuickAddReadable'),
     [navigation],
   );
 
