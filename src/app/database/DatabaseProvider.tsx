@@ -16,7 +16,7 @@ import React, {
 } from 'react';
 import * as SQLite from 'expo-sqlite';
 
-import type { AppError } from '../../shared/types/errors';
+import { isAppError, type AppError } from '../../shared/types/errors';
 import { runMigrations } from './migrationRunner';
 
 const DB_NAME = 'bookmark.db';
@@ -66,15 +66,8 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         }
       } catch (cause) {
         if (!cancelled) {
-          // runMigrations already throws AppError; openDatabaseAsync may throw raw.
-          const isAppError =
-            cause !== null &&
-            typeof cause === 'object' &&
-            'code' in cause &&
-            'message' in cause;
-
-          const error: AppError = isAppError
-            ? (cause as AppError)
+          const error: AppError = isAppError(cause)
+            ? cause
             : {
                 code: 'db',
                 message:

@@ -34,6 +34,32 @@ export const READABLE_STATUSES: readonly ReadableStatus[] = [
   'dnf',
 ] as const;
 
+// ── Status labels ─────────────────────────────────────────────────────────────
+// Two label vocabularies: short (segmented buttons, tight UI) and full (chips, lists).
+
+/** Short labels — used in form segmented buttons and the detail screen status selector. */
+export const STATUS_LABELS_SHORT: Record<ReadableStatus, string> = {
+  want_to_read: 'Want',
+  reading: 'Reading',
+  completed: 'Done',
+  dnf: 'DNF',
+};
+
+/** Full labels — used in filter chips and list item metadata rows. */
+export const STATUS_LABELS_FULL: Record<ReadableStatus, string> = {
+  want_to_read: 'Want to Read',
+  reading: 'Reading',
+  completed: 'Completed',
+  dnf: 'DNF',
+};
+
+// ── Kind labels ───────────────────────────────────────────────────────────────
+
+export const KIND_LABELS: Record<ReadableKind, string> = {
+  book: 'Book',
+  fanfic: 'Fanfic',
+};
+
 // ── Source type ───────────────────────────────────────────────────────────────
 
 export type SourceType = 'manual' | 'ao3' | 'book_provider';
@@ -102,4 +128,21 @@ export interface ReadableFilters {
   search?: string;
   sortBy?: 'dateAdded' | 'title' | 'dateUpdated';
   sortOrder?: 'asc' | 'desc';
+}
+
+// ── Progress formatting ───────────────────────────────────────────────────────
+
+/**
+ * Formats reading progress as "current / total unit".
+ * Returns null when both values are null (caller decides what to show for no progress).
+ */
+export function formatProgressString(
+  progressCurrent: number | null,
+  progressTotal: number | null,
+  progressUnit: string,
+): string | null {
+  if (progressCurrent === null && progressTotal === null) return null;
+  const current = progressCurrent !== null ? String(progressCurrent) : '--';
+  const total = progressTotal !== null ? String(progressTotal) : '?';
+  return `${current} / ${total} ${progressUnit}`;
 }

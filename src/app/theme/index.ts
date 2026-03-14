@@ -6,11 +6,12 @@
 export type { AppTheme } from './tokens';
 export { makeTokens } from './tokens';
 
+import { useMemo } from 'react';
 import { useTheme } from 'react-native-paper';
 import { makeTokens } from './tokens';
 import type { AppTheme } from './tokens';
 
 export function useAppTheme(): AppTheme {
   const paperTheme = useTheme();
-  return makeTokens(paperTheme);
+  return useMemo(() => makeTokens(paperTheme), [paperTheme]);
 }

@@ -3,7 +3,7 @@
 // All inter-feature imports must go through this file.
 
 export type { ImportedMetadata, MetadataResult, BookSearchResult, BookSearchResponse } from './services/types';
-export { searchGoogleBooks, searchGoogleBooksMultiple } from './services/googleBooksService';
+export { searchGoogleBooksMultiple } from './services/googleBooksService';
 export { fetchAo3Metadata } from './services/ao3Parser';
 export type { UseImportMetadataResult } from './hooks/useImportMetadata';
 export { useImportMetadata } from './hooks/useImportMetadata';

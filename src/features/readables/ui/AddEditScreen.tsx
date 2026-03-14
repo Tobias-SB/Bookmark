@@ -26,7 +26,6 @@ import {
 import {
   ActivityIndicator,
   Button,
-  Divider,
   HelperText,
   Portal,
   SegmentedButtons,
@@ -43,8 +42,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import type { RootStackParamList, AddEditPrefill } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
+import { todayLocalDate } from '../../../shared/utils/dates';
 import type { ReadableStatus } from '../domain/readable';
-import { READABLE_STATUSES } from '../domain/readable';
+import { READABLE_STATUSES, STATUS_LABELS_SHORT } from '../domain/readable';
 import { useReadable } from '../hooks/useReadable';
 import { useCreateReadable } from '../hooks/useCreateReadable';
 import { useUpdateReadable } from '../hooks/useUpdateReadable';
@@ -53,7 +53,6 @@ import type { UpdateReadableInput } from '../data/readableRepository';
 import type { Readable } from '../domain/readable';
 import {
   addEditSchema,
-  todayLocalDate,
   type AddEditFormValues,
   type AddEditFormOutput,
 } from './addEditSchema';
@@ -80,13 +79,6 @@ function isoToLocalDate(iso: string): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
-
-const STATUS_LABELS: Record<ReadableStatus, string> = {
-  want_to_read: 'Want',
-  reading: 'Reading',
-  completed: 'Done',
-  dnf: 'DNF',
-};
 
 function getAddDefaultValues(): AddEditFormValues {
   return {
@@ -121,6 +113,14 @@ function getPrefillDefaultValues(prefill: AddEditPrefill): AddEditFormValues {
 }
 
 function getEditDefaultValues(readable: Readable): AddEditFormValues {
+  // Apply isComplete coherence: if a record has isComplete=true but no progressTotal
+  // (a broken state), reset isComplete to false so the form opens in a valid state
+  // and the user isn't blocked from saving by the superRefine rule.
+  const isComplete =
+    readable.isComplete === true && readable.progressTotal === null
+      ? false
+      : readable.isComplete;
+
   return {
     kind: readable.kind,
     title: readable.title,
@@ -131,7 +131,7 @@ function getEditDefaultValues(readable: Readable): AddEditFormValues {
     sourceUrl: readable.sourceUrl ?? '',
     summary: readable.summary ?? '',
     tags: readable.tags.join(', '),
-    isComplete: readable.isComplete,
+    isComplete,
     dateAdded: isoToLocalDate(readable.dateAdded),
   };
 }
@@ -308,7 +308,7 @@ export function AddEditScreen({ route, navigation }: Props) {
     }
   });
 
-  // ── Error / loading states ─────────────────────────────────────────────────
+  // ── Error / loading / not-found guards (isError → isLoading → not-found) ──
 
   if (isEditMode && isExistingError) {
     return (
@@ -436,7 +436,7 @@ export function AddEditScreen({ route, navigation }: Props) {
               <SegmentedButtons
                 value={field.value}
                 onValueChange={field.onChange}
-                buttons={READABLE_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
+                buttons={READABLE_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS_SHORT[s] }))}
               />
             )}
           />

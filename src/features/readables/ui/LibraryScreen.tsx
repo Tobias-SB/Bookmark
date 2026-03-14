@@ -35,7 +35,7 @@ import type { RootStackParamList } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import type { ReadableFilters, ReadableKind, ReadableStatus } from '../domain/readable';
-import { READABLE_STATUSES } from '../domain/readable';
+import { READABLE_STATUSES, STATUS_LABELS_FULL } from '../domain/readable';
 import { useReadables } from '../hooks/useReadables';
 import { ReadableListItem } from './ReadableListItem';
 
@@ -44,13 +44,6 @@ import { ReadableListItem } from './ReadableListItem';
 type LibraryNavProp = NativeStackNavigationProp<RootStackParamList>;
 type SortByOption = NonNullable<ReadableFilters['sortBy']>;
 type SortOrderOption = NonNullable<ReadableFilters['sortOrder']>;
-
-const STATUS_CHIP_LABELS: Record<ReadableStatus, string> = {
-  want_to_read: 'Want to Read',
-  reading: 'Reading',
-  completed: 'Completed',
-  dnf: 'DNF',
-};
 
 const SORT_BUTTONS: { value: SortByOption; label: string }[] = [
   { value: 'dateAdded', label: 'Added' },
@@ -270,7 +263,7 @@ export function LibraryScreen() {
             style={styles.chip}
             compact
           >
-            {STATUS_CHIP_LABELS[status]}
+            {STATUS_LABELS_FULL[status]}
           </Chip>
         ))}
 

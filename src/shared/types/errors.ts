@@ -10,3 +10,13 @@ export interface AppError {
   code: AppErrorCode;
   message: string;
 }
+
+/** Type guard for AppError. Used by the repository and database layers. */
+export function isAppError(value: unknown): value is AppError {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'code' in value &&
+    'message' in value
+  );
+}

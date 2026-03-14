@@ -27,7 +27,12 @@ import { useAppTheme } from '../../../app/theme';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import type { ReadableStatus } from '../domain/readable';
-import { READABLE_STATUSES } from '../domain/readable';
+import {
+  READABLE_STATUSES,
+  STATUS_LABELS_SHORT,
+  KIND_LABELS,
+  formatProgressString,
+} from '../domain/readable';
 import { useReadable } from '../hooks/useReadable';
 import { useUpdateReadable } from '../hooks/useUpdateReadable';
 import { useDeleteReadable } from '../hooks/useDeleteReadable';
@@ -35,14 +40,6 @@ import { ProgressEditor } from './ProgressEditor';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReadableDetail'>;
 
-const STATUS_LABELS: Record<ReadableStatus, string> = {
-  want_to_read: 'Want',
-  reading: 'Reading',
-  completed: 'Done',
-  dnf: 'DNF',
-};
-
-const KIND_LABELS = { book: 'Book', fanfic: 'Fanfic' } as const;
 const SOURCE_TYPE_LABELS = {
   manual: 'Manual entry',
   ao3: 'AO3',
@@ -50,19 +47,6 @@ const SOURCE_TYPE_LABELS = {
 } as const;
 
 const PREVIEW_TAG_COUNT = 3;
-
-function formatProgress(
-  progressCurrent: number | null,
-  progressTotal: number | null,
-  progressUnit: string,
-): string {
-  if (progressCurrent === null && progressTotal === null) {
-    return 'No progress recorded';
-  }
-  const current = progressCurrent !== null ? String(progressCurrent) : '--';
-  const total = progressTotal !== null ? String(progressTotal) : '?';
-  return `${current} / ${total} ${progressUnit}`;
-}
 
 function formatDisplayDate(iso: string): string {
   const d = new Date(iso);
@@ -161,13 +145,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  if (isLoading) {
-    return (
-      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
+  // ── Error / loading / not-found guards (isError → isLoading → not-found) ──
 
   if (isError) {
     return (
@@ -176,6 +154,14 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           {error?.message ?? 'Failed to load readable.'}
         </Text>
         <Button mode="outlined" onPress={refetch}>Try again</Button>
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" />
       </View>
     );
   }
@@ -264,7 +250,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
             onValueChange={(v) => handleStatusChange(v as ReadableStatus)}
             buttons={READABLE_STATUSES.map((s) => ({
               value: s,
-              label: STATUS_LABELS[s],
+              label: STATUS_LABELS_SHORT[s],
               disabled: isUpdating,
             }))}
           />
@@ -279,7 +265,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           </Text>
           <View style={styles.progressRow}>
             <Text variant="bodyMedium" style={[styles.progressText, { color: theme.colors.textPrimary }]}>
-              {formatProgress(readable.progressCurrent, readable.progressTotal, readable.progressUnit)}
+              {formatProgressString(readable.progressCurrent, readable.progressTotal, readable.progressUnit) ?? 'No progress recorded'}
             </Text>
             <Button
               compact
@@ -378,7 +364,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
             Edit
           </Button>
           {isAo3LinkValid && (
-            <Button mode="outlined" onPress={handleViewOnAo3} accessibilityLabel="View on AO3">
+            <Button mode="outlined" onPress={() => void handleViewOnAo3()} accessibilityLabel="View on AO3">
               View on AO3
             </Button>
           )}

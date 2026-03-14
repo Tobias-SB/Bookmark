@@ -9,28 +9,8 @@ import { Image, StyleSheet, View } from 'react-native';
 import { Text, TouchableRipple } from 'react-native-paper';
 
 import { useAppTheme } from '../../../app/theme';
-import type { Readable, ReadableStatus } from '../domain/readable';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const STATUS_LABELS: Record<ReadableStatus, string> = {
-  want_to_read: 'Want to Read',
-  reading: 'Reading',
-  completed: 'Completed',
-  dnf: 'DNF',
-};
-
-/**
- * Formats the user's reading progress.
- * Returns null when no progress data is available (nothing to show).
- */
-function formatProgress(readable: Readable): string | null {
-  const { progressCurrent, progressTotal, progressUnit } = readable;
-  if (progressCurrent === null && progressTotal === null) return null;
-  const current = progressCurrent !== null ? String(progressCurrent) : '--';
-  const total = progressTotal !== null ? String(progressTotal) : '?';
-  return `${current} / ${total} ${progressUnit}`;
-}
+import type { Readable } from '../domain/readable';
+import { STATUS_LABELS_FULL, KIND_LABELS, formatProgressString } from '../domain/readable';
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -44,7 +24,7 @@ export const ReadableListItem = React.memo(function ReadableListItem({
   onPress,
 }: Props) {
   const theme = useAppTheme();
-  const progress = formatProgress(item);
+  const progress = formatProgressString(item.progressCurrent, item.progressTotal, item.progressUnit);
   const hasCover = item.coverUrl !== null;
 
   return (
@@ -88,7 +68,7 @@ export const ReadableListItem = React.memo(function ReadableListItem({
                 variant="labelSmall"
                 style={{ color: theme.colors.textSecondary }}
               >
-                {item.kind === 'book' ? 'Book' : 'Fanfic'}
+                {KIND_LABELS[item.kind]}
               </Text>
             </View>
           </View>
@@ -110,7 +90,7 @@ export const ReadableListItem = React.memo(function ReadableListItem({
               variant="labelSmall"
               style={{ color: theme.colors.textSecondary }}
             >
-              {STATUS_LABELS[item.status]}
+              {STATUS_LABELS_FULL[item.status]}
             </Text>
             {progress !== null && (
               <Text

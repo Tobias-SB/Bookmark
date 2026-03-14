@@ -32,24 +32,9 @@ import { z } from 'zod';
 
 import { useAppTheme } from '../../../app/theme';
 import type { Readable } from '../domain/readable';
+import { progressNumberField } from './addEditSchema';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
-// Same string → number | null transform as addEditSchema.progressNumberField (§10).
-// Kept local to avoid coupling ProgressEditor to the add/edit form module.
-
-const progressNumberField = z
-  .string()
-  .refine(
-    (val) => {
-      const t = val.trim();
-      return t === '' || /^\d+$/.test(t);
-    },
-    { message: 'Must be a whole number of 0 or more' },
-  )
-  .transform((val): number | null => {
-    const t = val.trim();
-    return t === '' ? null : parseInt(t, 10);
-  });
 
 const progressEditorSchema = z.object({
   current: progressNumberField,

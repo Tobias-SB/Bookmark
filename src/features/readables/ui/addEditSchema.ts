@@ -13,17 +13,7 @@
 //   - isComplete=true requires progressTotal to be non-null (AO3: Complete = known total)
 
 import { z } from 'zod';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Today's date as YYYY-MM-DD in local time. Exported for form default values. */
-export function todayLocalDate(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+import { todayLocalDate } from '../../../shared/utils/dates';
 
 // ── Reusable field schemas ────────────────────────────────────────────────────
 
@@ -35,8 +25,9 @@ const optionalStringField = z
 /**
  * Number-pad input: '' (or whitespace) → null. Non-negative integer string → number.
  * Use keyboardType="number-pad" in the TextInput (§10).
+ * Exported so ProgressEditor can share the same transform without duplicating it.
  */
-const progressNumberField = z
+export const progressNumberField = z
   .string()
   .refine(
     (val) => {

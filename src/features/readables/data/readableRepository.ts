@@ -13,7 +13,7 @@
 import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { AppError } from '../../../shared/types/errors';
+import { isAppError, type AppError } from '../../../shared/types/errors';
 import type {
   Readable,
   ReadableKind,
@@ -88,15 +88,6 @@ function toDbError(cause: unknown, context: string): AppError {
     code: 'db',
     message: `${context}: ${cause instanceof Error ? cause.message : String(cause)}`,
   };
-}
-
-function isAppError(value: unknown): value is AppError {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'code' in value &&
-    'message' in value
-  );
 }
 
 // ── listReadables ─────────────────────────────────────────────────────────────

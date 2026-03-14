@@ -42,6 +42,6 @@ export function useReadable(id: string): UseReadableResult {
     isLoading,
     isError,
     error: error ?? null,
-    refetch,
+    refetch: () => { void refetch(); },
   };
 }
