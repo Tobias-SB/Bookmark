@@ -1,10 +1,11 @@
 // src/features/readables/hooks/useReadables.ts
 // §8, §12, §13 — Fetches all readables from the repository, then applies
-// ReadableFilters (search, status, isComplete, sort) entirely in JavaScript.
+// ReadableFilters (kind, search, status, isComplete, sort) entirely in JavaScript.
 // No filter params are passed to the repository — listReadables always returns
 // all rows. Filtering and sorting live here, not in SQLite.
 //
 // Filter logic:
+//   - kind: exact match. Absent = show all kinds.
 //   - status: exact match. Absent = no status filter.
 //   - isComplete: exact match. Books always have isComplete = null so they
 //     never match an active isComplete filter — no special-case needed.
@@ -24,6 +25,11 @@ import { listReadables } from '../data/readableRepository';
 
 function applyFilters(readables: Readable[], filters: ReadableFilters): Readable[] {
   let result = readables;
+
+  // Kind filter
+  if (filters.kind !== undefined) {
+    result = result.filter((r) => r.kind === filters.kind);
+  }
 
   // Status filter
   if (filters.status !== undefined) {

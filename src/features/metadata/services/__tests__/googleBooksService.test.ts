@@ -6,11 +6,12 @@ import { searchGoogleBooks } from '../googleBooksService';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// jest-expo runs as iOS by default, so the service reads googleBooksApiKeyIos.
 jest.mock('expo-constants', () => ({
   __esModule: true,
   default: {
     expoConfig: {
-      extra: { googleBooksApiKey: 'test-api-key' },
+      extra: { googleBooksApiKeyIos: 'test-api-key' },
     },
   },
 }));
@@ -223,8 +224,10 @@ describe('successful field mapping', () => {
   it('includes the API key in the fetch URL', async () => {
     respondWith({ items: [makeVolume()] });
     await searchGoogleBooks('dune');
+    // fetch is called as fetch(url, { headers }) — match both args
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('key=test-api-key'),
+      expect.anything(),
     );
   });
 
@@ -233,6 +236,7 @@ describe('successful field mapping', () => {
     await searchGoogleBooks('lord of the rings');
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('lord%20of%20the%20rings'),
+      expect.anything(),
     );
   });
 });

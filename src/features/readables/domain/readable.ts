@@ -93,6 +93,8 @@ export interface Readable {
 // Default state: { sortBy: 'dateAdded', sortOrder: 'desc' }. All other fields absent.
 
 export interface ReadableFilters {
+  /** Filter by kind. Absent = show all kinds. */
+  kind?: ReadableKind;
   status?: ReadableStatus;
   /** AO3 WIP/Complete filter. Ignored for books (books always have isComplete = null). */
   isComplete?: boolean;

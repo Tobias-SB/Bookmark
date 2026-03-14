@@ -34,7 +34,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
 import { EmptyState } from '../../../shared/components/EmptyState';
-import type { ReadableFilters, ReadableStatus } from '../domain/readable';
+import type { ReadableFilters, ReadableKind, ReadableStatus } from '../domain/readable';
 import { READABLE_STATUSES } from '../domain/readable';
 import { useReadables } from '../hooks/useReadables';
 import { ReadableListItem } from './ReadableListItem';
@@ -67,6 +67,7 @@ export function LibraryScreen() {
 
   // ── Filter state — local; resets on remount ────────────────────────────────
   const [search, setSearch] = useState('');
+  const [kindFilter, setKindFilter] = useState<ReadableKind | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<ReadableStatus | undefined>(undefined);
   const [isCompleteFilter, setIsCompleteFilter] = useState<boolean | undefined>(undefined);
   const [sortBy, setSortBy] = useState<SortByOption>('dateAdded');
@@ -75,12 +76,13 @@ export function LibraryScreen() {
   const filters = useMemo<ReadableFilters>(
     () => ({
       search: search.trim() || undefined,
+      kind: kindFilter,
       status: statusFilter,
       isComplete: isCompleteFilter,
       sortBy,
       sortOrder,
     }),
-    [search, statusFilter, isCompleteFilter, sortBy, sortOrder],
+    [search, kindFilter, statusFilter, isCompleteFilter, sortBy, sortOrder],
   );
 
   const { readables, isLoading, isError, error, refetch } = useReadables(filters);
@@ -88,6 +90,7 @@ export function LibraryScreen() {
   // ── Derived state ──────────────────────────────────────────────────────────
   const hasActiveFilters =
     search.trim() !== '' ||
+    kindFilter !== undefined ||
     statusFilter !== undefined ||
     isCompleteFilter !== undefined;
 
@@ -112,6 +115,15 @@ export function LibraryScreen() {
     setSortOrder(newSortBy === 'title' ? 'asc' : 'desc');
   }
 
+  function handleKindChipPress(kind: ReadableKind) {
+    setKindFilter((prev) => {
+      const next = prev === kind ? undefined : kind;
+      // Clear WIP/Complete filter when switching away from fanfic.
+      if (next !== 'fanfic') setIsCompleteFilter(undefined);
+      return next;
+    });
+  }
+
   function handleStatusChipPress(status: ReadableStatus | undefined) {
     // Tapping the active chip deselects it; tapping another selects it.
     setStatusFilter((prev) => (prev === status ? undefined : status));
@@ -123,6 +135,7 @@ export function LibraryScreen() {
 
   function handleResetFilters() {
     setSearch('');
+    setKindFilter(undefined);
     setStatusFilter(undefined);
     setIsCompleteFilter(undefined);
   }
@@ -217,6 +230,29 @@ export function LibraryScreen() {
         style={styles.chipsScroll}
         contentContainerStyle={styles.chipsContent}
       >
+        {/* Kind chips: Books / Fanfic (both deselected = show all) */}
+        <Chip
+          selected={kindFilter === 'book'}
+          onPress={() => handleKindChipPress('book')}
+          style={styles.chip}
+          compact
+        >
+          Books
+        </Chip>
+        <Chip
+          selected={kindFilter === 'fanfic'}
+          onPress={() => handleKindChipPress('fanfic')}
+          style={styles.chip}
+          compact
+        >
+          Fanfic
+        </Chip>
+
+        {/* Visual divider between kind and status chips */}
+        <View
+          style={[styles.chipGroupDivider, { backgroundColor: theme.colors.outlineVariant }]}
+        />
+
         {/* Status chips: "All" + 4 statuses */}
         <Chip
           selected={statusFilter === undefined}
@@ -238,28 +274,30 @@ export function LibraryScreen() {
           </Chip>
         ))}
 
-        {/* Visual divider between status and WIP/Complete chips */}
-        <View
-          style={[styles.chipGroupDivider, { backgroundColor: theme.colors.outlineVariant }]}
-        />
-
-        {/* WIP / Complete — AO3 only; books (isComplete = null) never match */}
-        <Chip
-          selected={isCompleteFilter === false}
-          onPress={() => handleIsCompleteChipPress(false)}
-          style={styles.chip}
-          compact
-        >
-          WIP
-        </Chip>
-        <Chip
-          selected={isCompleteFilter === true}
-          onPress={() => handleIsCompleteChipPress(true)}
-          style={styles.chip}
-          compact
-        >
-          Complete
-        </Chip>
+        {/* WIP / Complete — only shown when Fanfic is selected */}
+        {kindFilter === 'fanfic' && (
+          <>
+            <View
+              style={[styles.chipGroupDivider, { backgroundColor: theme.colors.outlineVariant }]}
+            />
+            <Chip
+              selected={isCompleteFilter === false}
+              onPress={() => handleIsCompleteChipPress(false)}
+              style={styles.chip}
+              compact
+            >
+              WIP
+            </Chip>
+            <Chip
+              selected={isCompleteFilter === true}
+              onPress={() => handleIsCompleteChipPress(true)}
+              style={styles.chip}
+              compact
+            >
+              Complete
+            </Chip>
+          </>
+        )}
       </ScrollView>
 
       {/* Sort selector */}

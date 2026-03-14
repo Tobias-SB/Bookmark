@@ -166,7 +166,9 @@ describe('successful extraction', () => {
   it('extracts chapter counts for a WIP work (N/?)', async () => {
     respondWith(makeHtml({ chapters: '3/?' }));
     const result = await fetchAo3Metadata(VALID_WORK_URL);
-    expect(result.data.progressCurrent).toBe(3);
+    // X → availableChapters (author's published count); progressCurrent never set from import
+    expect(result.data.availableChapters).toBe(3);
+    expect(result.data.progressCurrent).toBeNull();
     expect(result.data.progressTotal).toBeNull();
     expect(result.data.isComplete).toBe(false);
   });
@@ -174,7 +176,8 @@ describe('successful extraction', () => {
   it('extracts chapter counts for a complete work (N/N → isComplete=true)', async () => {
     respondWith(makeHtml({ chapters: '10/10' }));
     const result = await fetchAo3Metadata(VALID_WORK_URL);
-    expect(result.data.progressCurrent).toBe(10);
+    expect(result.data.availableChapters).toBe(10);
+    expect(result.data.progressCurrent).toBeNull();
     expect(result.data.progressTotal).toBe(10);
     expect(result.data.isComplete).toBe(true);
   });
@@ -182,7 +185,8 @@ describe('successful extraction', () => {
   it('extracts chapter counts for a multi-chapter partial work', async () => {
     respondWith(makeHtml({ chapters: '7/20' }));
     const result = await fetchAo3Metadata(VALID_WORK_URL);
-    expect(result.data.progressCurrent).toBe(7);
+    expect(result.data.availableChapters).toBe(7);
+    expect(result.data.progressCurrent).toBeNull();
     expect(result.data.progressTotal).toBe(20);
     expect(result.data.isComplete).toBe(false);
   });
