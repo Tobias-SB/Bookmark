@@ -4,8 +4,8 @@
 // the loading/error gate is the consumer's responsibility (AppGate).
 //
 // Provider tree position (outermost → innermost):
-//   SafeAreaProvider → PaperProvider → QueryClientProvider
-//   → DatabaseProvider → AppGate → NavigationContainer
+//   SafeAreaProvider → DatabaseProvider → AppThemeProvider
+//   → ErrorBoundary → QueryClientProvider → AppGate → NavigationContainer
 
 import React, {
   createContext,

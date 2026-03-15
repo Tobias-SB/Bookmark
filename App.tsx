@@ -1,22 +1,26 @@
 // App.tsx
-// §12 — Full provider tree. Order is non-negotiable (outermost → innermost):
-//   SafeAreaProvider → PaperProvider → ErrorBoundary → QueryClientProvider
-//   → DatabaseProvider → AppGate → NavigationContainer
+// §12 — Full provider tree. Order (outermost → innermost):
 //
-// ErrorBoundary sits inside PaperProvider so the crash fallback UI has access
-// to Paper components and theme tokens. It covers all crashes in the provider
-// and screen tree below it.
+//   SafeAreaProvider → DatabaseProvider → AppThemeProvider
+//   → ErrorBoundary → QueryClientProvider → AppGate → NavigationContainer
 //
-// NavigationContainer lives inside AppGate and is only rendered when
-// the database is ready (isReady = true).
+// DEVIATION FROM REFERENCE DOC: DatabaseProvider is above AppThemeProvider
+// (and therefore above PaperProvider) so the persisted theme can be read before
+// PaperProvider renders. All original constraints are still satisfied:
+//   - ErrorBoundary is inside PaperProvider (AppThemeProvider renders it internally).
+//   - NavigationContainer is gated on both isReady AND themeLoaded (via AppGate).
+//   - Screens have access to both DB and TanStack Query because NavigationContainer
+//     is inside both DatabaseProvider and QueryClientProvider.
+//
+// AppThemeProvider internally renders PaperProvider with the persisted theme.
 
 import React from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { PaperProvider } from 'react-native-paper';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { ErrorBoundary } from './src/app/providers/ErrorBoundary';
 import { DatabaseProvider } from './src/app/database/DatabaseProvider';
+import { AppThemeProvider } from './src/app/theme/AppThemeProvider';
+import { ErrorBoundary } from './src/app/providers/ErrorBoundary';
 import { AppGate } from './src/app/providers/AppGate';
 
 const queryClient = new QueryClient();
@@ -24,15 +28,15 @@ const queryClient = new QueryClient();
 export default function App() {
   return (
     <SafeAreaProvider>
-      <PaperProvider>
-        <ErrorBoundary>
-          <QueryClientProvider client={queryClient}>
-            <DatabaseProvider>
+      <DatabaseProvider>
+        <AppThemeProvider>
+          <ErrorBoundary>
+            <QueryClientProvider client={queryClient}>
               <AppGate />
-            </DatabaseProvider>
-          </QueryClientProvider>
-        </ErrorBoundary>
-      </PaperProvider>
+            </QueryClientProvider>
+          </ErrorBoundary>
+        </AppThemeProvider>
+      </DatabaseProvider>
     </SafeAreaProvider>
   );
 }

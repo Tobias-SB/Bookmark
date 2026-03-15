@@ -8,6 +8,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { AppError } from '../../shared/types/errors';
 import { migration001 } from './migrations/001_initial';
+import { migration002 } from './migrations/002_settings';
 
 interface Migration {
   version: number;
@@ -15,7 +16,7 @@ interface Migration {
 }
 
 // Add new migration objects here in ascending version order.
-const ALL_MIGRATIONS: Migration[] = [migration001];
+const ALL_MIGRATIONS: Migration[] = [migration001, migration002];
 
 export async function runMigrations(db: SQLiteDatabase): Promise<void> {
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
