@@ -1,8 +1,10 @@
 // src/app/navigation/TabNavigator.tsx
-// §7 — Library and Settings tabs. Tab bar labels only — no icons (see Phase 4 note).
+// §7 — Library and Settings tabs with Material Community Icons.
+// @expo/vector-icons is a transitive dependency of the expo package (SDK 55).
 
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import type { TabParamList } from './types';
 import { LibraryScreen } from '../../features/readables';
@@ -16,12 +18,22 @@ export function TabNavigator() {
       <Tab.Screen
         name="Library"
         component={LibraryScreen}
-        options={{ title: 'Library' }}
+        options={{
+          title: 'Library',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="book-outline" size={size} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
         name="Settings"
         component={SettingsScreen}
-        options={{ title: 'Settings' }}
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="cog-outline" size={size} color={color} />
+          ),
+        }}
       />
     </Tab.Navigator>
   );
