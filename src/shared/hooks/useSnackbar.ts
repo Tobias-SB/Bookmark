@@ -30,5 +30,5 @@ export function useSnackbar() {
     setSnackbarMessage(null);
   }, []);
 
-  return { snackbarMessage, showSnackbar, hideSnackbar } as const;
+  return { snackbarMessage, showSnackbar, hideSnackbar };
 }

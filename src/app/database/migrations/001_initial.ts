@@ -17,15 +17,15 @@ export const migration001 = {
       source_type      TEXT    NOT NULL,
       source_url       TEXT,
       source_id        TEXT,
-      summary          TEXT,
-      tags             TEXT    NOT NULL DEFAULT '[]',
-      is_complete      INTEGER,
+      summary            TEXT,
+      tags               TEXT    NOT NULL DEFAULT '[]',
+      is_complete        INTEGER,
       isbn               TEXT,
       cover_url          TEXT,
       available_chapters INTEGER,
       date_added         TEXT    NOT NULL,
-      date_created     TEXT    NOT NULL,
-      date_updated     TEXT    NOT NULL
+      date_created       TEXT    NOT NULL,
+      date_updated       TEXT    NOT NULL
     );
   `,
 } as const;

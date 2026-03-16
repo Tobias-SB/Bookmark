@@ -17,6 +17,8 @@ export function isAppError(value: unknown): value is AppError {
     value !== null &&
     typeof value === 'object' &&
     'code' in value &&
-    'message' in value
+    'message' in value &&
+    typeof (value as Record<string, unknown>).code === 'string' &&
+    typeof (value as Record<string, unknown>).message === 'string'
   );
 }

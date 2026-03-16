@@ -85,6 +85,10 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
 
     return () => {
       cancelled = true;
+      if (dbRef.current) {
+        void dbRef.current.closeAsync();
+        dbRef.current = null;
+      }
     };
   }, []);
 

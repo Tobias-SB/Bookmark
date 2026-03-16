@@ -10,7 +10,7 @@
 // Fanfic flow:
 //   importMetadata('fanfic', url) → fetches AO3 metadata; returns MetadataResult directly.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { BookSearchResponse, MetadataResult } from '../services/types';
 import { searchGoogleBooksMultiple } from '../services/googleBooksService';
 import { fetchAo3Metadata } from '../services/ao3Parser';
@@ -34,34 +34,41 @@ export interface UseImportMetadataResult {
 
 export function useImportMetadata(): UseImportMetadataResult {
   const [isImporting, setIsImporting] = useState(false);
+  // Ref-based guard so rapid concurrent calls are blocked synchronously,
+  // before any async state update can commit.
+  const inFlightRef = useRef(false);
 
   async function importMetadata(
     kind: 'fanfic',
     input: string,
   ): Promise<MetadataResult> {
-    if (isImporting) {
+    if (inFlightRef.current) {
       return { data: {}, errors: ['An import is already in progress.'] };
     }
+    inFlightRef.current = true;
     setIsImporting(true);
     try {
       return await fetchAo3Metadata(input);
     } catch {
       return { data: {}, errors: ['Unexpected error during import.'] };
     } finally {
+      inFlightRef.current = false;
       setIsImporting(false);
     }
   }
 
   async function searchBooks(query: string, startIndex: number = 0): Promise<BookSearchResponse> {
-    if (isImporting) {
+    if (inFlightRef.current) {
       return { results: [], errors: ['An import is already in progress.'], hasMore: false, nextStartIndex: 0 };
     }
+    inFlightRef.current = true;
     setIsImporting(true);
     try {
       return await searchGoogleBooksMultiple(query, startIndex);
     } catch {
       return { results: [], errors: ['Unexpected error during book search.'], hasMore: false, nextStartIndex: 0 };
     } finally {
+      inFlightRef.current = false;
       setIsImporting(false);
     }
   }
