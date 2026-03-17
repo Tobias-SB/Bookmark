@@ -575,7 +575,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   cardContent: {
-    paddingVertical: 12,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -602,6 +603,7 @@ const styles = StyleSheet.create({
   expandedDiff: {
     marginTop: 12,
     paddingTop: 12,
+    paddingBottom: 4,
     borderTopWidth: StyleSheet.hairlineWidth,
     gap: 8,
   },
@@ -624,9 +626,7 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 2,
   },
-  diffChip: {
-    height: 24,
-  },
+  diffChip: {},
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
