@@ -53,6 +53,9 @@ export { useUpdateReadable } from './hooks/useUpdateReadable';
 export type { UseDeleteReadableResult, DeleteReadableVariables } from './hooks/useDeleteReadable';
 export { useDeleteReadable } from './hooks/useDeleteReadable';
 
+export type { UseRefreshReadableMetadataResult, RefreshResult } from './hooks/useRefreshReadableMetadata';
+export { useRefreshReadableMetadata } from './hooks/useRefreshReadableMetadata';
+
 // ── Screens ───────────────────────────────────────────────────────────────────
 export { LibraryScreen } from './ui/LibraryScreen';
 export { ReadableDetailScreen } from './ui/ReadableDetailScreen';

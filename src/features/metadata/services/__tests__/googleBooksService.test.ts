@@ -240,3 +240,38 @@ describe('successful field mapping', () => {
     );
   });
 });
+
+// ── Series extraction ─────────────────────────────────────────────────────────
+
+describe('series extraction', () => {
+  it('extracts seriesPart from seriesInfo.volumeSeries[0].orderNumber', async () => {
+    respondWith({
+      items: [makeVolume({ seriesInfo: { volumeSeries: [{ orderNumber: 3 }] } })],
+    });
+    const result = await searchGoogleBooks('query');
+    expect(result.data.seriesPart).toBe(3);
+  });
+
+  it('returns seriesPart=null when seriesInfo is absent', async () => {
+    respondWith({ items: [makeVolume()] });
+    const result = await searchGoogleBooks('query');
+    expect(result.data.seriesPart).toBeNull();
+  });
+
+  it('returns seriesPart=null when volumeSeries is empty', async () => {
+    respondWith({
+      items: [makeVolume({ seriesInfo: { volumeSeries: [] } })],
+    });
+    const result = await searchGoogleBooks('query');
+    expect(result.data.seriesPart).toBeNull();
+  });
+
+  it('always returns seriesName=null and seriesTotal=null regardless of seriesInfo', async () => {
+    respondWith({
+      items: [makeVolume({ seriesInfo: { volumeSeries: [{ orderNumber: 1 }] } })],
+    });
+    const result = await searchGoogleBooks('query');
+    expect(result.data.seriesName).toBeNull();
+    expect(result.data.seriesTotal).toBeNull();
+  });
+});

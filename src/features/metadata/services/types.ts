@@ -4,12 +4,14 @@
 // On total failure: data is {}, errors contains a human-readable reason.
 // On partial success: data contains successfully extracted fields.
 
+import type { AO3Rating, AuthorType } from '../../readables/index';
+
 export interface ImportedMetadata {
   title: string;
   /** null for anonymous or unavailable author. */
   author: string | null;
   summary: string | null;
-  /** Flat string array. */
+  /** Flat string array. Includes fandom/relationship/character/freeform tags. Does NOT include archive warnings. */
   tags: string[];
   /** User's reading position — never set from AO3 chapter counts. */
   progressCurrent: number | null;
@@ -30,6 +32,30 @@ export interface ImportedMetadata {
    * Derived from the X in AO3's "X/Y" chapter format.
    */
   availableChapters: number | null;
+  /** Fanfic only: total word count. null for books and when unavailable. */
+  wordCount: number | null;
+  /** Fanfic only: fandom names. Also present in the flat tags array. Empty array for books. */
+  fandom: string[];
+  /** Fanfic only: relationship/ship tags. Also present in the flat tags array. Empty array for books. */
+  relationships: string[];
+  /** Fanfic only: AO3 content rating. null for books. */
+  rating: AO3Rating | null;
+  /** Fanfic only: canonical AO3 archive warnings. NOT included in the tags array. Empty array for books. */
+  archiveWarnings: string[];
+  /** Series name — applies to all readables. null when not part of a series. */
+  seriesName: string | null;
+  /** Series position — applies to all readables. For books: from seriesInfo.volumeSeries[0].orderNumber. */
+  seriesPart: number | null;
+  /** Total works in series. Not available from Google Books — always null for book imports. */
+  seriesTotal: number | null;
+  /** Fanfic only: author account type derived from AO3 author link. null for books. */
+  authorType: AuthorType | null;
+  /** Fanfic only: ISO 8601 publication date from dl.stats dd.published. null for books. */
+  publishedAt: string | null;
+  /** Fanfic only: ISO 8601 date of last AO3 update from dl.stats dd.status. null for books. */
+  ao3UpdatedAt: string | null;
+  /** Fanfic only: inferred from presence of "Abandoned" freeform tag. false for books. */
+  isAbandoned: boolean;
 }
 
 export interface MetadataResult {

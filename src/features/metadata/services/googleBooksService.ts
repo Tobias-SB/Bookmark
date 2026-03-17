@@ -11,6 +11,8 @@
 //   - Binding format (hardcover/paperback): not a structured API field. May appear
 //     in subtitle for some editions.
 //   - Cover thumbnails: Google Books returns http:// URLs — converted to https://.
+//   - seriesInfo: present on some volumes. seriesPart extracted from
+//     volumeSeries[0].orderNumber. seriesName and seriesTotal are not available.
 //
 // Pagination:
 //   searchGoogleBooksMultiple accepts a startIndex param (default 0). Pass
@@ -49,6 +51,11 @@ interface GoogleBooksVolumeInfo {
   infoLink?: string;
   industryIdentifiers?: GoogleBooksIndustryIdentifier[];
   imageLinks?: GoogleBooksImageLinks;
+  seriesInfo?: {
+    volumeSeries?: Array<{
+      orderNumber?: number;
+    }>;
+  };
 }
 
 interface GoogleBooksVolume {
@@ -191,6 +198,27 @@ function mapVolumeToMetadata(volume: GoogleBooksVolume): MetadataResult {
   } catch {
     errors.push('Error extracting cover URL.');
   }
+
+  // Series part — from seriesInfo.volumeSeries[0].orderNumber when present.
+  try {
+    const order = info.seriesInfo?.volumeSeries?.[0]?.orderNumber;
+    data.seriesPart = typeof order === 'number' ? order : null;
+  } catch {
+    errors.push('Error extracting series part.');
+  }
+
+  // Fields not available from Google Books — always null/empty/false for books.
+  data.seriesName = null;
+  data.seriesTotal = null;
+  data.fandom = [];
+  data.relationships = [];
+  data.archiveWarnings = [];
+  data.rating = null;
+  data.wordCount = null;
+  data.authorType = null;
+  data.publishedAt = null;
+  data.ao3UpdatedAt = null;
+  data.isAbandoned = false;
 
   return { data, errors };
 }

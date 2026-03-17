@@ -3,17 +3,20 @@
 // Returns Promise<MetadataResult>. Never throws — all errors caught internally.
 // Per-field extraction so partial results succeed.
 //
-// AO3 tag categories collected: fandom, relationship, character, freeform (additional).
-// Rating and archive-warning tags are excluded as they carry no reading-tracker value.
-// (Provisional — confirm if different tag selection is desired.)
+// AO3 tag categories collected in tags[]: fandom, relationship, character, freeform.
+// Rating and archive-warning tags are extracted into their own fields, not tags[].
 //
 // Chapter extraction:
 //   AO3 format "X/Y" where X = chapters published, Y = planned total (or "?").
 //   X → availableChapters (author's published count; NOT the user's reading position).
 //   Y → totalUnits (planned final count; null when "?").
 //   progressCurrent is never set from import — it is the user's reading position only.
-//   isComplete = availableChapters === totalUnits (both known and equal).
+//
+// isComplete detection:
+//   Primary: dt.status text — "Completed:" → true, "Updated:" → false.
+//   Fallback (when dt.status absent): availableChapters === totalUnits && totalUnits !== null.
 
+import type { AO3Rating, AuthorType } from '../../readables/index';
 import type { MetadataResult } from './types';
 
 const AO3_BASE_URL = 'https://archiveofourown.org/works/';
@@ -58,6 +61,27 @@ function parseAuthor(html: string): string | null {
   return cleanHtml(match[1]) || null;
 }
 
+/**
+ * Inspect the <a rel="author"> href to determine the author account type.
+ * Returns forceAuthorNull=true when the author name should be set to null.
+ */
+function parseAuthorType(html: string): { authorType: AuthorType; forceAuthorNull: boolean } {
+  // Match <a> tag with rel="author" regardless of attribute order
+  const tagMatch = html.match(/<a\s[^>]*rel="author"[^>]*>/i);
+  if (!tagMatch) {
+    // No rel="author" link = Anonymous work
+    return { authorType: 'anonymous', forceAuthorNull: true };
+  }
+
+  const hrefMatch = tagMatch[0].match(/href="([^"]*)"/i);
+  const href = hrefMatch?.[1] ?? '';
+
+  if (href.includes('/users/orphan_account')) {
+    return { authorType: 'orphaned', forceAuthorNull: true };
+  }
+  return { authorType: 'known', forceAuthorNull: false };
+}
+
 function parseSummary(html: string): string | null {
   const markerIdx = html.indexOf('class="summary module"');
   if (markerIdx === -1) return null;
@@ -90,12 +114,44 @@ function extractTagsFromDd(html: string, ddClass: string): string[] {
 }
 
 function parseTags(html: string): string[] {
+  // Collects fandom/relationship/character/freeform only.
+  // Archive warnings and rating tags are extracted into their own fields.
   const categories = ['fandom tags', 'relationship tags', 'character tags', 'freeform tags'];
   const all: string[] = [];
   for (const cat of categories) {
     all.push(...extractTagsFromDd(html, cat));
   }
   return all;
+}
+
+/**
+ * Maps a rating tag text string to an AO3Rating enum value.
+ * Returns null and the unrecognised text if the value is not in the known set.
+ */
+function mapRatingText(text: string): { rating: AO3Rating | null; unrecognised: string | null } {
+  const map: Record<string, AO3Rating> = {
+    'General Audiences': 'general',
+    'Teen And Up Audiences': 'teen',
+    'Mature': 'mature',
+    'Explicit': 'explicit',
+    'Not Rated': 'not_rated',
+  };
+  const rating = map[text] ?? null;
+  return { rating, unrecognised: rating === null ? text : null };
+}
+
+function parseRating(html: string): { rating: AO3Rating | null; unrecognised: string | null } {
+  const ratingTags = extractTagsFromDd(html, 'rating tags');
+  if (!ratingTags.length) return { rating: null, unrecognised: null };
+  return mapRatingText(ratingTags[0]);
+}
+
+/**
+ * Checks if any freeform tag matches "abandoned" (case-insensitive).
+ * Per spec: tag stays in tags[]; only sets isAbandoned flag.
+ */
+function checkIsAbandoned(freeformTags: string[]): boolean {
+  return freeformTags.some((t) => t.toLowerCase() === 'abandoned');
 }
 
 interface ChapterCounts {
@@ -126,6 +182,81 @@ function parseChapters(html: string): ChapterCounts {
   return {
     published: isNaN(published) ? null : published,
     total: total !== null && isNaN(total) ? null : total,
+  };
+}
+
+/**
+ * Reads the dl.stats dt.status element to determine isComplete and ao3UpdatedAt.
+ * Returns { isComplete: null, ao3UpdatedAt: null } when dt.status is absent —
+ * the caller falls back to chapter-count comparison.
+ */
+function parseDtStatusBlock(html: string): { isComplete: boolean | null; ao3UpdatedAt: string | null } {
+  const dtMatch = html.match(/<dt[^>]*class="[^"]*\bstatus\b[^"]*"[^>]*>([\s\S]*?)<\/dt>/i);
+  if (!dtMatch) return { isComplete: null, ao3UpdatedAt: null };
+
+  const dtText = cleanHtml(dtMatch[1]);
+  let isComplete: boolean | null = null;
+  if (dtText.includes('Completed')) {
+    isComplete = true;
+  } else if (dtText.includes('Updated')) {
+    isComplete = false;
+  }
+
+  if (isComplete === null) return { isComplete: null, ao3UpdatedAt: null };
+
+  const ddMatch = html.match(/<dd[^>]*class="[^"]*\bstatus\b[^"]*"[^>]*>([\s\S]*?)<\/dd>/i);
+  const ao3UpdatedAt = ddMatch ? cleanHtml(ddMatch[1]) || null : null;
+
+  return { isComplete, ao3UpdatedAt };
+}
+
+function parsePublishedAt(html: string): string | null {
+  const match = html.match(/<dd[^>]*class="[^"]*\bpublished\b[^"]*"[^>]*>([\s\S]*?)<\/dd>/i);
+  if (!match) return null;
+  return cleanHtml(match[1]) || null;
+}
+
+function parseWordCount(html: string): number | null {
+  const match = html.match(/<dd[^>]*class="[^"]*\bwords\b[^"]*"[^>]*>([\s\S]*?)<\/dd>/i);
+  if (!match) return null;
+  const raw = cleanHtml(match[1]).replace(/,/g, '');
+  const n = parseInt(raw, 10);
+  return isNaN(n) ? null : n;
+}
+
+function parseSeries(html: string): {
+  seriesName: string | null;
+  seriesPart: number | null;
+  seriesTotal: number | null;
+} {
+  const ddMatch = html.match(/<dd[^>]*class="[^"]*\bseries\b[^"]*"[^>]*>([\s\S]*?)<\/dd>/i);
+  if (!ddMatch) return { seriesName: null, seriesPart: null, seriesTotal: null };
+
+  const ddContent = ddMatch[1];
+
+  // Find the position span
+  const posMatch = ddContent.match(/<span[^>]*class="[^"]*\bposition\b[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
+  if (!posMatch) return { seriesName: null, seriesPart: null, seriesTotal: null };
+
+  const posContent = posMatch[1];
+
+  // Extract series name from the <a> element within the position span
+  const aMatch = posContent.match(/<a[^>]*>([\s\S]*?)<\/a>/i);
+  const seriesName = aMatch ? cleanHtml(aMatch[1]) || null : null;
+
+  // Extract "Part N of M" or "Part N of ?" from the position text
+  const posText = cleanHtml(posContent);
+  const partMatch = posText.match(/Part\s+(\d+)\s+of\s+(\d+|\?)/i);
+  if (!partMatch) return { seriesName, seriesPart: null, seriesTotal: null };
+
+  const seriesPart = parseInt(partMatch[1], 10);
+  const totalStr = partMatch[2];
+  const seriesTotal = totalStr === '?' ? null : parseInt(totalStr, 10);
+
+  return {
+    seriesName,
+    seriesPart: isNaN(seriesPart) ? null : seriesPart,
+    seriesTotal: seriesTotal !== null && isNaN(seriesTotal) ? null : seriesTotal,
   };
 }
 
@@ -172,6 +303,20 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
   // progressCurrent is never set from import — it is the user's reading position only.
   data.progressCurrent = null;
 
+  // Safe defaults for all v2 fields — overwritten by successful extraction below.
+  data.fandom = [];
+  data.relationships = [];
+  data.archiveWarnings = [];
+  data.rating = null;
+  data.authorType = null;
+  data.wordCount = null;
+  data.publishedAt = null;
+  data.ao3UpdatedAt = null;
+  data.isAbandoned = false;
+  data.seriesName = null;
+  data.seriesPart = null;
+  data.seriesTotal = null;
+
   try {
     const title = parseTitle(html);
     if (title) data.title = title;
@@ -186,6 +331,15 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
     errors.push('Error extracting author.');
   }
 
+  // authorType detection — may override data.author to null for orphaned/anonymous works.
+  try {
+    const { authorType, forceAuthorNull } = parseAuthorType(html);
+    data.authorType = authorType;
+    if (forceAuthorNull) data.author = null;
+  } catch {
+    errors.push('Error extracting author type.');
+  }
+
   try {
     data.summary = parseSummary(html);
   } catch {
@@ -198,16 +352,81 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
     errors.push('Error extracting tags.');
   }
 
+  // fandom — also present in tags[]; extracted into its own field too.
+  try {
+    data.fandom = extractTagsFromDd(html, 'fandom tags');
+  } catch {
+    errors.push('Error extracting fandom tags.');
+  }
+
+  // relationships — also present in tags[]; extracted into its own field too.
+  try {
+    data.relationships = extractTagsFromDd(html, 'relationship tags');
+  } catch {
+    errors.push('Error extracting relationship tags.');
+  }
+
+  // archiveWarnings — extracted into own field; NOT in tags[].
+  try {
+    data.archiveWarnings = extractTagsFromDd(html, 'warning tags');
+  } catch {
+    errors.push('Error extracting archive warnings.');
+  }
+
+  try {
+    const { rating, unrecognised } = parseRating(html);
+    data.rating = rating;
+    if (unrecognised) errors.push(`Unrecognised AO3 rating: "${unrecognised}".`);
+  } catch {
+    errors.push('Error extracting rating.');
+  }
+
+  // isAbandoned — inferred from freeform tags; "Abandoned" tag stays in tags[].
+  try {
+    data.isAbandoned = checkIsAbandoned(data.tags ?? []);
+  } catch {
+    errors.push('Error checking isAbandoned.');
+  }
+
   try {
     const { published, total } = parseChapters(html);
-    // published = chapters the author has posted → availableChapters (not user progress).
-    // total = planned final chapter count → totalUnits (null when ongoing/unknown).
     data.availableChapters = published;
     data.totalUnits = total;
-    // isComplete: true only when all planned chapters are published.
-    data.isComplete = published !== null && total !== null ? published === total : false;
+
+    // isComplete: primary signal is dt.status; fallback to chapter comparison.
+    const { isComplete: statusIsComplete, ao3UpdatedAt } = parseDtStatusBlock(html);
+    if (statusIsComplete !== null) {
+      data.isComplete = statusIsComplete;
+      data.ao3UpdatedAt = ao3UpdatedAt;
+    } else {
+      // Fallback: all planned chapters are published → complete.
+      data.isComplete =
+        published !== null && total !== null ? published === total : false;
+      data.ao3UpdatedAt = null;
+    }
   } catch {
     errors.push('Error extracting chapter counts.');
+  }
+
+  try {
+    data.publishedAt = parsePublishedAt(html);
+  } catch {
+    errors.push('Error extracting published date.');
+  }
+
+  try {
+    data.wordCount = parseWordCount(html);
+  } catch {
+    errors.push('Error extracting word count.');
+  }
+
+  try {
+    const { seriesName, seriesPart, seriesTotal } = parseSeries(html);
+    data.seriesName = seriesName;
+    data.seriesPart = seriesPart;
+    data.seriesTotal = seriesTotal;
+  } catch {
+    errors.push('Error extracting series information.');
   }
 
   return { data, errors };
