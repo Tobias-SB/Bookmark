@@ -61,7 +61,7 @@ export function LibraryScreen() {
   // ── Filter state — local; resets on remount ────────────────────────────────
   const [search, setSearch] = useState('');
   const [kindFilter, setKindFilter] = useState<ReadableKind | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<ReadableStatus | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<ReadableStatus[] | undefined>(undefined);
   const [isCompleteFilter, setIsCompleteFilter] = useState<boolean | undefined>(undefined);
   const [sortBy, setSortBy] = useState<SortByOption>('dateAdded');
   const [sortOrder, setSortOrder] = useState<SortOrderOption>('desc');
@@ -84,7 +84,7 @@ export function LibraryScreen() {
   const hasActiveFilters =
     search.trim() !== '' ||
     kindFilter !== undefined ||
-    statusFilter !== undefined ||
+    (statusFilter !== undefined && statusFilter.length > 0) ||
     isCompleteFilter !== undefined;
 
   const isEmptyLibrary = readables.length === 0 && !isLoading && !isError && !hasActiveFilters;
@@ -117,9 +117,16 @@ export function LibraryScreen() {
     });
   }
 
-  function handleStatusChipPress(status: ReadableStatus | undefined) {
-    // Tapping the active chip deselects it; tapping another selects it.
-    setStatusFilter((prev) => (prev === status ? undefined : status));
+  function handleStatusChipPress(status: ReadableStatus) {
+    // Toggle: if status is already selected, remove it; otherwise add it.
+    // If the resulting array is empty, revert to undefined (show all).
+    setStatusFilter((prev) => {
+      if (prev?.includes(status)) {
+        const next = prev.filter((s) => s !== status);
+        return next.length === 0 ? undefined : next;
+      }
+      return [...(prev ?? []), status];
+    });
   }
 
   function handleIsCompleteChipPress(value: boolean) {
@@ -246,10 +253,10 @@ export function LibraryScreen() {
           style={[styles.chipGroupDivider, { backgroundColor: theme.colors.outlineVariant }]}
         />
 
-        {/* Status chips: "All" + 4 statuses */}
+        {/* Status chips: "All" + 4 statuses (multi-select, OR logic) */}
         <Chip
-          selected={statusFilter === undefined}
-          onPress={() => handleStatusChipPress(undefined)}
+          selected={statusFilter === undefined || statusFilter.length === 0}
+          onPress={() => setStatusFilter(undefined)}
           style={styles.chip}
           compact
         >
@@ -258,7 +265,7 @@ export function LibraryScreen() {
         {READABLE_STATUSES.map((status) => (
           <Chip
             key={status}
-            selected={statusFilter === status}
+            selected={statusFilter?.includes(status) ?? false}
             onPress={() => handleStatusChipPress(status)}
             style={styles.chip}
             compact

@@ -14,7 +14,7 @@ export interface ImportedMetadata {
   /** User's reading position — never set from AO3 chapter counts. */
   progressCurrent: number | null;
   /** Planned final chapter/page count. For AO3: total planned chapters (null if ongoing/unknown). */
-  progressTotal: number | null;
+  totalUnits: number | null;
   /** AO3 only: false = WIP, true = Complete. null for books. */
   isComplete: boolean | null;
   sourceUrl: string | null;
@@ -26,7 +26,7 @@ export interface ImportedMetadata {
   coverUrl: string | null;
   /**
    * Fanfic only: chapters published by the author at scrape time.
-   * Distinct from progressCurrent (user position) and progressTotal (planned final count).
+   * Distinct from progressCurrent (user position) and totalUnits (planned final count).
    * Derived from the X in AO3's "X/Y" chapter format.
    */
   availableChapters: number | null;

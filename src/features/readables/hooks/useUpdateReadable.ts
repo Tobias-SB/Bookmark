@@ -59,7 +59,7 @@ export function applyUpdateConsistency(
     ? (input.progressCurrent ?? null)
     : current.progressCurrent;
   const effectiveProgressTotal: number | null =
-    'progressTotal' in input ? (input.progressTotal ?? null) : current.progressTotal;
+    'totalUnits' in input ? (input.totalUnits ?? null) : current.totalUnits;
   const effectiveIsComplete: boolean | null =
     'isComplete' in input ? (input.isComplete ?? null) : current.isComplete;
 

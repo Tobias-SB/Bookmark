@@ -71,7 +71,7 @@ function buildPrefillFromMetadataData(
     author: data.author,
     summary: data.summary,
     tags: data.tags,
-    progressTotal: data.progressTotal,
+    totalUnits: data.totalUnits,
     sourceUrl: data.sourceUrl,
     isComplete: data.isComplete,
   };

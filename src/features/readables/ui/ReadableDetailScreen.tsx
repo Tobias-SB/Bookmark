@@ -102,11 +102,11 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  function handleProgressSave(progressCurrent: number | null, progressTotal: number | null) {
+  function handleProgressSave(progressCurrent: number | null, totalUnits: number | null) {
     if (!readable) return;
     setProgressEditorError(null);
     update(
-      { id: readable.id, input: { progressCurrent, progressTotal }, current: readable },
+      { id: readable.id, input: { progressCurrent, totalUnits }, current: readable },
       {
         onSuccess: () => {
           setProgressEditorVisible(false);
@@ -265,7 +265,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           </Text>
           <View style={styles.progressRow}>
             <Text variant="bodyMedium" style={[styles.progressText, { color: theme.colors.textPrimary }]}>
-              {formatProgressString(readable.progressCurrent, readable.progressTotal, readable.progressUnit) ?? 'No progress recorded'}
+              {formatProgressString(readable.progressCurrent, readable.totalUnits, readable.progressUnit) ?? 'No progress recorded'}
             </Text>
             <Button
               compact

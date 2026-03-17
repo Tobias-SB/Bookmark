@@ -158,7 +158,7 @@ function mapVolumeToMetadata(volume: GoogleBooksVolume): MetadataResult {
   }
 
   try {
-    data.progressTotal =
+    data.totalUnits =
       typeof info.pageCount === 'number' && info.pageCount > 0 ? info.pageCount : null;
   } catch {
     errors.push('Error extracting page count.');

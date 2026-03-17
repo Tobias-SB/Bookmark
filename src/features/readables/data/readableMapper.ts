@@ -1,5 +1,5 @@
 // src/features/readables/data/readableMapper.ts
-// §12 — Maps between raw SQLite rows (snake_case) and the domain Readable
+// Maps between raw SQLite rows (snake_case) and the domain Readable
 // model (camelCase). This file is internal to the data layer — ReadableRow
 // is not exported from the feature's index.ts.
 
@@ -9,6 +9,8 @@ import type {
   ReadableStatus,
   ProgressUnit,
   SourceType,
+  AO3Rating,
+  AuthorType,
 } from '../domain/readable';
 
 // ── Raw row shape ─────────────────────────────────────────────────────────────
@@ -21,7 +23,7 @@ export interface ReadableRow {
   author: string | null;
   status: string;
   progress_current: number | null;
-  progress_total: number | null;
+  total_units: number | null;
   progress_unit: string;
   source_type: string;
   source_url: string | null;
@@ -32,6 +34,20 @@ export interface ReadableRow {
   isbn: string | null;
   cover_url: string | null;
   available_chapters: number | null;
+  word_count: number | null;
+  fandom: string; // JSON array
+  relationships: string; // JSON array
+  rating: string | null;
+  archive_warnings: string; // JSON array
+  series_name: string | null;
+  series_part: number | null;
+  series_total: number | null;
+  notes: string | null;
+  notes_updated_at: string | null;
+  published_at: string | null;
+  ao3_updated_at: string | null;
+  is_abandoned: number; // SQLite INTEGER: 1 = true, 0 = false (NOT NULL DEFAULT 0)
+  author_type: string | null;
   date_added: string;
   date_created: string;
   date_updated: string;
@@ -39,8 +55,17 @@ export interface ReadableRow {
 
 // ── Tag serialisation ─────────────────────────────────────────────────────────
 
-// §5 — Safe tag deserialisation. Never throws — returns [] on any failure.
+// Safe tag deserialisation. Never throws — returns [] on any failure.
 export function parseTags(raw: string | null): string[] {
+  try {
+    return JSON.parse(raw ?? '[]') ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// Safe JSON array deserialisation for any string[] column. Same pattern as parseTags.
+export function parseJsonArray(raw: string | null): string[] {
   try {
     return JSON.parse(raw ?? '[]') ?? [];
   } catch {
@@ -71,7 +96,7 @@ export function rowToReadable(row: ReadableRow): Readable {
     author: row.author,
     status: row.status as ReadableStatus,
     progressCurrent: row.progress_current,
-    progressTotal: row.progress_total,
+    totalUnits: row.total_units,
     progressUnit: row.progress_unit as ProgressUnit,
     sourceType: row.source_type as SourceType,
     sourceUrl: row.source_url,
@@ -82,6 +107,20 @@ export function rowToReadable(row: ReadableRow): Readable {
     isbn: row.isbn,
     coverUrl: row.cover_url,
     availableChapters: row.available_chapters,
+    wordCount: row.word_count,
+    fandom: parseJsonArray(row.fandom),
+    relationships: parseJsonArray(row.relationships),
+    rating: row.rating as AO3Rating | null,
+    archiveWarnings: parseJsonArray(row.archive_warnings),
+    seriesName: row.series_name,
+    seriesPart: row.series_part,
+    seriesTotal: row.series_total,
+    notes: row.notes,
+    notesUpdatedAt: row.notes_updated_at,
+    publishedAt: row.published_at,
+    ao3UpdatedAt: row.ao3_updated_at,
+    isAbandoned: row.is_abandoned !== 0,
+    authorType: row.author_type as AuthorType | null,
     dateAdded: row.date_added,
     dateCreated: row.date_created,
     dateUpdated: row.date_updated,

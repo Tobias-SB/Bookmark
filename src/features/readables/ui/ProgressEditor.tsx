@@ -66,7 +66,7 @@ export interface ProgressEditorProps {
   errorMessage?: string;
   onDismiss: () => void;
   /** Called with validated (number | null) values on submit. */
-  onSave: (progressCurrent: number | null, progressTotal: number | null) => void;
+  onSave: (progressCurrent: number | null, totalUnits: number | null) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ export function ProgressEditor({
     resolver: zodResolver(progressEditorSchema),
     defaultValues: {
       current: toFormString(readable.progressCurrent),
-      total: toFormString(readable.progressTotal),
+      total: toFormString(readable.totalUnits),
     },
   });
 
@@ -100,10 +100,10 @@ export function ProgressEditor({
     if (visible) {
       reset({
         current: toFormString(readable.progressCurrent),
-        total: toFormString(readable.progressTotal),
+        total: toFormString(readable.totalUnits),
       });
     }
-  }, [visible, readable.progressCurrent, readable.progressTotal, reset]);
+  }, [visible, readable.progressCurrent, readable.totalUnits, reset]);
 
   const onSubmit = handleSubmit((data: ProgressEditorOutput) => {
     onSave(data.current, data.total);

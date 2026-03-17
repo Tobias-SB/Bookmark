@@ -1,5 +1,5 @@
 // src/features/readables/data/readableRepository.ts
-// §12 — Repository functions for the readables table. Plain async functions;
+// Repository functions for the readables table. Plain async functions;
 // no React hooks. Hooks obtain `db` via useDatabase() and pass it here.
 //
 // Immutability enforced here:
@@ -7,8 +7,15 @@
 //   - sourceId is never overwritten by updateReadable.
 //   - dateUpdated is always new Date().toISOString() on every write.
 //   - id is generated via Crypto.randomUUID() in createReadable.
-//   - isbn, coverUrl, and availableChapters are set at creation from import;
-//     not overwritten by user edits.
+//   - isbn, coverUrl: set at creation from import; not overwritten by user edits.
+//   - authorType, publishedAt: import-only; not in UpdateReadableInput.
+//   - ao3UpdatedAt: set by import and refreshReadableMetadata; not in UpdateReadableInput.
+//   - notesUpdatedAt: repo-managed; not in UpdateReadableInput.
+//
+// Fanfic-only enforcement:
+//   - fandom, relationships, rating, archiveWarnings, wordCount, availableChapters,
+//     isAbandoned, publishedAt, ao3UpdatedAt, authorType are written as null/[]/false
+//     for books regardless of input.
 
 import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -20,6 +27,8 @@ import type {
   ReadableStatus,
   ProgressUnit,
   SourceType,
+  AO3Rating,
+  AuthorType,
 } from '../domain/readable';
 import {
   rowToReadable,
@@ -35,7 +44,7 @@ export interface CreateReadableInput {
   author?: string | null;
   status?: ReadableStatus;
   progressCurrent?: number | null;
-  progressTotal?: number | null;
+  totalUnits?: number | null;
   sourceType: SourceType;
   sourceUrl?: string | null;
   sourceId?: string | null;
@@ -48,8 +57,25 @@ export interface CreateReadableInput {
   isbn?: string | null;
   /** Remote cover image URL (HTTPS). null for manual/AO3. */
   coverUrl?: string | null;
-  /** Fanfic only: chapters published at import time. null for books and manual. */
+  // Fanfic-only — enforced null/[]/false for books at write time:
   availableChapters?: number | null;
+  wordCount?: number | null;
+  fandom?: string[];
+  relationships?: string[];
+  rating?: AO3Rating | null;
+  archiveWarnings?: string[];
+  isAbandoned?: boolean;
+  /** Import-only. Set on fanfic creation from AO3. */
+  authorType?: AuthorType | null;
+  /** Import-only. ISO 8601 date. Fanfic only. */
+  publishedAt?: string | null;
+  /** Set by import. ISO 8601 date. Fanfic only. */
+  ao3UpdatedAt?: string | null;
+  // Universal v2 fields:
+  seriesName?: string | null;
+  seriesPart?: number | null;
+  seriesTotal?: number | null;
+  notes?: string | null;
 }
 
 export interface UpdateReadableInput {
@@ -57,16 +83,44 @@ export interface UpdateReadableInput {
   author?: string | null;
   status?: ReadableStatus;
   progressCurrent?: number | null;
-  progressTotal?: number | null;
+  totalUnits?: number | null;
   sourceUrl?: string | null;
   summary?: string | null;
   tags?: string[];
   isComplete?: boolean | null;
   /** ISO 8601. Supports backdating; no future dates enforced by repository. */
   dateAdded?: string;
-  // Intentionally omitted — immutable after creation:
+  notes?: string | null;
+  seriesName?: string | null;
+  seriesPart?: number | null;
+  seriesTotal?: number | null;
+  // Fanfic-only (enforced null/[]/false for books):
+  availableChapters?: number | null;
+  wordCount?: number | null;
+  fandom?: string[];
+  relationships?: string[];
+  rating?: AO3Rating | null;
+  archiveWarnings?: string[];
+  isAbandoned?: boolean;
+  ao3UpdatedAt?: string | null;
+  // Intentionally omitted — these must not appear in UpdateReadableInput:
   //   kind, progressUnit, sourceType, sourceId, id, dateCreated,
-  //   isbn, coverUrl, availableChapters
+  //   isbn, coverUrl, authorType, publishedAt, notesUpdatedAt
+}
+
+// ── Refresh input type ────────────────────────────────────────────────────────
+// Used by refreshReadableMetadata. Only the fields listed in Appendix B "Updates" column.
+
+export interface RefreshMetadataInput {
+  availableChapters?: number | null;
+  totalUnits?: number | null;
+  wordCount?: number | null;
+  isComplete?: boolean | null;
+  ao3UpdatedAt?: string | null;
+  tags?: string[];
+  relationships?: string[];
+  archiveWarnings?: string[];
+  seriesTotal?: number | null;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -149,22 +203,50 @@ export async function createReadable(
   const now = new Date().toISOString();
   const dateAdded = input.dateAdded ?? localMidnightUTC();
   const progressUnit = progressUnitFromKind(input.kind);
+  const isFanfic = input.kind === 'fanfic';
+
+  // Enforce fanfic-only fields — books always get null/[]/false regardless of input.
+  const availableChapters = isFanfic ? (input.availableChapters ?? null) : null;
+  const wordCount = isFanfic ? (input.wordCount ?? null) : null;
+  const fandom = isFanfic ? JSON.stringify(input.fandom ?? []) : '[]';
+  const relationships = isFanfic ? JSON.stringify(input.relationships ?? []) : '[]';
+  const rating = isFanfic ? (input.rating ?? null) : null;
+  const archiveWarnings = isFanfic ? JSON.stringify(input.archiveWarnings ?? []) : '[]';
+  const isAbandoned = isFanfic ? (input.isAbandoned === true ? 1 : 0) : 0;
+  const authorType = isFanfic ? (input.authorType ?? null) : null;
+  const publishedAt = isFanfic ? (input.publishedAt ?? null) : null;
+  const ao3UpdatedAt = isFanfic ? (input.ao3UpdatedAt ?? null) : null;
+
+  // notesUpdatedAt: set if notes provided on creation
+  const notesUpdatedAt = input.notes != null ? now : null;
 
   try {
     await db.runAsync(
       `INSERT INTO readables (
         id, kind, title, author, status,
-        progress_current, progress_total, progress_unit,
+        progress_current, total_units, progress_unit,
         source_type, source_url, source_id,
         summary, tags, is_complete,
-        isbn, cover_url, available_chapters,
+        isbn, cover_url,
+        available_chapters, word_count,
+        fandom, relationships, rating, archive_warnings,
+        series_name, series_part, series_total,
+        notes, notes_updated_at,
+        published_at, ao3_updated_at,
+        is_abandoned, author_type,
         date_added, date_created, date_updated
       ) VALUES (
         ?, ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
         ?, ?, ?
       )`,
       [
@@ -174,7 +256,7 @@ export async function createReadable(
         input.author ?? null,
         input.status ?? 'want_to_read',
         input.progressCurrent ?? null,
-        input.progressTotal ?? null,
+        input.totalUnits ?? null,
         progressUnit,
         input.sourceType,
         input.sourceUrl ?? null,
@@ -184,7 +266,21 @@ export async function createReadable(
         booleanToSQLite(input.isComplete ?? null),
         input.isbn ?? null,
         input.coverUrl ?? null,
-        input.availableChapters ?? null,
+        availableChapters,
+        wordCount,
+        fandom,
+        relationships,
+        rating,
+        archiveWarnings,
+        input.seriesName ?? null,
+        input.seriesPart ?? null,
+        input.seriesTotal ?? null,
+        input.notes ?? null,
+        notesUpdatedAt,
+        publishedAt,
+        ao3UpdatedAt,
+        isAbandoned,
+        authorType,
         dateAdded,
         now,
         now,
@@ -216,14 +312,15 @@ export async function updateReadable(
   }
 
   const dateUpdated = new Date().toISOString();
+  const isFanfic = existing.kind === 'fanfic';
 
   const title = input.title ?? existing.title;
   const author = 'author' in input ? (input.author ?? null) : existing.author;
   const status = input.status ?? existing.status;
   const progressCurrent =
     'progressCurrent' in input ? (input.progressCurrent ?? null) : existing.progressCurrent;
-  const progressTotal =
-    'progressTotal' in input ? (input.progressTotal ?? null) : existing.progressTotal;
+  const totalUnits =
+    'totalUnits' in input ? (input.totalUnits ?? null) : existing.totalUnits;
   const sourceUrl =
     'sourceUrl' in input ? (input.sourceUrl ?? null) : existing.sourceUrl;
   const summary =
@@ -233,19 +330,61 @@ export async function updateReadable(
     'isComplete' in input ? (input.isComplete ?? null) : existing.isComplete;
   const dateAdded = input.dateAdded ?? existing.dateAdded;
 
-  // Preserve import-only fields — not user-editable.
+  // notes + notesUpdatedAt: auto-set timestamp when notes change
+  const notes = 'notes' in input ? (input.notes ?? null) : existing.notes;
+  const notesUpdatedAt = 'notes' in input ? dateUpdated : existing.notesUpdatedAt;
+
+  // Universal v2 fields
+  const seriesName = 'seriesName' in input ? (input.seriesName ?? null) : existing.seriesName;
+  const seriesPart = 'seriesPart' in input ? (input.seriesPart ?? null) : existing.seriesPart;
+  const seriesTotal = 'seriesTotal' in input ? (input.seriesTotal ?? null) : existing.seriesTotal;
+
+  // Preserve import-only fields
   const isbn = existing.isbn;
   const coverUrl = existing.coverUrl;
-  const availableChapters = existing.availableChapters;
+  const authorType = existing.authorType;
+  const publishedAt = existing.publishedAt;
+
+  // Fanfic-only fields: enforce null/[]/false for books
+  const availableChapters = isFanfic
+    ? ('availableChapters' in input ? (input.availableChapters ?? null) : existing.availableChapters)
+    : null;
+  const wordCount = isFanfic
+    ? ('wordCount' in input ? (input.wordCount ?? null) : existing.wordCount)
+    : null;
+  const fandom = isFanfic
+    ? (input.fandom !== undefined ? input.fandom : existing.fandom)
+    : [];
+  const relationships = isFanfic
+    ? (input.relationships !== undefined ? input.relationships : existing.relationships)
+    : [];
+  const rating = isFanfic
+    ? ('rating' in input ? (input.rating ?? null) : existing.rating)
+    : null;
+  const archiveWarnings = isFanfic
+    ? (input.archiveWarnings !== undefined ? input.archiveWarnings : existing.archiveWarnings)
+    : [];
+  const isAbandoned = isFanfic
+    ? ('isAbandoned' in input ? (input.isAbandoned === true) : existing.isAbandoned)
+    : false;
+  const ao3UpdatedAt = isFanfic
+    ? ('ao3UpdatedAt' in input ? (input.ao3UpdatedAt ?? null) : existing.ao3UpdatedAt)
+    : null;
 
   try {
     await db.runAsync(
       `UPDATE readables SET
         title = ?, author = ?, status = ?,
-        progress_current = ?, progress_total = ?,
+        progress_current = ?, total_units = ?,
         source_url = ?, summary = ?, tags = ?,
         is_complete = ?, date_added = ?,
-        isbn = ?, cover_url = ?, available_chapters = ?,
+        isbn = ?, cover_url = ?,
+        available_chapters = ?, word_count = ?,
+        fandom = ?, relationships = ?, rating = ?, archive_warnings = ?,
+        series_name = ?, series_part = ?, series_total = ?,
+        notes = ?, notes_updated_at = ?,
+        published_at = ?, ao3_updated_at = ?,
+        is_abandoned = ?, author_type = ?,
         date_updated = ?
       WHERE id = ?`,
       [
@@ -253,7 +392,7 @@ export async function updateReadable(
         author,
         status,
         progressCurrent,
-        progressTotal,
+        totalUnits,
         sourceUrl,
         summary,
         JSON.stringify(tags),
@@ -262,6 +401,20 @@ export async function updateReadable(
         isbn,
         coverUrl,
         availableChapters,
+        wordCount,
+        JSON.stringify(fandom),
+        JSON.stringify(relationships),
+        rating,
+        JSON.stringify(archiveWarnings),
+        seriesName,
+        seriesPart,
+        seriesTotal,
+        notes,
+        notesUpdatedAt,
+        publishedAt,
+        ao3UpdatedAt,
+        isAbandoned ? 1 : 0,
+        authorType,
         dateUpdated,
         id,
       ],
@@ -276,6 +429,95 @@ export async function updateReadable(
     if (isAppError(cause)) throw cause;
     throw toDbError(cause, 'updateReadable');
   }
+}
+
+// ── refreshReadableMetadata ───────────────────────────────────────────────────
+// Updates only the fields in Appendix B "Updates" column. Does NOT touch:
+// status, progressCurrent, notes, notesUpdatedAt, isAbandoned, dateAdded,
+// author, title, summary, seriesName, seriesPart, fandom, rating, authorType,
+// publishedAt, kind, sourceType, sourceId, dateCreated.
+//
+// Status reversion: if status === 'completed' AND new totalUnits > existing totalUnits,
+// reverts status to 'reading' and returns { statusReverted: true }.
+
+export async function refreshReadableMetadata(
+  db: SQLiteDatabase,
+  id: string,
+  metadata: RefreshMetadataInput,
+): Promise<{ statusReverted: boolean }> {
+  const existing = await getReadableById(db, id);
+  if (!existing) {
+    const error: AppError = { code: 'not_found', message: `Readable '${id}' not found.` };
+    throw error;
+  }
+
+  const dateUpdated = new Date().toISOString();
+
+  const availableChapters =
+    'availableChapters' in metadata ? (metadata.availableChapters ?? null) : existing.availableChapters;
+  const totalUnits =
+    'totalUnits' in metadata ? (metadata.totalUnits ?? null) : existing.totalUnits;
+  const wordCount =
+    'wordCount' in metadata ? (metadata.wordCount ?? null) : existing.wordCount;
+  const isComplete =
+    'isComplete' in metadata ? (metadata.isComplete ?? null) : existing.isComplete;
+  const ao3UpdatedAt =
+    'ao3UpdatedAt' in metadata ? (metadata.ao3UpdatedAt ?? null) : existing.ao3UpdatedAt;
+  const tags =
+    metadata.tags !== undefined ? metadata.tags : existing.tags;
+  const relationships =
+    metadata.relationships !== undefined ? metadata.relationships : existing.relationships;
+  const archiveWarnings =
+    metadata.archiveWarnings !== undefined ? metadata.archiveWarnings : existing.archiveWarnings;
+  const seriesTotal =
+    'seriesTotal' in metadata ? (metadata.seriesTotal ?? null) : existing.seriesTotal;
+
+  try {
+    await db.runAsync(
+      `UPDATE readables SET
+        available_chapters = ?,
+        total_units = ?,
+        word_count = ?,
+        is_complete = ?,
+        ao3_updated_at = ?,
+        tags = ?,
+        relationships = ?,
+        archive_warnings = ?,
+        series_total = ?,
+        date_updated = ?
+      WHERE id = ?`,
+      [
+        availableChapters,
+        totalUnits,
+        wordCount,
+        booleanToSQLite(isComplete),
+        ao3UpdatedAt,
+        JSON.stringify(tags),
+        JSON.stringify(relationships),
+        JSON.stringify(archiveWarnings),
+        seriesTotal,
+        dateUpdated,
+        id,
+      ],
+    );
+  } catch (cause) {
+    if (isAppError(cause)) throw cause;
+    throw toDbError(cause, 'refreshReadableMetadata');
+  }
+
+  // Status reversion: completed → reading when new totalUnits > previous totalUnits
+  const previousTotalUnits = existing.totalUnits;
+  if (
+    existing.status === 'completed' &&
+    totalUnits !== null &&
+    previousTotalUnits !== null &&
+    totalUnits > previousTotalUnits
+  ) {
+    await updateReadable(db, id, { status: 'reading' });
+    return { statusReverted: true };
+  }
+
+  return { statusReverted: false };
 }
 
 // ── deleteReadable ────────────────────────────────────────────────────────────

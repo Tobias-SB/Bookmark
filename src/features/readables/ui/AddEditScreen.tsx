@@ -11,7 +11,7 @@
 //
 // "Not found in import" notices:
 //   When sourceType !== 'manual', HelperText info notices appear below fields that the
-//   import attempted but could not populate (title, author, summary, progressTotal).
+//   import attempted but could not populate (title, author, summary, totalUnits).
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -87,7 +87,7 @@ function getAddDefaultValues(): AddEditFormValues {
     author: '',
     status: 'want_to_read',
     progressCurrent: '',
-    progressTotal: '',
+    totalUnits: '',
     sourceUrl: '',
     summary: '',
     tags: '',
@@ -103,7 +103,7 @@ function getPrefillDefaultValues(prefill: AddEditPrefill): AddEditFormValues {
     author: prefill.author ?? '',
     status: 'want_to_read',
     progressCurrent: '',
-    progressTotal: prefill.progressTotal != null ? String(prefill.progressTotal) : '',
+    totalUnits: prefill.totalUnits != null ? String(prefill.totalUnits) : '',
     sourceUrl: prefill.sourceUrl ?? '',
     summary: prefill.summary ?? '',
     tags: Array.isArray(prefill.tags) ? prefill.tags.join(', ') : '',
@@ -113,11 +113,11 @@ function getPrefillDefaultValues(prefill: AddEditPrefill): AddEditFormValues {
 }
 
 function getEditDefaultValues(readable: Readable): AddEditFormValues {
-  // Apply isComplete coherence: if a record has isComplete=true but no progressTotal
+  // Apply isComplete coherence: if a record has isComplete=true but no totalUnits
   // (a broken state), reset isComplete to false so the form opens in a valid state
   // and the user isn't blocked from saving by the superRefine rule.
   const isComplete =
-    readable.isComplete === true && readable.progressTotal === null
+    readable.isComplete === true && readable.totalUnits === null
       ? false
       : readable.isComplete;
 
@@ -127,7 +127,7 @@ function getEditDefaultValues(readable: Readable): AddEditFormValues {
     author: readable.author ?? '',
     status: readable.status,
     progressCurrent: readable.progressCurrent != null ? String(readable.progressCurrent) : '',
-    progressTotal: readable.progressTotal != null ? String(readable.progressTotal) : '',
+    totalUnits: readable.totalUnits != null ? String(readable.totalUnits) : '',
     sourceUrl: readable.sourceUrl ?? '',
     summary: readable.summary ?? '',
     tags: readable.tags.join(', '),
@@ -168,8 +168,8 @@ export function AddEditScreen({ route, navigation }: Props) {
     if (!prefill.title) missing.add('title');
     if (prefill.author === null || prefill.author === undefined) missing.add('author');
     if (!prefill.summary) missing.add('summary');
-    if (prefill.progressTotal === null || prefill.progressTotal === undefined) {
-      missing.add('progressTotal');
+    if (prefill.totalUnits === null || prefill.totalUnits === undefined) {
+      missing.add('totalUnits');
     }
     return missing;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -206,7 +206,7 @@ export function AddEditScreen({ route, navigation }: Props) {
   }, [isEditMode, existingReadable, reset]);
 
   const watchedKind = watch('kind');
-  const watchedProgressTotal = watch('progressTotal');
+  const watchedTotalUnits = watch('totalUnits');
   const watchedIsComplete = watch('isComplete');
 
   // Sync isComplete when kind changes — only relevant in manual add mode without prefill
@@ -263,7 +263,7 @@ export function AddEditScreen({ route, navigation }: Props) {
         author: data.author,
         status: data.status,
         progressCurrent: data.progressCurrent,
-        progressTotal: data.progressTotal,
+        totalUnits: data.totalUnits,
         sourceType: importContext?.sourceType ?? 'manual',
         sourceUrl: data.sourceUrl,
         sourceId: importContext?.sourceId ?? null,
@@ -288,7 +288,7 @@ export function AddEditScreen({ route, navigation }: Props) {
         author: data.author,
         status: data.status,
         progressCurrent: data.progressCurrent,
-        progressTotal: data.progressTotal,
+        totalUnits: data.totalUnits,
         sourceUrl: data.sourceUrl,
         summary: data.summary,
         tags: data.tags,
@@ -339,7 +339,7 @@ export function AddEditScreen({ route, navigation }: Props) {
 
   const isFanfic = watchedKind === 'fanfic';
   const progressUnit = isFanfic ? 'chapters' : 'pages';
-  const showIsCompleteHint = isFanfic && watchedIsComplete === true && watchedProgressTotal.trim() === '';
+  const showIsCompleteHint = isFanfic && watchedIsComplete === true && watchedTotalUnits.trim() === '';
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -504,7 +504,7 @@ export function AddEditScreen({ route, navigation }: Props) {
             />
             <Controller
               control={control}
-              name="progressTotal"
+              name="totalUnits"
               render={({ field, fieldState }) => (
                 <View style={styles.progressField}>
                   <TextInput
@@ -527,7 +527,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                   {!fieldState.error && showIsCompleteHint && (
                     <HelperText type="info" visible>Set total chapters to mark as complete</HelperText>
                   )}
-                  {!fieldState.error && !showIsCompleteHint && prefillMissingFields.has('progressTotal') && (
+                  {!fieldState.error && !showIsCompleteHint && prefillMissingFields.has('totalUnits') && (
                     <HelperText type="info" visible>Not found in import</HelperText>
                   )}
                 </View>

@@ -24,7 +24,7 @@ export const ReadableListItem = React.memo(function ReadableListItem({
   onPress,
 }: Props) {
   const theme = useAppTheme();
-  const progress = formatProgressString(item.progressCurrent, item.progressTotal, item.progressUnit);
+  const progress = formatProgressString(item.progressCurrent, item.totalUnits, item.progressUnit);
   const hasCover = item.coverUrl !== null;
 
   return (

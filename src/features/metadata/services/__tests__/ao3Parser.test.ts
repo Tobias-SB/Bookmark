@@ -169,7 +169,7 @@ describe('successful extraction', () => {
     // X → availableChapters (author's published count); progressCurrent never set from import
     expect(result.data.availableChapters).toBe(3);
     expect(result.data.progressCurrent).toBeNull();
-    expect(result.data.progressTotal).toBeNull();
+    expect(result.data.totalUnits).toBeNull();
     expect(result.data.isComplete).toBe(false);
   });
 
@@ -178,7 +178,7 @@ describe('successful extraction', () => {
     const result = await fetchAo3Metadata(VALID_WORK_URL);
     expect(result.data.availableChapters).toBe(10);
     expect(result.data.progressCurrent).toBeNull();
-    expect(result.data.progressTotal).toBe(10);
+    expect(result.data.totalUnits).toBe(10);
     expect(result.data.isComplete).toBe(true);
   });
 
@@ -187,7 +187,7 @@ describe('successful extraction', () => {
     const result = await fetchAo3Metadata(VALID_WORK_URL);
     expect(result.data.availableChapters).toBe(7);
     expect(result.data.progressCurrent).toBeNull();
-    expect(result.data.progressTotal).toBe(20);
+    expect(result.data.totalUnits).toBe(20);
     expect(result.data.isComplete).toBe(false);
   });
 

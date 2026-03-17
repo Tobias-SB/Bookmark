@@ -10,9 +10,11 @@ export type {
   ProgressUnit,
   SourceType,
   ReadableFilters,
+  AO3Rating,
+  AuthorType,
 } from './domain/readable';
 
-export { READABLE_STATUSES } from './domain/readable';
+export { READABLE_STATUSES, AO3_RATING_LABELS } from './domain/readable';
 
 // ── Query key factory ─────────────────────────────────────────────────────────
 export { readableKeys } from './domain/queryKeys';
@@ -22,6 +24,7 @@ export { readableKeys } from './domain/queryKeys';
 export type {
   CreateReadableInput,
   UpdateReadableInput,
+  RefreshMetadataInput,
 } from './data/readableRepository';
 
 export {
@@ -31,6 +34,7 @@ export {
   createReadable,
   updateReadable,
   deleteReadable,
+  refreshReadableMetadata,
 } from './data/readableRepository';
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────

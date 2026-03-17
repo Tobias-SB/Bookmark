@@ -29,7 +29,7 @@ import { createReadable, type CreateReadableInput } from '../data/readableReposi
 export function applyCreateConsistency(input: CreateReadableInput): CreateReadableInput {
   const effectiveStatus: ReadableStatus = input.status ?? 'want_to_read';
   const progressCurrent: number | null = input.progressCurrent ?? null;
-  const progressTotal: number | null = input.progressTotal ?? null;
+  const totalUnits: number | null = input.totalUnits ?? null;
 
   let resolvedStatus = effectiveStatus;
   let resolvedProgressCurrent = progressCurrent;
@@ -40,18 +40,18 @@ export function applyCreateConsistency(input: CreateReadableInput): CreateReadab
     resolvedStatus = 'reading';
   }
 
-  // Rule 2: progressCurrent reaches progressTotal (known) → completed.
+  // Rule 2: progressCurrent reaches totalUnits (known) → completed.
   if (
     resolvedProgressCurrent !== null &&
-    progressTotal !== null &&
-    resolvedProgressCurrent >= progressTotal
+    totalUnits !== null &&
+    resolvedProgressCurrent >= totalUnits
   ) {
     resolvedStatus = 'completed';
   }
 
-  // Rule 3: Status completed + total known → set progressCurrent = progressTotal.
-  if (resolvedStatus === 'completed' && progressTotal !== null) {
-    resolvedProgressCurrent = progressTotal;
+  // Rule 3: Status completed + total known → set progressCurrent = totalUnits.
+  if (resolvedStatus === 'completed' && totalUnits !== null) {
+    resolvedProgressCurrent = totalUnits;
   }
 
   // Rule 5: Status want_to_read → clear progressCurrent.
@@ -65,7 +65,7 @@ export function applyCreateConsistency(input: CreateReadableInput): CreateReadab
   // catches any path that bypasses the form (e.g. metadata import).
   const inputIsComplete = input.isComplete ?? null;
   const resolvedIsComplete: boolean | null =
-    inputIsComplete === true && progressTotal === null ? false : inputIsComplete;
+    inputIsComplete === true && totalUnits === null ? false : inputIsComplete;
 
   return {
     ...input,

@@ -3,14 +3,14 @@
 // Defines input (form field string) types and output (validated, transformed) types.
 //
 // Key transforms:
-//   - progressCurrent / progressTotal: '' → null, non-negative integer string → number
+//   - progressCurrent / totalUnits: '' → null, non-negative integer string → number
 //   - Optional string fields (author, sourceUrl, summary): empty/whitespace → null
 //   - tags: comma-separated string → string[]
 //   - dateAdded: validated as YYYY-MM-DD, not in the future
 //   - isComplete: boolean | null — no transform; controlled by Switch in screen
 //
 // Cross-field rules (superRefine):
-//   - isComplete=true requires progressTotal to be non-null (AO3: Complete = known total)
+//   - isComplete=true requires totalUnits to be non-null (AO3: Complete = known total)
 
 import { z } from 'zod';
 import { todayLocalDate } from '../../../shared/utils/dates';
@@ -82,7 +82,7 @@ export const addEditSchema = z.object({
   /** String in form (§10) → number | null in output. */
   progressCurrent: progressNumberField,
   /** String in form (§10) → number | null in output. */
-  progressTotal: progressNumberField,
+  totalUnits: progressNumberField,
   /** Empty string → null in output. */
   sourceUrl: optionalStringField,
   /** Empty string → null in output. */
@@ -97,13 +97,13 @@ export const addEditSchema = z.object({
   /** YYYY-MM-DD local date. Converted to full ISO in the submit handler. */
   dateAdded: dateAddedField,
 }).superRefine((data, ctx) => {
-  // Cross-field rule: isComplete=true requires a known progressTotal.
+  // Cross-field rule: isComplete=true requires a known totalUnits.
   // AO3 only shows "Complete" when total chapters are known (X/X format).
-  // superRefine receives post-transform values: progressTotal is number | null here.
-  if (data.isComplete === true && data.progressTotal === null) {
+  // superRefine receives post-transform values: totalUnits is number | null here.
+  if (data.isComplete === true && data.totalUnits === null) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ['progressTotal'],
+      path: ['totalUnits'],
       message: 'Total chapters is required when marking a work as complete',
     });
   }

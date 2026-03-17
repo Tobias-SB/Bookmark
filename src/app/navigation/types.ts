@@ -26,7 +26,7 @@ export interface AddEditPrefill {
   author?: string | null;
   summary?: string | null;
   tags?: string[];
-  progressTotal?: number | null;
+  totalUnits?: number | null;
   sourceUrl?: string | null;
   isComplete?: boolean | null;
 }

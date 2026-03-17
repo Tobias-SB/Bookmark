@@ -1,17 +1,24 @@
 // src/features/readables/hooks/useReadables.ts
 // §8, §12, §13 — Fetches all readables from the repository, then applies
-// ReadableFilters (kind, search, status, isComplete, sort) entirely in JavaScript.
+// ReadableFilters entirely in JavaScript.
 // No filter params are passed to the repository — listReadables always returns
 // all rows. Filtering and sorting live here, not in SQLite.
 //
 // Filter logic:
 //   - kind: exact match. Absent = show all kinds.
-//   - status: exact match. Absent = no status filter.
+//   - status: OR logic across the array. Absent/empty = show all.
 //   - isComplete: exact match. Books always have isComplete = null so they
 //     never match an active isComplete filter — no special-case needed.
+//   - isAbandoned: exact match.
+//   - fandom: case-insensitive exact match against any entry in fandom[].
+//   - rating: OR logic across selected ratings.
+//   - seriesOnly: show only readables with a non-null seriesName.
+//   - includeTags: AND logic — readable must have ALL listed tags.
+//   - excludeTags: readable must have NONE of the listed tags.
 //   - search: case-insensitive partial match on title and author (OR).
-//   - Multiple active filters use AND logic.
+//   - Multiple active filters use AND logic across filter types.
 // Default sort: dateAdded descending.
+// Numeric sorts (wordCount, totalUnits): nulls always last.
 
 import { useQuery } from '@tanstack/react-query';
 
@@ -31,15 +38,54 @@ function applyFilters(readables: Readable[], filters: ReadableFilters): Readable
     result = result.filter((r) => r.kind === filters.kind);
   }
 
-  // Status filter
-  if (filters.status !== undefined) {
-    result = result.filter((r) => r.status === filters.status);
+  // Status filter — OR logic across selected statuses
+  if (filters.status !== undefined && filters.status.length > 0) {
+    result = result.filter((r) => filters.status!.includes(r.status));
   }
 
   // isComplete filter — books have isComplete = null, so they never match
-  // a defined isComplete value. AND logic with status is automatic.
+  // a defined isComplete value. AND logic with other filters is automatic.
   if (filters.isComplete !== undefined) {
     result = result.filter((r) => r.isComplete === filters.isComplete);
+  }
+
+  // isAbandoned filter
+  if (filters.isAbandoned !== undefined) {
+    result = result.filter((r) => r.isAbandoned === filters.isAbandoned);
+  }
+
+  // Fandom filter — case-insensitive exact match against any entry in fandom[]
+  if (filters.fandom !== undefined) {
+    const fandomLower = filters.fandom.toLowerCase();
+    result = result.filter((r) =>
+      r.fandom.some((f) => f.toLowerCase() === fandomLower),
+    );
+  }
+
+  // Rating filter — OR logic across selected ratings
+  if (filters.rating !== undefined && filters.rating.length > 0) {
+    result = result.filter(
+      (r) => r.rating !== null && filters.rating!.includes(r.rating),
+    );
+  }
+
+  // seriesOnly — show only readables with a non-null seriesName
+  if (filters.seriesOnly === true) {
+    result = result.filter((r) => r.seriesName !== null);
+  }
+
+  // includeTags — AND logic: readable must have ALL of these tags
+  if (filters.includeTags !== undefined && filters.includeTags.length > 0) {
+    result = result.filter((r) =>
+      filters.includeTags!.every((tag) => r.tags.includes(tag)),
+    );
+  }
+
+  // excludeTags — readable must have NONE of these tags
+  if (filters.excludeTags !== undefined && filters.excludeTags.length > 0) {
+    result = result.filter((r) =>
+      filters.excludeTags!.every((tag) => !r.tags.includes(tag)),
+    );
   }
 
   // Search — case-insensitive partial match on title OR author
@@ -52,7 +98,8 @@ function applyFilters(readables: Readable[], filters: ReadableFilters): Readable
     );
   }
 
-  // Sort — ISO 8601 strings sort correctly lexicographically for date fields
+  // Sort — ISO 8601 strings sort correctly lexicographically for date fields.
+  // Numeric sorts (wordCount, totalUnits): nulls always last regardless of order.
   const sortBy = filters.sortBy ?? 'dateAdded';
   const sortOrder = filters.sortOrder ?? 'desc';
 
@@ -60,6 +107,13 @@ function applyFilters(readables: Readable[], filters: ReadableFilters): Readable
     let cmp: number;
     if (sortBy === 'title') {
       cmp = a.title.localeCompare(b.title);
+    } else if (sortBy === 'wordCount' || sortBy === 'totalUnits') {
+      const aVal = sortBy === 'wordCount' ? a.wordCount : a.totalUnits;
+      const bVal = sortBy === 'wordCount' ? b.wordCount : b.totalUnits;
+      if (aVal === null && bVal === null) return 0;
+      if (aVal === null) return 1;  // null always last
+      if (bVal === null) return -1; // null always last
+      cmp = aVal - bVal;
     } else {
       const aVal = sortBy === 'dateAdded' ? a.dateAdded : a.dateUpdated;
       const bVal = sortBy === 'dateAdded' ? b.dateAdded : b.dateUpdated;

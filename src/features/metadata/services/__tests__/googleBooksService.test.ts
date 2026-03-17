@@ -150,22 +150,22 @@ describe('successful field mapping', () => {
     expect(result.data.tags).toEqual([]);
   });
 
-  it('maps pageCount to progressTotal', async () => {
+  it('maps pageCount to totalUnits', async () => {
     respondWith({ items: [makeVolume({ pageCount: 350 })] });
     const result = await searchGoogleBooks('query');
-    expect(result.data.progressTotal).toBe(350);
+    expect(result.data.totalUnits).toBe(350);
   });
 
-  it('sets progressTotal to null for pageCount=0', async () => {
+  it('sets totalUnits to null for pageCount=0', async () => {
     respondWith({ items: [makeVolume({ pageCount: 0 })] });
     const result = await searchGoogleBooks('query');
-    expect(result.data.progressTotal).toBeNull();
+    expect(result.data.totalUnits).toBeNull();
   });
 
-  it('sets progressTotal to null when pageCount is absent', async () => {
+  it('sets totalUnits to null when pageCount is absent', async () => {
     respondWith({ items: [makeVolume({ pageCount: undefined })] });
     const result = await searchGoogleBooks('query');
-    expect(result.data.progressTotal).toBeNull();
+    expect(result.data.totalUnits).toBeNull();
   });
 
   it('always sets progressCurrent to null', async () => {
@@ -218,7 +218,7 @@ describe('successful field mapping', () => {
     expect(result.data.title).toBeUndefined();
     expect(result.errors.length).toBeGreaterThan(0);
     // Other fields should still map
-    expect(result.data.progressTotal).toBe(180);
+    expect(result.data.totalUnits).toBe(180);
   });
 
   it('includes the API key in the fetch URL', async () => {

@@ -90,7 +90,7 @@ describe('rowToReadable', () => {
     author: 'Test Author',
     status: 'reading',
     progress_current: 50,
-    progress_total: 300,
+    total_units: 300,
     progress_unit: 'pages',
     source_type: 'manual',
     source_url: null,
@@ -98,6 +98,23 @@ describe('rowToReadable', () => {
     summary: 'A good read.',
     tags: '["fiction","mystery"]',
     is_complete: null,
+    isbn: null,
+    cover_url: null,
+    available_chapters: null,
+    word_count: null,
+    fandom: '[]',
+    relationships: '[]',
+    rating: null,
+    archive_warnings: '[]',
+    series_name: null,
+    series_part: null,
+    series_total: null,
+    notes: null,
+    notes_updated_at: null,
+    published_at: null,
+    ao3_updated_at: null,
+    is_abandoned: 0,
+    author_type: null,
     date_added: '2025-01-15T00:00:00.000Z',
     date_created: '2025-01-01T00:00:00.000Z',
     date_updated: '2025-01-16T00:00:00.000Z',
@@ -112,7 +129,7 @@ describe('rowToReadable', () => {
     expect(readable.author).toBe('Test Author');
     expect(readable.status).toBe('reading');
     expect(readable.progressCurrent).toBe(50);
-    expect(readable.progressTotal).toBe(300);
+    expect(readable.totalUnits).toBe(300);
     expect(readable.progressUnit).toBe('pages');
     expect(readable.sourceType).toBe('manual');
     expect(readable.sourceUrl).toBeNull();
@@ -170,13 +187,13 @@ describe('rowToReadable', () => {
       kind: 'fanfic',
       progress_unit: 'chapters',
       progress_current: 8,
-      progress_total: 12,
+      total_units: 12,
       is_complete: 0,
     });
     expect(readable.kind).toBe('fanfic');
     expect(readable.progressUnit).toBe('chapters');
     expect(readable.progressCurrent).toBe(8);
-    expect(readable.progressTotal).toBe(12);
+    expect(readable.totalUnits).toBe(12);
     expect(readable.isComplete).toBe(false);
   });
 });

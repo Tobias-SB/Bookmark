@@ -10,9 +10,9 @@
 // Chapter extraction:
 //   AO3 format "X/Y" where X = chapters published, Y = planned total (or "?").
 //   X → availableChapters (author's published count; NOT the user's reading position).
-//   Y → progressTotal (planned final count; null when "?").
+//   Y → totalUnits (planned final count; null when "?").
 //   progressCurrent is never set from import — it is the user's reading position only.
-//   isComplete = availableChapters === progressTotal (both known and equal).
+//   isComplete = availableChapters === totalUnits (both known and equal).
 
 import type { MetadataResult } from './types';
 
@@ -101,7 +101,7 @@ function parseTags(html: string): string[] {
 interface ChapterCounts {
   /** Chapters currently published by the author → availableChapters. */
   published: number | null;
-  /** Planned final chapter count → progressTotal. null when "?". */
+  /** Planned final chapter count → totalUnits. null when "?". */
   total: number | null;
 }
 
@@ -201,9 +201,9 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
   try {
     const { published, total } = parseChapters(html);
     // published = chapters the author has posted → availableChapters (not user progress).
-    // total = planned final chapter count → progressTotal (null when ongoing/unknown).
+    // total = planned final chapter count → totalUnits (null when ongoing/unknown).
     data.availableChapters = published;
-    data.progressTotal = total;
+    data.totalUnits = total;
     // isComplete: true only when all planned chapters are published.
     data.isComplete = published !== null && total !== null ? published === total : false;
   } catch {
