@@ -2,10 +2,13 @@
 // §7 — All route param types. Imported by all navigators and screens — never defined inline.
 
 import type { NavigatorScreenParams } from '@react-navigation/native';
-import type { AO3Rating, AuthorType } from '../../features/readables/domain/readable';
+import type { AO3Rating, AuthorType, ReadableFilters } from '../../features/readables/domain/readable';
 
 export type TabParamList = {
-  Library: undefined;
+  // Phase 5: Library accepts initialFilters so tappable tags on the detail screen
+  // can deep-link into the library with a pre-applied tag filter.
+  // Phase 6 will also use this for the filter modal nav flow.
+  Library: { initialFilters?: ReadableFilters } | undefined;
   Settings: undefined;
 };
 
