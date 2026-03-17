@@ -343,7 +343,7 @@ export function AddEditScreen({ route, navigation }: Props) {
   const authorRef = useRef<RNTextInput>(null);
   const sourceUrlRef = useRef<RNTextInput>(null);
   const progressCurrentRef = useRef<RNTextInput>(null);
-  const progressTotalRef = useRef<RNTextInput>(null);
+  const totalUnitsRef = useRef<RNTextInput>(null);
   const wordCountRef = useRef<RNTextInput>(null);
   const relationshipsRef = useRef<RNTextInput>(null);
   const summaryRef = useRef<RNTextInput>(null);
@@ -626,7 +626,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                     error={!!fieldState.error}
                     keyboardType="number-pad"
                     returnKeyType="next"
-                    onSubmitEditing={() => progressTotalRef.current?.focus()}
+                    onSubmitEditing={() => totalUnitsRef.current?.focus()}
                     style={styles.input}
                     mode="outlined"
                     accessibilityLabel={`Current ${progressUnit}`}
@@ -643,7 +643,7 @@ export function AddEditScreen({ route, navigation }: Props) {
               render={({ field, fieldState }) => (
                 <View style={styles.progressField}>
                   <TextInput
-                    ref={progressTotalRef}
+                    ref={totalUnitsRef}
                     label="Total"
                     value={field.value}
                     onChangeText={field.onChange}

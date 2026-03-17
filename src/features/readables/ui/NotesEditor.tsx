@@ -15,13 +15,12 @@
 //   isSaving         — true during save mutation
 //   onSave           — called with (notes: string | null) on save
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  TextInput as RNTextInput,
   View,
 } from 'react-native';
 import {
@@ -46,7 +45,7 @@ export function NotesEditor({ visible, initialNotes, onDismiss, isSaving, onSave
   const theme = useAppTheme();
   const [text, setText] = useState(initialNotes ?? '');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const inputRef = useRef<RNTextInput>(null);
+
 
   // Reset internal state each time the modal opens with fresh initialNotes.
   useEffect(() => {
@@ -97,7 +96,6 @@ export function NotesEditor({ visible, initialNotes, onDismiss, isSaving, onSave
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
             <TextInput
-              ref={inputRef as React.Ref<React.ComponentRef<typeof TextInput>>}
               mode="outlined"
               multiline
               numberOfLines={8}

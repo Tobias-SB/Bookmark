@@ -105,8 +105,8 @@ describe('applyUpdateConsistency', () => {
     });
   });
 
-  // Rule 2: progressCurrent reaches progressTotal → completed
-  describe('Rule 2: progressCurrent reaches progressTotal', () => {
+  // Rule 2: progressCurrent reaches totalUnits → completed
+  describe('Rule 2: progressCurrent reaches totalUnits', () => {
     it('auto-changes status to completed when current equals total', () => {
       const current = makeReadable({ status: 'reading', totalUnits: 300 });
       const result = applyUpdateConsistency({ progressCurrent: 300 }, current);
@@ -132,9 +132,9 @@ describe('applyUpdateConsistency', () => {
     });
   });
 
-  // Rule 3: status completed + total known → progressCurrent = progressTotal
-  describe('Rule 3: completed status synchronises progressCurrent to progressTotal', () => {
-    it('sets progressCurrent to progressTotal when status is set to completed', () => {
+  // Rule 3: status completed + total known → progressCurrent = totalUnits
+  describe('Rule 3: completed status synchronises progressCurrent to totalUnits', () => {
+    it('sets progressCurrent to totalUnits when status is set to completed', () => {
       const current = makeReadable({
         status: 'reading',
         progressCurrent: 200,
@@ -191,19 +191,19 @@ describe('applyUpdateConsistency', () => {
 
   // isComplete coherence rule
   describe('isComplete coherence: isComplete=true with unknown total → false', () => {
-    it('downgrades isComplete to false when progressTotal is cleared', () => {
+    it('downgrades isComplete to false when totalUnits is cleared', () => {
       const current = makeReadable({
         kind: 'fanfic',
         isComplete: true,
         progressCurrent: 10,
         totalUnits: 10,
       });
-      // User clears progressTotal → isComplete=true becomes impossible
+      // User clears totalUnits → isComplete=true becomes impossible
       const result = applyUpdateConsistency({ totalUnits: null }, current);
       expect(result.isComplete).toBe(false);
     });
 
-    it('leaves isComplete=true unchanged when progressTotal is still known', () => {
+    it('leaves isComplete=true unchanged when totalUnits is still known', () => {
       const current = makeReadable({
         kind: 'fanfic',
         isComplete: true,
@@ -261,7 +261,7 @@ describe('applyCreateConsistency', () => {
     });
   });
 
-  // Rule 2: progressCurrent reaches progressTotal → completed
+  // Rule 2: progressCurrent reaches totalUnits → completed
   describe('Rule 2: progress reaches total', () => {
     it('auto-changes to completed when current === total', () => {
       const result = applyCreateConsistency(
@@ -278,9 +278,9 @@ describe('applyCreateConsistency', () => {
     });
   });
 
-  // Rule 3: completed + total → progressCurrent = progressTotal
+  // Rule 3: completed + total → progressCurrent = totalUnits
   describe('Rule 3: completed syncs progressCurrent', () => {
-    it('sets progressCurrent to progressTotal when status is completed and total is known', () => {
+    it('sets progressCurrent to totalUnits when status is completed and total is known', () => {
       const result = applyCreateConsistency(
         makeCreateInput({ status: 'completed', progressCurrent: 100, totalUnits: 300 }),
       );
@@ -300,14 +300,14 @@ describe('applyCreateConsistency', () => {
 
   // isComplete safety rule
   describe('isComplete safety: isComplete=true with unknown total → false', () => {
-    it('downgrades isComplete to false when progressTotal is absent', () => {
+    it('downgrades isComplete to false when totalUnits is absent', () => {
       const result = applyCreateConsistency(
         makeCreateInput({ kind: 'fanfic', isComplete: true, totalUnits: undefined }),
       );
       expect(result.isComplete).toBe(false);
     });
 
-    it('leaves isComplete=true when progressTotal is provided', () => {
+    it('leaves isComplete=true when totalUnits is provided', () => {
       const result = applyCreateConsistency(
         makeCreateInput({
           kind: 'fanfic',

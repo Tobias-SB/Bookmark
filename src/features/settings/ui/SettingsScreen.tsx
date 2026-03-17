@@ -68,7 +68,6 @@ export function SettingsScreen() {
               { value: 'light', label: 'Light', accessibilityLabel: 'Light theme' },
               { value: 'dark', label: 'Dark', accessibilityLabel: 'Dark theme' },
             ]}
-            accessibilityLabel="Select app theme"
           />
         </View>
       </List.Section>

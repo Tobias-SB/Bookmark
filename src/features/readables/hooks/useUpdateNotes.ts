@@ -32,7 +32,7 @@ export function useUpdateNotes(readableId: string): UseUpdateNotesResult {
     AppError,
     string | null
   >({
-    mutationFn: (notes: string | null) => updateReadable(db, readableId, { notes }),
+    mutationFn: async (notes: string | null) => { await updateReadable(db, readableId, { notes }); },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: readableKeys.all });
     },

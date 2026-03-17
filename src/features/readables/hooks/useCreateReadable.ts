@@ -5,8 +5,8 @@
 //
 // Consistency rules applied here (not in repo, not in UI):
 //   - Progress entered on want_to_read → auto-change status to reading.
-//   - progressCurrent reaches progressTotal (known) → auto-change to completed.
-//   - Status completed + total known → set progressCurrent = progressTotal.
+//   - progressCurrent reaches totalUnits (known) → auto-change to completed.
+//   - Status completed + total known → set progressCurrent = totalUnits.
 //   - Status want_to_read → clear progressCurrent.
 //   - Safety: isComplete=true with unknown total → isComplete=false (AO3 rule;
 //     form superRefine is the primary guard — this is defense in depth).

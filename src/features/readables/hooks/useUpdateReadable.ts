@@ -5,12 +5,12 @@
 //
 // Consistency rules applied here (not in repo, not in UI):
 //   - Progress entered on want_to_read → auto-change status to reading.
-//   - progressCurrent reaches progressTotal (known) → auto-change to completed.
-//   - Status completed + total known → set progressCurrent = progressTotal.
+//   - progressCurrent reaches totalUnits (known) → auto-change to completed.
+//   - Status completed + total known → set progressCurrent = totalUnits.
 //   - Status dnf → preserve partial progress (no action needed).
 //   - Status want_to_read → clear progressCurrent.
 //   - isComplete coherence: isComplete=true with unknown total → isComplete=false.
-//     Covers the ProgressEditor path (user clears progressTotal while isComplete was true)
+//     Covers the ProgressEditor path (user clears totalUnits while isComplete was true)
 //     and self-heals any pre-existing broken records on next write.
 //
 // The caller passes `current` (the existing Readable) alongside the update input
@@ -76,7 +76,7 @@ export function applyUpdateConsistency(
     resolvedStatus = 'reading';
   }
 
-  // Rule 2: progressCurrent reaches progressTotal (known) → completed.
+  // Rule 2: progressCurrent reaches totalUnits (known) → completed.
   if (
     resolvedProgressCurrent !== null &&
     effectiveProgressTotal !== null &&
@@ -85,7 +85,7 @@ export function applyUpdateConsistency(
     resolvedStatus = 'completed';
   }
 
-  // Rule 3: Status completed + total known → set progressCurrent = progressTotal.
+  // Rule 3: Status completed + total known → set progressCurrent = totalUnits.
   // Also handles the case where rule 2 just set status to completed.
   if (resolvedStatus === 'completed' && effectiveProgressTotal !== null) {
     resolvedProgressCurrent = effectiveProgressTotal;
@@ -101,9 +101,9 @@ export function applyUpdateConsistency(
   // Rule 4 (dnf): preserve partial progress — no action needed.
   // The resolved values are unchanged when status = dnf.
 
-  // isComplete coherence: isComplete=true with unknown progressTotal is semantically
+  // isComplete coherence: isComplete=true with unknown totalUnits is semantically
   // impossible (AO3 "Complete" always has a known chapter count). This fires when
-  // the ProgressEditor clears progressTotal on a record that was already marked complete,
+  // the ProgressEditor clears totalUnits on a record that was already marked complete,
   // and also self-heals any pre-existing broken records on next write.
   let resolvedIsComplete = effectiveIsComplete;
   if (resolvedIsComplete === true && effectiveProgressTotal === null) {

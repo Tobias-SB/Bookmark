@@ -95,7 +95,7 @@ export interface Readable {
   progressCurrent: number | null;
   /**
    * Total units for completion: pages (books) or planned final chapter count (fanfic).
-   * null if unknown. Renamed from progressTotal in v2.
+   * null if unknown.
    */
   totalUnits: number | null;
   /** Derived from kind. Written by repository. Never accepted from user input. */
