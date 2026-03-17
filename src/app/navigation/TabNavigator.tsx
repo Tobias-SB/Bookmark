@@ -1,18 +1,25 @@
 // src/app/navigation/TabNavigator.tsx
-// §7 — Library and Settings tabs with Material Community Icons.
+// §7 — Library, Updates, and Settings tabs with Material Community Icons.
 // @expo/vector-icons is a transitive dependency of the expo package (SDK 55).
+//
+// The Updates tab badge displays the unread WipUpdate count.
+// useUnreadWipUpdateCount() is called directly here since TabNavigator is a
+// React component inside QueryClientProvider and DatabaseProvider.
 
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Icon } from 'react-native-paper';
 
 import type { TabParamList } from './types';
 import { LibraryScreen } from '../../features/readables';
 import { SettingsScreen } from '../../features/settings';
+import { UpdatesScreen, useUnreadWipUpdateCount } from '../../features/wipUpdates';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
 export function TabNavigator() {
+  const unreadCount = useUnreadWipUpdateCount();
+
   return (
     <Tab.Navigator>
       <Tab.Screen
@@ -21,8 +28,19 @@ export function TabNavigator() {
         options={{
           title: 'Library',
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="book-outline" size={size} color={color} />
+            <Icon source="book-outline" size={size} color={color} />
           ),
+        }}
+      />
+      <Tab.Screen
+        name="Updates"
+        component={UpdatesScreen}
+        options={{
+          title: 'Updates',
+          tabBarIcon: ({ color, size }) => (
+            <Icon source="bell-outline" size={size} color={color} />
+          ),
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
         }}
       />
       <Tab.Screen
@@ -31,7 +49,7 @@ export function TabNavigator() {
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="cog-outline" size={size} color={color} />
+            <Icon source="cog-outline" size={size} color={color} />
           ),
         }}
       />
