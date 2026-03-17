@@ -413,7 +413,7 @@ export function UpdatesScreen({ navigation }: Props) {
 
           {/* Swipe-to-delete stub: single delete button in expanded view */}
           {isExpanded ? (
-            <>
+            <View>
               <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
               <Card.Actions style={styles.cardActions}>
                 <Button
@@ -428,7 +428,7 @@ export function UpdatesScreen({ navigation }: Props) {
                   Delete
                 </Button>
               </Card.Actions>
-            </>
+            </View>
           ) : null}
         </Card>
       );

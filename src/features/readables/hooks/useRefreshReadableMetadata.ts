@@ -2,9 +2,7 @@
 // v2 — Mutation hook for refreshing AO3 metadata on a single readable.
 //
 // This is the first hook in readables/hooks that imports from the metadata
-// feature (ao3Parser). Cross-feature import pattern: metadata service is
-// imported directly from its file path (not through an index) since services
-// are not exported from a metadata/index.ts.
+// feature (ao3Parser). Cross-feature import goes through metadata/index.ts.
 //
 // Mutation input: readableId (string)
 // Mutation output: RefreshResult { updated: boolean, statusReverted: boolean }
@@ -30,7 +28,7 @@ import { useDatabase } from '../../../app/database/DatabaseProvider';
 import type { AppError } from '../../../shared/types/errors';
 import { readableKeys } from '../domain/queryKeys';
 import { getReadableById, refreshReadableMetadata } from '../data/readableRepository';
-import { fetchAo3Metadata } from '../../metadata/services/ao3Parser';
+import { fetchAo3Metadata } from '../../metadata';
 
 // ── Result types ──────────────────────────────────────────────────────────────
 
