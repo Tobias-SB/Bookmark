@@ -1,96 +1,242 @@
 // src/features/readables/ui/LibraryScreen.tsx
-// §8 — Fully functional library screen.
+// v2 Phase 6 — Library screen with filter modal, active filter chips, and badge count.
 //
 // Layout (top to bottom):
-//   Searchbar → Filter chip row (horizontal scroll) → Sort selector → Content area → FAB
+//   Searchbar (with filter icon button + badge in header)
+//   → Active filter chips row (horizontal scroll, one chip per active filter)
+//   → Content area
+//   → FAB
 //
-// Content area states:
-//   isLoading  → ActivityIndicator
-//   isError    → EmptyState with retry action
-//   empty lib  → EmptyState with "Add your first read" CTA
-//   no results → EmptyState with "Reset filters" action
-//   has data   → FlatList of ReadableListItem
+// Filter state is a single ReadableFilters object — local, resets on remount.
+// Initialized from route.params.initialFilters on mount (if provided).
+// The filter modal operates on a draft copy; only commits on Apply.
 //
-// Filter state is local — resets on screen remount (not persisted, per §8).
-//
-// PROVISIONAL: When sortBy changes, sortOrder is auto-set (title → asc,
-// dates → desc). This is not specified in the reference doc but avoids
-// Z→A as the default title sort. Confirm or override if needed.
+// countActiveFilters and getFilterChipLabel are module-level pure functions.
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
+  Badge,
   Chip,
   FAB,
+  IconButton,
   Searchbar,
-  SegmentedButtons,
   Text,
 } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import type { RootStackParamList } from '../../../app/navigation/types';
+import type { RootStackParamList, TabParamList } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
 import { EmptyState } from '../../../shared/components/EmptyState';
-import type { ReadableFilters, ReadableKind, ReadableStatus } from '../domain/readable';
-import { READABLE_STATUSES, STATUS_LABELS_FULL } from '../domain/readable';
+import type { AO3Rating, ReadableFilters, ReadableStatus } from '../domain/readable';
+import { AO3_RATING_LABELS, STATUS_LABELS_SHORT } from '../domain/readable';
 import { useReadables } from '../hooks/useReadables';
+import { FilterModal } from './FilterModal';
 import { ReadableListItem } from './ReadableListItem';
 
-// ── Types + constants ─────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 type LibraryNavProp = NativeStackNavigationProp<RootStackParamList>;
-type SortByOption = NonNullable<ReadableFilters['sortBy']>;
-type SortOrderOption = NonNullable<ReadableFilters['sortOrder']>;
+type LibraryRouteProp = RouteProp<TabParamList, 'Library'>;
 
-const SORT_BUTTONS: { value: SortByOption; label: string }[] = [
-  { value: 'dateAdded', label: 'Added' },
-  { value: 'title', label: 'Title' },
-  { value: 'dateUpdated', label: 'Updated' },
-];
+// ── Filter utilities ───────────────────────────────────────────────────────────
 
-// ── Component ─────────────────────────────────────────────────────────────────
+const DEFAULT_FILTERS: ReadableFilters = { sortBy: 'dateAdded', sortOrder: 'desc' };
+
+/** Count of active filter axes, per v2 §4.1 rules. Search bar is not counted. */
+function countActiveFilters(f: ReadableFilters): number {
+  let count = 0;
+  if (f.kind !== undefined) count += 1;
+  if (f.status !== undefined && f.status.length > 0) count += 1;
+  if (f.isComplete !== undefined) count += 1;
+  if (f.isAbandoned !== undefined) count += 1;
+  if (f.fandom !== undefined) count += 1;
+  if (f.rating !== undefined && f.rating.length > 0) count += 1;
+  if (f.seriesOnly === true) count += 1;
+  count += (f.includeTags ?? []).length;
+  count += (f.excludeTags ?? []).length;
+  // Sort: counts as 1 when deviating from default (dateAdded desc)
+  const sortBy = f.sortBy ?? 'dateAdded';
+  const sortOrder = f.sortOrder ?? 'desc';
+  if (sortBy !== 'dateAdded' || sortOrder !== 'desc') count += 1;
+  return count;
+}
+
+function sortLabel(f: ReadableFilters): string {
+  const by = f.sortBy ?? 'dateAdded';
+  const order = f.sortOrder ?? 'desc';
+  if (by === 'title') return order === 'asc' ? 'Sort: Title A→Z' : 'Sort: Title Z→A';
+  if (by === 'dateUpdated') return order === 'asc' ? 'Sort: Updated (oldest)' : 'Sort: Updated (newest)';
+  if (by === 'wordCount') return order === 'asc' ? 'Sort: Words (shortest)' : 'Sort: Words (longest)';
+  if (by === 'totalUnits') return order === 'asc' ? 'Sort: Pages (shortest)' : 'Sort: Pages (longest)';
+  // dateAdded
+  return order === 'asc' ? 'Sort: Added (oldest)' : 'Sort: Added (newest)';
+}
+
+// ── Active chip descriptors ────────────────────────────────────────────────────
+
+interface ActiveChip {
+  key: string;
+  label: string;
+  /** tag mode for include/exclude chips */
+  tagMode?: 'include' | 'exclude';
+  onRemove: (current: ReadableFilters) => ReadableFilters;
+}
+
+function buildActiveChips(f: ReadableFilters): ActiveChip[] {
+  const chips: ActiveChip[] = [];
+
+  if (f.kind !== undefined) {
+    chips.push({
+      key: 'kind',
+      label: f.kind === 'book' ? 'Books' : 'Fanfic',
+      onRemove: ({ kind: _, isComplete, isAbandoned, fandom, rating, ...rest }) =>
+        // Removing kind: clear AO3 filters too if they were kind-gated
+        rest,
+    });
+  }
+
+  if (f.status !== undefined && f.status.length > 0) {
+    const labels = f.status.map((s) => STATUS_LABELS_SHORT[s]).join(' · ');
+    chips.push({
+      key: 'status',
+      label: `Status: ${labels}`,
+      onRemove: ({ status: _, ...rest }) => rest,
+    });
+  }
+
+  if (f.isComplete !== undefined) {
+    chips.push({
+      key: 'isComplete',
+      label: f.isComplete ? 'Complete' : 'WIP',
+      onRemove: ({ isComplete: _, ...rest }) => rest,
+    });
+  }
+
+  if (f.isAbandoned !== undefined) {
+    chips.push({
+      key: 'isAbandoned',
+      label: f.isAbandoned ? 'Abandoned' : 'Not abandoned',
+      onRemove: ({ isAbandoned: _, ...rest }) => rest,
+    });
+  }
+
+  if (f.fandom !== undefined) {
+    chips.push({
+      key: 'fandom',
+      label: `Fandom: ${f.fandom}`,
+      onRemove: ({ fandom: _, ...rest }) => rest,
+    });
+  }
+
+  if (f.rating !== undefined && f.rating.length > 0) {
+    const labels = f.rating.map((r: AO3Rating) => AO3_RATING_LABELS[r]).join(' · ');
+    chips.push({
+      key: 'rating',
+      label: `Rating: ${labels}`,
+      onRemove: ({ rating: _, ...rest }) => rest,
+    });
+  }
+
+  if (f.seriesOnly === true) {
+    chips.push({
+      key: 'seriesOnly',
+      label: 'In a series',
+      onRemove: ({ seriesOnly: _, ...rest }) => rest,
+    });
+  }
+
+  for (const tag of f.includeTags ?? []) {
+    chips.push({
+      key: `include-${tag}`,
+      label: tag,
+      tagMode: 'include',
+      onRemove: (prev) => {
+        const includeTags = (prev.includeTags ?? []).filter((t) => t !== tag);
+        return { ...prev, includeTags: includeTags.length > 0 ? includeTags : undefined };
+      },
+    });
+  }
+
+  for (const tag of f.excludeTags ?? []) {
+    chips.push({
+      key: `exclude-${tag}`,
+      label: `not ${tag}`,
+      tagMode: 'exclude',
+      onRemove: (prev) => {
+        const excludeTags = (prev.excludeTags ?? []).filter((t) => t !== tag);
+        return { ...prev, excludeTags: excludeTags.length > 0 ? excludeTags : undefined };
+      },
+    });
+  }
+
+  // Sort chip — only when not default
+  const isDefaultSort = (f.sortBy === undefined || f.sortBy === 'dateAdded') &&
+    (f.sortOrder === undefined || f.sortOrder === 'desc');
+  if (!isDefaultSort) {
+    chips.push({
+      key: 'sort',
+      label: sortLabel(f),
+      onRemove: ({ sortBy: _, sortOrder: __, ...rest }) => ({
+        ...rest,
+        sortBy: 'dateAdded',
+        sortOrder: 'desc',
+      }),
+    });
+  }
+
+  return chips;
+}
+
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export function LibraryScreen() {
   const navigation = useNavigation<LibraryNavProp>();
+  const route = useRoute<LibraryRouteProp>();
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
 
-  // ── Filter state — local; resets on remount ────────────────────────────────
+  // ── Filter state ──────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
-  const [kindFilter, setKindFilter] = useState<ReadableKind | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<ReadableStatus[] | undefined>(undefined);
-  const [isCompleteFilter, setIsCompleteFilter] = useState<boolean | undefined>(undefined);
-  const [sortBy, setSortBy] = useState<SortByOption>('dateAdded');
-  const [sortOrder, setSortOrder] = useState<SortOrderOption>('desc');
+  const [filters, setFilters] = useState<ReadableFilters>(DEFAULT_FILTERS);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
 
-  const filters = useMemo<ReadableFilters>(
-    () => ({
-      search: search.trim() || undefined,
-      kind: kindFilter,
-      status: statusFilter,
-      isComplete: isCompleteFilter,
-      sortBy,
-      sortOrder,
-    }),
-    [search, kindFilter, statusFilter, isCompleteFilter, sortBy, sortOrder],
+  // Apply initialFilters from route params on mount (once only)
+  const appliedInitialRef = useRef(false);
+  useEffect(() => {
+    if (!appliedInitialRef.current && route.params?.initialFilters) {
+      setFilters(route.params.initialFilters);
+      appliedInitialRef.current = true;
+    }
+  }, [route.params?.initialFilters]);
+
+  // Merged filters (search is kept separate from the modal for direct input)
+  const effectiveFilters = useMemo<ReadableFilters>(
+    () => ({ ...filters, search: search.trim() || undefined }),
+    [filters, search],
   );
 
-  const { readables, isLoading, isError, error, refetch } = useReadables(filters);
+  // ── Queries ───────────────────────────────────────────────────────────────
+  // Filtered list for display
+  const { readables, isLoading, isError, error, refetch } = useReadables(effectiveFilters);
+  // Unfiltered full list — passed to FilterModal for live count
+  const { readables: allReadables } = useReadables({});
 
-  // ── Derived state ──────────────────────────────────────────────────────────
+  // ── Derived state ─────────────────────────────────────────────────────────
+  const activeChips = useMemo(() => buildActiveChips(filters), [filters]);
+  const badgeCount = useMemo(() => countActiveFilters(filters), [filters]);
+
   const hasActiveFilters =
-    search.trim() !== '' ||
-    kindFilter !== undefined ||
-    (statusFilter !== undefined && statusFilter.length > 0) ||
-    isCompleteFilter !== undefined;
+    search.trim() !== '' || activeChips.length > 0;
 
   const isEmptyLibrary = readables.length === 0 && !isLoading && !isError && !hasActiveFilters;
   const isNoResults = readables.length === 0 && !isLoading && !isError && hasActiveFilters;
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleItemPress = useCallback(
     (id: string) => navigation.navigate('ReadableDetail', { id }),
@@ -102,45 +248,41 @@ export function LibraryScreen() {
     [navigation],
   );
 
-  function handleSortByChange(newSortBy: SortByOption) {
-    setSortBy(newSortBy);
-    // PROVISIONAL: auto-set order so title sorts A→Z and dates sort newest-first.
-    setSortOrder(newSortBy === 'title' ? 'asc' : 'desc');
-  }
-
-  function handleKindChipPress(kind: ReadableKind) {
-    setKindFilter((prev) => {
-      const next = prev === kind ? undefined : kind;
-      // Clear WIP/Complete filter when switching away from fanfic.
-      if (next !== 'fanfic') setIsCompleteFilter(undefined);
-      return next;
-    });
-  }
-
-  function handleStatusChipPress(status: ReadableStatus) {
-    // Toggle: if status is already selected, remove it; otherwise add it.
-    // If the resulting array is empty, revert to undefined (show all).
-    setStatusFilter((prev) => {
-      if (prev?.includes(status)) {
-        const next = prev.filter((s) => s !== status);
-        return next.length === 0 ? undefined : next;
-      }
-      return [...(prev ?? []), status];
-    });
-  }
-
-  function handleIsCompleteChipPress(value: boolean) {
-    setIsCompleteFilter((prev) => (prev === value ? undefined : value));
-  }
-
   function handleResetFilters() {
     setSearch('');
-    setKindFilter(undefined);
-    setStatusFilter(undefined);
-    setIsCompleteFilter(undefined);
+    setFilters(DEFAULT_FILTERS);
   }
 
-  // ── FlatList helpers ───────────────────────────────────────────────────────
+  function handleApplyFilters(applied: ReadableFilters) {
+    setFilters(applied);
+    setFilterModalVisible(false);
+  }
+
+  // ── Header filter button ─────────────────────────────────────────────────
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerRightContainer}>
+          <IconButton
+            icon="filter-variant"
+            size={24}
+            onPress={() => setFilterModalVisible(true)}
+            accessibilityLabel={
+              badgeCount > 0 ? `Filters (${badgeCount} active)` : 'Open filters'
+            }
+          />
+          {badgeCount > 0 && (
+            <Badge style={styles.badge} size={16}>
+              {badgeCount}
+            </Badge>
+          )}
+        </View>
+      ),
+    });
+  }, [navigation, badgeCount]);
+
+  // ── FlatList helpers ──────────────────────────────────────────────────────
 
   const renderItem = useCallback(
     ({ item }: { item: (typeof readables)[number] }) => (
@@ -151,14 +293,12 @@ export function LibraryScreen() {
 
   const renderSeparator = useCallback(
     () => (
-      <View
-        style={[styles.separator, { backgroundColor: theme.colors.outlineVariant }]}
-      />
+      <View style={[styles.separator, { backgroundColor: theme.colors.outlineVariant }]} />
     ),
     [theme.colors.outlineVariant],
   );
 
-  // ── Content area ───────────────────────────────────────────────────────────
+  // ── Content area ──────────────────────────────────────────────────────────
 
   function renderContent() {
     if (isLoading) {
@@ -211,7 +351,7 @@ export function LibraryScreen() {
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -223,95 +363,42 @@ export function LibraryScreen() {
         style={styles.searchbar}
       />
 
-      {/* Filter chips — horizontal scroll */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipsScroll}
-        contentContainerStyle={styles.chipsContent}
-      >
-        {/* Kind chips: Books / Fanfic (both deselected = show all) */}
-        <Chip
-          selected={kindFilter === 'book'}
-          onPress={() => handleKindChipPress('book')}
-          style={styles.chip}
-          compact
+      {/* Active filter chips — horizontal scroll */}
+      {activeChips.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipsScroll}
+          contentContainerStyle={styles.chipsContent}
+          keyboardShouldPersistTaps="handled"
         >
-          Books
-        </Chip>
-        <Chip
-          selected={kindFilter === 'fanfic'}
-          onPress={() => handleKindChipPress('fanfic')}
-          style={styles.chip}
-          compact
-        >
-          Fanfic
-        </Chip>
-
-        {/* Visual divider between kind and status chips */}
-        <View
-          style={[styles.chipGroupDivider, { backgroundColor: theme.colors.outlineVariant }]}
-        />
-
-        {/* Status chips: "All" + 4 statuses (multi-select, OR logic) */}
-        <Chip
-          selected={statusFilter === undefined || statusFilter.length === 0}
-          onPress={() => setStatusFilter(undefined)}
-          style={styles.chip}
-          compact
-        >
-          All
-        </Chip>
-        {READABLE_STATUSES.map((status) => (
-          <Chip
-            key={status}
-            selected={statusFilter?.includes(status) ?? false}
-            onPress={() => handleStatusChipPress(status)}
-            style={styles.chip}
-            compact
-          >
-            {STATUS_LABELS_FULL[status]}
-          </Chip>
-        ))}
-
-        {/* WIP / Complete — only shown when Fanfic is selected */}
-        {kindFilter === 'fanfic' && (
-          <>
-            <View
-              style={[styles.chipGroupDivider, { backgroundColor: theme.colors.outlineVariant }]}
-            />
+          {activeChips.map((chip) => (
             <Chip
-              selected={isCompleteFilter === false}
-              onPress={() => handleIsCompleteChipPress(false)}
-              style={styles.chip}
+              key={chip.key}
+              onClose={() => setFilters((prev) => chip.onRemove(prev))}
+              style={[
+                styles.chip,
+                chip.tagMode === 'include' && { backgroundColor: theme.colors.primaryContainer },
+                chip.tagMode === 'exclude' && { backgroundColor: theme.colors.errorContainer },
+              ]}
               compact
+              accessibilityLabel={`Active filter: ${chip.label}. Tap × to remove.`}
             >
-              WIP
+              {chip.label}
             </Chip>
-            <Chip
-              selected={isCompleteFilter === true}
-              onPress={() => handleIsCompleteChipPress(true)}
-              style={styles.chip}
-              compact
-            >
-              Complete
-            </Chip>
-          </>
-        )}
-      </ScrollView>
+          ))}
+        </ScrollView>
+      )}
 
-      {/* Sort selector */}
-      <View style={styles.sortRow}>
-        <Text variant="labelSmall" style={{ color: theme.colors.textSecondary }}>
-          Sort by
+      {/* Result count when filters are active */}
+      {hasActiveFilters && !isLoading && !isError && (
+        <Text
+          variant="labelSmall"
+          style={[styles.resultCount, { color: theme.colors.textSecondary }]}
+        >
+          {readables.length === 1 ? '1 result' : `${readables.length} results`}
         </Text>
-        <SegmentedButtons
-          value={sortBy}
-          onValueChange={(v) => handleSortByChange(v as SortByOption)}
-          buttons={SORT_BUTTONS}
-          style={styles.segmentedButtons}
-        />
-      </View>
+      )}
 
       {/* Content: list / empty / loading / error */}
       <View style={styles.contentArea}>{renderContent()}</View>
@@ -322,6 +409,15 @@ export function LibraryScreen() {
         style={[styles.fab, { bottom: insets.bottom + 16 }]}
         onPress={handleAddPress}
         accessibilityLabel="Add readable"
+      />
+
+      {/* Filter modal */}
+      <FilterModal
+        visible={filterModalVisible}
+        filters={filters}
+        onApply={handleApplyFilters}
+        onDismiss={() => setFilterModalVisible(false)}
+        allReadables={allReadables}
       />
     </View>
   );
@@ -334,13 +430,22 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 16,
   },
+  headerRightContainer: {
+    position: 'relative',
+    marginRight: 4,
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+  },
   searchbar: {
     marginHorizontal: 16,
     marginBottom: 8,
   },
   chipsScroll: {
     flexGrow: 0,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   chipsContent: {
     paddingHorizontal: 16,
@@ -348,22 +453,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chip: {
-    // Compact chips — Paper handles sizing via the `compact` prop
+    // Compact chips — Paper handles sizing
   },
-  chipGroupDivider: {
-    width: 1,
-    height: 20,
-    marginHorizontal: 4,
-  },
-  sortRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  resultCount: {
     marginHorizontal: 16,
-    marginBottom: 8,
-  },
-  segmentedButtons: {
-    flex: 1,
+    marginBottom: 4,
   },
   contentArea: {
     flex: 1,
@@ -374,7 +468,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   listContent: {
-    // No extra padding — items provide their own paddingHorizontal/Vertical
+    // No extra padding — items provide their own
   },
   separator: {
     height: StyleSheet.hairlineWidth,

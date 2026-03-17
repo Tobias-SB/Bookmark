@@ -30,7 +30,7 @@ import { listReadables } from '../data/readableRepository';
 
 // ── Filter + sort ─────────────────────────────────────────────────────────────
 
-function applyFilters(readables: Readable[], filters: ReadableFilters): Readable[] {
+export function applyFilters(readables: Readable[], filters: ReadableFilters): Readable[] {
   let result = readables;
 
   // Kind filter
