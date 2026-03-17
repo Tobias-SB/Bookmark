@@ -3,11 +3,17 @@
 // Defines input (form field string) types and output (validated, transformed) types.
 //
 // Key transforms:
-//   - progressCurrent / totalUnits: '' → null, non-negative integer string → number
-//   - Optional string fields (author, sourceUrl, summary): empty/whitespace → null
+//   - progressCurrent / totalUnits / seriesPart / seriesTotal / wordCount:
+//       '' → null, non-negative integer string → number
+//   - Optional string fields (author, sourceUrl, summary, seriesName): empty/whitespace → null
 //   - tags: comma-separated string → string[]
+//   - relationships: comma-separated string → string[] (split on submit)
+//   - fandom: string[] (managed directly as array in form state)
+//   - archiveWarnings: string[] (managed directly as array in form state)
 //   - dateAdded: validated as YYYY-MM-DD, not in the future
 //   - isComplete: boolean | null — no transform; controlled by Switch in screen
+//   - isAbandoned: boolean — controlled by Switch in screen
+//   - rating: AO3Rating | null — controlled by RadioButton.Group in screen
 //
 // Cross-field rules (superRefine):
 //   - isComplete=true requires totalUnits to be non-null (AO3: Complete = known total)
@@ -96,6 +102,37 @@ export const addEditSchema = z.object({
   isComplete: z.boolean().nullable(),
   /** YYYY-MM-DD local date. Converted to full ISO in the submit handler. */
   dateAdded: dateAddedField,
+
+  // ── Shared v2 fields ────────────────────────────────────────────────────────
+  /** Private notes — not imported from AO3. Empty/whitespace → null. */
+  notes: optionalStringField.optional(),
+  /** Series name — applies to all kinds. */
+  seriesName: optionalStringField.optional(),
+  /** Series part number — string in form → number | null in output. */
+  seriesPart: progressNumberField.optional(),
+  /** Series total — string in form → number | null in output. */
+  seriesTotal: progressNumberField.optional(),
+
+  // ── Fanfic-only v2 fields ───────────────────────────────────────────────────
+  /** Fanfic only. String in form → number | null in output. */
+  wordCount: progressNumberField.optional(),
+  /** Fanfic only. Managed as a string[] directly — not a comma-separated string. */
+  fandom: z.array(z.string()).optional(),
+  /**
+   * Fanfic only. Comma-separated string in form.
+   * Split to string[] in submit handler.
+   * Empty/whitespace → null in output (submit handler maps null → []).
+   */
+  relationships: optionalStringField.optional(),
+  /** Fanfic only. Controlled by RadioButton.Group. null = "Not specified". */
+  rating: z.enum(['general', 'teen', 'mature', 'explicit', 'not_rated']).nullable().optional(),
+  /** Fanfic only. Managed as a string[] directly — multi-select chip group. */
+  archiveWarnings: z.array(z.string()).optional(),
+  /**
+   * Fanfic only. Controlled by a Switch.
+   * In add mode may be pre-confirmed via the isAbandoned alert.
+   */
+  isAbandoned: z.boolean().optional(),
 }).superRefine((data, ctx) => {
   // Cross-field rule: isComplete=true requires a known totalUnits.
   // AO3 only shows "Complete" when total chapters are known (X/X format).
@@ -113,7 +150,8 @@ export const addEditSchema = z.object({
 
 /**
  * Input type — what React Hook Form Controller values contain.
- * All TextInput fields are strings; isComplete is boolean | null.
+ * All TextInput fields are strings; isComplete is boolean | null;
+ * fandom and archiveWarnings are string[]; rating is AO3Rating | null.
  */
 export type AddEditFormValues = z.input<typeof addEditSchema>;
 

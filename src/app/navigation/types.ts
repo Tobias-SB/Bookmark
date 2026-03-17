@@ -2,6 +2,7 @@
 // §7 — All route param types. Imported by all navigators and screens — never defined inline.
 
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { AO3Rating, AuthorType } from '../../features/readables/domain/readable';
 
 export type TabParamList = {
   Library: undefined;
@@ -29,6 +30,22 @@ export interface AddEditPrefill {
   totalUnits?: number | null;
   sourceUrl?: string | null;
   isComplete?: boolean | null;
+  // v2 prefill fields:
+  wordCount?: number | null;
+  fandom?: string[];
+  relationships?: string[];
+  rating?: AO3Rating | null;
+  archiveWarnings?: string[];
+  seriesName?: string | null;
+  seriesPart?: number | null;
+  seriesTotal?: number | null;
+  /** Import-only — written to repo on create, not a form field. */
+  authorType?: AuthorType | null;
+  /** Import-only — written to repo on create, not a form field. */
+  publishedAt?: string | null;
+  /** Import-only — written to repo on create, not a form field. */
+  ao3UpdatedAt?: string | null;
+  isAbandoned?: boolean;
 }
 
 export type RootStackParamList = {

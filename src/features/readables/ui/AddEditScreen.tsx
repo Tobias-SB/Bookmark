@@ -12,6 +12,10 @@
 // "Not found in import" notices:
 //   When sourceType !== 'manual', HelperText info notices appear below fields that the
 //   import attempted but could not populate (title, author, summary, totalUnits).
+//
+// isAbandoned confirmation (add mode, prefill.isAbandoned === true):
+//   An Alert fires on mount before the form renders. The user confirms whether to mark the
+//   work as abandoned. hasConfirmedAbandoned gates form rendering.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -26,8 +30,10 @@ import {
 import {
   ActivityIndicator,
   Button,
+  Chip,
   HelperText,
   Portal,
+  RadioButton,
   SegmentedButtons,
   Snackbar,
   Switch,
@@ -43,9 +49,10 @@ import type { RootStackParamList, AddEditPrefill } from '../../../app/navigation
 import { useAppTheme } from '../../../app/theme';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import { todayLocalDate } from '../../../shared/utils/dates';
-import type { ReadableStatus } from '../domain/readable';
-import { READABLE_STATUSES, STATUS_LABELS_SHORT } from '../domain/readable';
+import type { ReadableStatus, AO3Rating, AuthorType } from '../domain/readable';
+import { READABLE_STATUSES, STATUS_LABELS_SHORT, AO3_RATING_LABELS } from '../domain/readable';
 import { useReadable } from '../hooks/useReadable';
+import { useReadables } from '../hooks/useReadables';
 import { useCreateReadable } from '../hooks/useCreateReadable';
 import { useUpdateReadable } from '../hooks/useUpdateReadable';
 import type { CreateReadableInput } from '../data/readableRepository';
@@ -59,10 +66,20 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddEditReadable'>;
 
+/** Canonical AO3 archive warnings — full six values. */
+const CANONICAL_ARCHIVE_WARNINGS = [
+  'No Archive Warnings Apply',
+  'Graphic Depictions Of Violence',
+  'Major Character Death',
+  'Non-Con',
+  'Underage',
+  'Choose Not To Use Archive Warnings',
+] as const;
+
 /**
  * Tracks which provider was used so the submit handler writes the correct
- * sourceType/sourceId. Also carries import-only fields (isbn, coverUrl,
- * availableChapters) so they can be persisted without being form fields.
+ * sourceType/sourceId. Also carries import-only fields so they can be
+ * persisted without being form fields.
  */
 interface ImportContext {
   sourceType: 'ao3' | 'book_provider';
@@ -70,6 +87,9 @@ interface ImportContext {
   isbn: string | null;
   coverUrl: string | null;
   availableChapters: number | null;
+  authorType: AuthorType | null;
+  publishedAt: string | null;
+  ao3UpdatedAt: string | null;
 }
 
 function isoToLocalDate(iso: string): string {
@@ -93,6 +113,16 @@ function getAddDefaultValues(): AddEditFormValues {
     tags: '',
     isComplete: null,
     dateAdded: todayLocalDate(),
+    notes: '',
+    seriesName: '',
+    seriesPart: '',
+    seriesTotal: '',
+    wordCount: '',
+    fandom: [],
+    relationships: '',
+    rating: null,
+    archiveWarnings: [],
+    isAbandoned: false,
   };
 }
 
@@ -109,6 +139,17 @@ function getPrefillDefaultValues(prefill: AddEditPrefill): AddEditFormValues {
     tags: Array.isArray(prefill.tags) ? prefill.tags.join(', ') : '',
     isComplete: prefill.kind === 'fanfic' ? (prefill.isComplete ?? false) : null,
     dateAdded: todayLocalDate(),
+    notes: '',
+    seriesName: prefill.seriesName ?? '',
+    seriesPart: prefill.seriesPart != null ? String(prefill.seriesPart) : '',
+    seriesTotal: prefill.seriesTotal != null ? String(prefill.seriesTotal) : '',
+    wordCount: prefill.wordCount != null ? String(prefill.wordCount) : '',
+    fandom: prefill.fandom ?? [],
+    relationships: Array.isArray(prefill.relationships) ? prefill.relationships.join(', ') : '',
+    rating: prefill.rating ?? null,
+    archiveWarnings: prefill.archiveWarnings ?? [],
+    // isAbandoned is always false here — confirmation alert sets it via setValue if needed.
+    isAbandoned: false,
   };
 }
 
@@ -133,6 +174,16 @@ function getEditDefaultValues(readable: Readable): AddEditFormValues {
     tags: readable.tags.join(', '),
     isComplete,
     dateAdded: isoToLocalDate(readable.dateAdded),
+    notes: readable.notes ?? '',
+    seriesName: readable.seriesName ?? '',
+    seriesPart: readable.seriesPart != null ? String(readable.seriesPart) : '',
+    seriesTotal: readable.seriesTotal != null ? String(readable.seriesTotal) : '',
+    wordCount: readable.wordCount != null ? String(readable.wordCount) : '',
+    fandom: readable.fandom,
+    relationships: readable.relationships.join(', '),
+    rating: readable.rating,
+    archiveWarnings: readable.archiveWarnings,
+    isAbandoned: readable.isAbandoned,
   };
 }
 
@@ -148,6 +199,10 @@ export function AddEditScreen({ route, navigation }: Props) {
   // wasPrefilled: import actually ran (not a manual skip) — used for "not found" notices.
   const wasPrefilled = hasPrefill && prefill!.sourceType !== 'manual';
 
+  // isAbandoned confirmation gate — only active in add mode when prefill signals abandoned.
+  const needsAbandonedConfirmation = !isEditMode && prefill?.isAbandoned === true;
+  const [hasConfirmedAbandoned, setHasConfirmedAbandoned] = useState(!needsAbandonedConfirmation);
+
   // importContext — computed once from stable nav params. null for manual adds and edit mode.
   const importContext: ImportContext | null =
     !isEditMode && hasPrefill && prefill!.sourceType !== 'manual'
@@ -157,6 +212,9 @@ export function AddEditScreen({ route, navigation }: Props) {
           isbn: prefill!.isbn,
           coverUrl: prefill!.coverUrl,
           availableChapters: prefill!.availableChapters,
+          authorType: prefill!.authorType ?? null,
+          publishedAt: prefill!.publishedAt ?? null,
+          ao3UpdatedAt: prefill!.ao3UpdatedAt ?? null,
         }
       : null;
 
@@ -183,6 +241,16 @@ export function AddEditScreen({ route, navigation }: Props) {
     refetch: refetchExisting,
   } = useReadable(id ?? '');
 
+  // Fandom vocabulary — all unique fandom strings across existing fanfic readables.
+  // Computed once; reuses TanStack Query cache from library screen.
+  const { readables: allReadables } = useReadables();
+  const fandomVocabulary = useMemo<string[]>(() => {
+    const all = allReadables
+      .filter((r) => r.kind === 'fanfic')
+      .flatMap((r) => r.fandom);
+    return [...new Set(all)].sort();
+  }, [allReadables]);
+
   const { control, handleSubmit, formState, watch, setValue, reset } =
     useForm<AddEditFormValues, unknown, AddEditFormOutput>({
       resolver: zodResolver(addEditSchema),
@@ -204,6 +272,30 @@ export function AddEditScreen({ route, navigation }: Props) {
       setIsFormReady(true);
     }
   }, [isEditMode, existingReadable, reset]);
+
+  // isAbandoned confirmation alert — fires once on mount when needed.
+  const abandonedAlertFiredRef = useRef(false);
+  useEffect(() => {
+    if (!needsAbandonedConfirmation || abandonedAlertFiredRef.current) return;
+    abandonedAlertFiredRef.current = true;
+    Alert.alert(
+      'Abandoned work',
+      'This work is tagged Abandoned on AO3. Mark it as abandoned in your library?',
+      [
+        {
+          text: 'Yes, mark as abandoned',
+          onPress: () => {
+            setValue('isAbandoned', true, { shouldDirty: false });
+            setHasConfirmedAbandoned(true);
+          },
+        },
+        {
+          text: 'No, keep as WIP',
+          onPress: () => setHasConfirmedAbandoned(true),
+        },
+      ],
+    );
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const watchedKind = watch('kind');
   const watchedTotalUnits = watch('totalUnits');
@@ -245,16 +337,31 @@ export function AddEditScreen({ route, navigation }: Props) {
     return unsubscribe;
   }, [navigation]);
 
+  // Local text state for fandom autocomplete input
+  const [fandomInput, setFandomInput] = useState('');
+
   const authorRef = useRef<RNTextInput>(null);
   const sourceUrlRef = useRef<RNTextInput>(null);
   const progressCurrentRef = useRef<RNTextInput>(null);
   const progressTotalRef = useRef<RNTextInput>(null);
+  const wordCountRef = useRef<RNTextInput>(null);
+  const relationshipsRef = useRef<RNTextInput>(null);
   const summaryRef = useRef<RNTextInput>(null);
   const tagsRef = useRef<RNTextInput>(null);
+  const seriesNameRef = useRef<RNTextInput>(null);
+  const seriesPartRef = useRef<RNTextInput>(null);
+  const seriesTotalRef = useRef<RNTextInput>(null);
+  const notesRef = useRef<RNTextInput>(null);
   const dateAddedRef = useRef<RNTextInput>(null);
 
   const onSubmit = handleSubmit((data: AddEditFormOutput) => {
     const isoDateAdded = new Date(data.dateAdded + 'T00:00:00.000Z').toISOString();
+    const isFanficSubmit = data.kind === 'fanfic';
+
+    // Split comma-separated relationships string → string[]
+    const relationshipsArray = data.relationships
+      ? data.relationships.split(',').map((r) => r.trim()).filter(Boolean)
+      : [];
 
     if (!isEditMode) {
       const createInput: CreateReadableInput = {
@@ -269,11 +376,27 @@ export function AddEditScreen({ route, navigation }: Props) {
         sourceId: importContext?.sourceId ?? null,
         summary: data.summary,
         tags: data.tags,
-        isComplete: data.kind === 'fanfic' ? data.isComplete : null,
+        isComplete: isFanficSubmit ? data.isComplete : null,
         dateAdded: isoDateAdded,
         isbn: importContext?.isbn ?? null,
         coverUrl: importContext?.coverUrl ?? null,
         availableChapters: importContext?.availableChapters ?? null,
+        // Import-only fields from prefill (not form fields):
+        authorType: importContext?.authorType ?? null,
+        publishedAt: importContext?.publishedAt ?? null,
+        ao3UpdatedAt: importContext?.ao3UpdatedAt ?? null,
+        // Shared v2 fields:
+        notes: data.notes,
+        seriesName: data.seriesName,
+        seriesPart: data.seriesPart,
+        seriesTotal: data.seriesTotal,
+        // Fanfic-only (repo enforces null/[]/false for books):
+        wordCount: isFanficSubmit ? (data.wordCount ?? null) : null,
+        fandom: isFanficSubmit ? (data.fandom ?? []) : [],
+        relationships: isFanficSubmit ? relationshipsArray : [],
+        rating: isFanficSubmit ? (data.rating ?? null) : null,
+        archiveWarnings: isFanficSubmit ? (data.archiveWarnings ?? []) : [],
+        isAbandoned: isFanficSubmit ? (data.isAbandoned ?? false) : false,
       };
       create(createInput, {
         onSuccess: () => {
@@ -283,6 +406,7 @@ export function AddEditScreen({ route, navigation }: Props) {
         onError: (err) => showSnackbar(err.message),
       });
     } else if (existingReadable) {
+      const isFanficEdit = existingReadable.kind === 'fanfic';
       const updateInput: UpdateReadableInput = {
         title: data.title,
         author: data.author,
@@ -292,8 +416,19 @@ export function AddEditScreen({ route, navigation }: Props) {
         sourceUrl: data.sourceUrl,
         summary: data.summary,
         tags: data.tags,
-        isComplete: existingReadable.kind === 'fanfic' ? data.isComplete : null,
+        isComplete: isFanficEdit ? data.isComplete : null,
         dateAdded: isoDateAdded,
+        notes: data.notes,
+        seriesName: data.seriesName,
+        seriesPart: data.seriesPart,
+        seriesTotal: data.seriesTotal,
+        // Fanfic-only:
+        wordCount: isFanficEdit ? (data.wordCount ?? null) : null,
+        fandom: isFanficEdit ? (data.fandom ?? []) : [],
+        relationships: isFanficEdit ? relationshipsArray : [],
+        rating: isFanficEdit ? (data.rating ?? null) : null,
+        archiveWarnings: isFanficEdit ? (data.archiveWarnings ?? []) : [],
+        isAbandoned: isFanficEdit ? (data.isAbandoned ?? false) : false,
       };
       update(
         { id: existingReadable.id, input: updateInput, current: existingReadable },
@@ -321,7 +456,7 @@ export function AddEditScreen({ route, navigation }: Props) {
     );
   }
 
-  if (!isFormReady) {
+  if (!isFormReady || !hasConfirmedAbandoned) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
@@ -516,7 +651,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                     error={!!fieldState.error}
                     keyboardType="number-pad"
                     returnKeyType="next"
-                    onSubmitEditing={() => summaryRef.current?.focus()}
+                    onSubmitEditing={() => isFanfic ? wordCountRef.current?.focus() : summaryRef.current?.focus()}
                     style={styles.input}
                     mode="outlined"
                     accessibilityLabel={`Total ${progressUnit}`}
@@ -557,6 +692,248 @@ export function AddEditScreen({ route, navigation }: Props) {
               )}
             />
           </View>
+        )}
+
+        {/* ── Fanfic-only fields ──────────────────────────────────────────────── */}
+        {isFanfic && (
+          <>
+            {/* Word count */}
+            <Controller
+              control={control}
+              name="wordCount"
+              render={({ field, fieldState }) => (
+                <View style={styles.fieldWrapper}>
+                  <TextInput
+                    ref={wordCountRef}
+                    label="Word count"
+                    value={field.value ?? ''}
+                    onChangeText={field.onChange}
+                    onBlur={field.onBlur}
+                    error={!!fieldState.error}
+                    keyboardType="number-pad"
+                    returnKeyType="next"
+                    onSubmitEditing={() => summaryRef.current?.focus()}
+                    style={styles.input}
+                    mode="outlined"
+                    accessibilityLabel="Word count"
+                  />
+                  {fieldState.error && (
+                    <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                  )}
+                </View>
+              )}
+            />
+
+            {/* isAbandoned switch */}
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Abandoned</Text>
+              <Controller
+                control={control}
+                name="isAbandoned"
+                render={({ field }) => (
+                  <View style={styles.switchRow}>
+                    <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
+                      {field.value ? 'Marked as abandoned' : 'Not abandoned'}
+                    </Text>
+                    <Switch
+                      value={field.value === true}
+                      onValueChange={(v) => field.onChange(v)}
+                      accessibilityLabel="Mark as abandoned"
+                    />
+                  </View>
+                )}
+              />
+            </View>
+
+            {/* Rating */}
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Rating</Text>
+              <Controller
+                control={control}
+                name="rating"
+                render={({ field }) => (
+                  <RadioButton.Group
+                    value={field.value ?? '__none__'}
+                    onValueChange={(v) => field.onChange(v === '__none__' ? null : (v as AO3Rating))}
+                  >
+                    <View style={styles.radioItem}>
+                      <RadioButton.Item
+                        label="Not specified"
+                        value="__none__"
+                        status={field.value == null ? 'checked' : 'unchecked'}
+                        labelStyle={{ color: theme.colors.textPrimary }}
+                      />
+                    </View>
+                    {(Object.keys(AO3_RATING_LABELS) as AO3Rating[]).map((r) => (
+                      <View key={r} style={styles.radioItem}>
+                        <RadioButton.Item
+                          label={AO3_RATING_LABELS[r]}
+                          value={r}
+                          status={field.value === r ? 'checked' : 'unchecked'}
+                          labelStyle={{ color: theme.colors.textPrimary }}
+                        />
+                      </View>
+                    ))}
+                  </RadioButton.Group>
+                )}
+              />
+            </View>
+
+            {/* Archive warnings */}
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Archive warnings</Text>
+              <Controller
+                control={control}
+                name="archiveWarnings"
+                render={({ field }) => {
+                  const selected = field.value ?? [];
+                  return (
+                    <View style={styles.chipWrap}>
+                      {CANONICAL_ARCHIVE_WARNINGS.map((warning) => {
+                        const isSelected = selected.includes(warning);
+                        return (
+                          <Chip
+                            key={warning}
+                            selected={isSelected}
+                            mode={isSelected ? 'flat' : 'outlined'}
+                            onPress={() => {
+                              const next = isSelected
+                                ? selected.filter((w) => w !== warning)
+                                : [...selected, warning];
+                              field.onChange(next);
+                            }}
+                            style={styles.chip}
+                            accessibilityLabel={`Archive warning: ${warning}`}
+                          >
+                            {warning}
+                          </Chip>
+                        );
+                      })}
+                    </View>
+                  );
+                }}
+              />
+            </View>
+
+            {/* Fandom autocomplete */}
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Fandom</Text>
+              <Controller
+                control={control}
+                name="fandom"
+                render={({ field }) => {
+                  const confirmed = field.value ?? [];
+                  const trimmedInput = fandomInput.trim();
+                  const filtered = fandomVocabulary.filter(
+                    (f) =>
+                      f.toLowerCase().includes(trimmedInput.toLowerCase()) &&
+                      !confirmed.includes(f),
+                  );
+                  const isNewEntry =
+                    trimmedInput.length > 0 &&
+                    !fandomVocabulary.some(
+                      (f) => f.toLowerCase() === trimmedInput.toLowerCase(),
+                    ) &&
+                    !confirmed.includes(trimmedInput);
+
+                  const appendFandom = (value: string) => {
+                    field.onChange([...confirmed, value]);
+                    setFandomInput('');
+                  };
+
+                  return (
+                    <>
+                      {/* Confirmed fandom chips */}
+                      {confirmed.length > 0 && (
+                        <View style={[styles.chipWrap, styles.chipWrapBottom]}>
+                          {confirmed.map((f) => (
+                            <Chip
+                              key={f}
+                              onClose={() => field.onChange(confirmed.filter((x) => x !== f))}
+                              style={styles.chip}
+                              accessibilityLabel={`Remove fandom: ${f}`}
+                            >
+                              {f}
+                            </Chip>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* Fandom text input */}
+                      <TextInput
+                        label="Add fandom"
+                        value={fandomInput}
+                        onChangeText={setFandomInput}
+                        style={styles.input}
+                        mode="outlined"
+                        returnKeyType="done"
+                        onSubmitEditing={() => {
+                          if (trimmedInput.length > 0 && !confirmed.includes(trimmedInput)) {
+                            appendFandom(trimmedInput);
+                          }
+                        }}
+                        accessibilityLabel="Add fandom"
+                      />
+
+                      {/* Suggestions */}
+                      {trimmedInput.length > 0 && (
+                        <View style={[styles.chipWrap, styles.chipWrapTop]}>
+                          {filtered.map((f) => (
+                            <Chip
+                              key={f}
+                              mode="outlined"
+                              onPress={() => appendFandom(f)}
+                              style={styles.chip}
+                              accessibilityLabel={`Add fandom: ${f}`}
+                            >
+                              {f}
+                            </Chip>
+                          ))}
+                          {isNewEntry && (
+                            <Chip
+                              mode="outlined"
+                              onPress={() => appendFandom(trimmedInput)}
+                              style={styles.chip}
+                              accessibilityLabel={`Add new fandom: ${trimmedInput}`}
+                            >
+                              Add: {trimmedInput}
+                            </Chip>
+                          )}
+                        </View>
+                      )}
+                    </>
+                  );
+                }}
+              />
+            </View>
+
+            {/* Relationships */}
+            <Controller
+              control={control}
+              name="relationships"
+              render={({ field, fieldState }) => (
+                <View style={styles.fieldWrapper}>
+                  <TextInput
+                    ref={relationshipsRef}
+                    label="Relationships"
+                    value={field.value ?? ''}
+                    onChangeText={field.onChange}
+                    onBlur={field.onBlur}
+                    error={!!fieldState.error}
+                    returnKeyType="next"
+                    onSubmitEditing={() => summaryRef.current?.focus()}
+                    style={styles.input}
+                    mode="outlined"
+                    accessibilityLabel="Relationships, separate with commas"
+                  />
+                  <HelperText type="info" visible={!fieldState.error}>Separate with commas</HelperText>
+                  {fieldState.error && (
+                    <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                  )}
+                </View>
+              )}
+            />
+          </>
         )}
 
         {/* ── Summary ─────────────────────────────────────────────────────────── */}
@@ -602,11 +979,121 @@ export function AddEditScreen({ route, navigation }: Props) {
                 onBlur={field.onBlur}
                 error={!!fieldState.error}
                 returnKeyType="next"
-                onSubmitEditing={() => dateAddedRef.current?.focus()}
+                onSubmitEditing={() => seriesNameRef.current?.focus()}
                 style={styles.input}
                 mode="outlined"
                 accessibilityLabel="Tags, comma separated"
               />
+              {fieldState.error && (
+                <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+              )}
+            </View>
+          )}
+        />
+
+        {/* ── Series ───────────────────────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Series</Text>
+          <Controller
+            control={control}
+            name="seriesName"
+            render={({ field, fieldState }) => (
+              <View style={styles.fieldWrapper}>
+                <TextInput
+                  ref={seriesNameRef}
+                  label="Series name"
+                  value={field.value ?? ''}
+                  onChangeText={field.onChange}
+                  onBlur={field.onBlur}
+                  error={!!fieldState.error}
+                  returnKeyType="next"
+                  onSubmitEditing={() => seriesPartRef.current?.focus()}
+                  style={styles.input}
+                  mode="outlined"
+                  accessibilityLabel="Series name"
+                />
+                {fieldState.error && (
+                  <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                )}
+              </View>
+            )}
+          />
+          <View style={styles.progressRow}>
+            <Controller
+              control={control}
+              name="seriesPart"
+              render={({ field, fieldState }) => (
+                <View style={styles.progressField}>
+                  <TextInput
+                    ref={seriesPartRef}
+                    label="Part"
+                    value={field.value ?? ''}
+                    onChangeText={field.onChange}
+                    onBlur={field.onBlur}
+                    error={!!fieldState.error}
+                    keyboardType="number-pad"
+                    returnKeyType="next"
+                    onSubmitEditing={() => seriesTotalRef.current?.focus()}
+                    style={styles.input}
+                    mode="outlined"
+                    accessibilityLabel="Series part number"
+                  />
+                  {fieldState.error && (
+                    <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                  )}
+                </View>
+              )}
+            />
+            <Controller
+              control={control}
+              name="seriesTotal"
+              render={({ field, fieldState }) => (
+                <View style={styles.progressField}>
+                  <TextInput
+                    ref={seriesTotalRef}
+                    label="Total parts"
+                    value={field.value ?? ''}
+                    onChangeText={field.onChange}
+                    onBlur={field.onBlur}
+                    error={!!fieldState.error}
+                    keyboardType="number-pad"
+                    returnKeyType="next"
+                    onSubmitEditing={() => notesRef.current?.focus()}
+                    style={styles.input}
+                    mode="outlined"
+                    accessibilityLabel="Series total parts"
+                  />
+                  {fieldState.error && (
+                    <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                  )}
+                </View>
+              )}
+            />
+          </View>
+        </View>
+
+        {/* ── Notes ─────────────────────────────────────────────────────────────── */}
+        <Controller
+          control={control}
+          name="notes"
+          render={({ field, fieldState }) => (
+            <View style={styles.fieldWrapper}>
+              <TextInput
+                ref={notesRef}
+                label="Notes"
+                value={field.value ?? ''}
+                onChangeText={field.onChange}
+                onBlur={field.onBlur}
+                error={!!fieldState.error}
+                multiline
+                numberOfLines={3}
+                returnKeyType="next"
+                onSubmitEditing={() => dateAddedRef.current?.focus()}
+                style={styles.input}
+                mode="outlined"
+                accessibilityLabel="Notes"
+              />
+              <HelperText type="info" visible={!fieldState.error}>Private — not imported from AO3</HelperText>
               {fieldState.error && (
                 <HelperText type="error" visible>{fieldState.error.message}</HelperText>
               )}
@@ -675,5 +1162,10 @@ const styles = StyleSheet.create({
   progressRow: { flexDirection: 'row', gap: 12 },
   progressField: { flex: 1 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
+  radioItem: {},
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chipWrapTop: { marginTop: 8 },
+  chipWrapBottom: { marginBottom: 8 },
+  chip: {},
   submitButton: { marginTop: 16 },
 });
