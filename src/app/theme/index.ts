@@ -5,7 +5,7 @@
 
 export type { AppTheme } from './tokens';
 export { makeTokens } from './tokens';
-export type { ThemeName, ThemeContextValue } from './AppThemeProvider';
+export type { ThemeName, ColorMode, ThemeContextValue } from './AppThemeProvider';
 export { useThemeContext } from './AppThemeProvider';
 
 import { useMemo } from 'react';

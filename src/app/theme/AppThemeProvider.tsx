@@ -1,14 +1,18 @@
 // src/app/theme/AppThemeProvider.tsx
 // NOTE: This establishes the AppThemeProvider pattern in src/app/theme/.
-// Manages theme selection, persists the preference to SQLite, and renders
-// PaperProvider with the correct MD3 theme.
+// Manages colour mode (light/dark/system) separately from the colour palette.
+//
+// ThemeName — the colour palette. Currently only 'default'; extend THEME_REGISTRY
+//   when additional palettes are added.
+// ColorMode — how light/dark is resolved ('light' | 'dark' | 'system').
+//   'system' follows the device colour scheme via useColorScheme().
 //
 // Provider tree position (outermost → innermost):
 //   SafeAreaProvider → DatabaseProvider → AppThemeProvider
 //   → (PaperProvider rendered internally) → ErrorBoundary → QueryClientProvider
 //   → AppGate → NavigationContainer
 //
-// themeLoaded is false until the saved preference has been read (or failed).
+// themeLoaded is false until both saved preferences have been read (or failed).
 // AppGate waits for themeLoaded before rendering NavigationContainer so the
 // navigation tree never renders with the wrong default theme.
 
@@ -19,44 +23,56 @@ import React, {
   useEffect,
   useState,
 } from 'react';
+import { useColorScheme } from 'react-native';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 import type { MD3Theme } from 'react-native-paper';
 
 import { useDatabaseContext } from '../database/DatabaseProvider';
 import { getSetting, setSetting, SETTINGS_KEYS } from '../database/settingsRepository';
 
-// ── Theme registry ────────────────────────────────────────────────────────────
-// Extend this record when additional themes are added in future updates.
+// ── Theme registry ─────────────────────────────────────────────────────────────
+// Add new palettes here. Each entry must supply both light and dark MD3 variants.
 
-export type ThemeName = 'light' | 'dark';
+export type ThemeName = 'default';
+export type ColorMode = 'light' | 'dark' | 'system';
 
-const PAPER_THEMES: Record<ThemeName, MD3Theme> = {
-  light: MD3LightTheme,
-  dark: MD3DarkTheme,
+type ThemeVariants = { light: MD3Theme; dark: MD3Theme };
+
+const THEME_REGISTRY: Record<ThemeName, ThemeVariants> = {
+  default: { light: MD3LightTheme, dark: MD3DarkTheme },
 };
 
-const DEFAULT_THEME: ThemeName = 'light';
+const DEFAULT_THEME_NAME: ThemeName = 'default';
+const DEFAULT_COLOR_MODE: ColorMode = 'system';
 
 function isThemeName(value: string): value is ThemeName {
-  return Object.prototype.hasOwnProperty.call(PAPER_THEMES, value);
+  return Object.prototype.hasOwnProperty.call(THEME_REGISTRY, value);
 }
 
-// ── Context ───────────────────────────────────────────────────────────────────
+function isColorMode(value: string): value is ColorMode {
+  return value === 'light' || value === 'dark' || value === 'system';
+}
+
+// ── Context ────────────────────────────────────────────────────────────────────
 
 export interface ThemeContextValue {
   themeName: ThemeName;
-  /** True once the saved preference has been read from the database (or failed). */
+  colorMode: ColorMode;
+  /** True once both saved preferences have been read from the database (or failed). */
   themeLoaded: boolean;
   setTheme: (name: ThemeName) => Promise<void>;
+  setColorMode: (mode: ColorMode) => Promise<void>;
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  themeName: DEFAULT_THEME,
+  themeName: DEFAULT_THEME_NAME,
+  colorMode: DEFAULT_COLOR_MODE,
   themeLoaded: false,
   setTheme: async () => {},
+  setColorMode: async () => {},
 });
 
-// ── Provider ──────────────────────────────────────────────────────────────────
+// ── Provider ───────────────────────────────────────────────────────────────────
 
 interface AppThemeProviderProps {
   children: React.ReactNode;
@@ -64,55 +80,81 @@ interface AppThemeProviderProps {
 
 export function AppThemeProvider({ children }: AppThemeProviderProps) {
   const { db, isReady } = useDatabaseContext();
-  const [themeName, setThemeName] = useState<ThemeName>(DEFAULT_THEME);
+  const systemScheme = useColorScheme();
+
+  const [themeName, setThemeNameState] = useState<ThemeName>(DEFAULT_THEME_NAME);
+  const [colorMode, setColorModeState] = useState<ColorMode>(DEFAULT_COLOR_MODE);
   const [themeLoaded, setThemeLoaded] = useState(false);
 
-  // Load persisted theme once the database is ready. Fails open — the default
-  // theme is set and themeLoaded is still set to true so AppGate unblocks.
+  // Load both persisted preferences once the database is ready.
+  // Fails open — defaults remain active and themeLoaded is set to true.
   useEffect(() => {
     if (!isReady || !db) return;
 
-    async function loadTheme() {
+    async function loadPreferences() {
       try {
-        const saved = await getSetting(db!, SETTINGS_KEYS.theme);
-        if (saved !== null && isThemeName(saved)) {
-          setThemeName(saved);
+        const [savedTheme, savedMode] = await Promise.all([
+          getSetting(db!, SETTINGS_KEYS.theme),
+          getSetting(db!, SETTINGS_KEYS.colorMode),
+        ]);
+        if (savedTheme !== null && isThemeName(savedTheme)) {
+          setThemeNameState(savedTheme);
+        }
+        if (savedMode !== null && isColorMode(savedMode)) {
+          setColorModeState(savedMode);
         }
       } catch {
-        // Fail open — default theme remains active.
+        // Fail open — defaults remain active.
       } finally {
         setThemeLoaded(true);
       }
     }
 
-    void loadTheme();
+    void loadPreferences();
   }, [isReady, db]);
 
   const setTheme = useCallback(
     async (name: ThemeName) => {
-      // Update state immediately for instant visual feedback.
-      setThemeName(name);
+      setThemeNameState(name);
       if (!db) return;
       try {
         await setSetting(db, SETTINGS_KEYS.theme, name);
       } catch {
-        // Persist failure is non-fatal — in-memory state is already updated.
-        // The preference reverts to the previous value on next cold start.
+        // Non-fatal — in-memory state updated; reverts on cold start.
       }
     },
     [db],
   );
 
+  const setColorMode = useCallback(
+    async (mode: ColorMode) => {
+      setColorModeState(mode);
+      if (!db) return;
+      try {
+        await setSetting(db, SETTINGS_KEYS.colorMode, mode);
+      } catch {
+        // Non-fatal — in-memory state updated; reverts on cold start.
+      }
+    },
+    [db],
+  );
+
+  // Resolve which MD3 theme to pass to PaperProvider.
+  // 'system' follows the device colour scheme; null system scheme falls back to light.
+  const effectiveMode: 'light' | 'dark' =
+    colorMode === 'system' ? (systemScheme ?? 'light') : colorMode;
+  const resolvedTheme = THEME_REGISTRY[themeName][effectiveMode];
+
   return (
-    <ThemeContext.Provider value={{ themeName, themeLoaded, setTheme }}>
-      <PaperProvider theme={PAPER_THEMES[themeName]}>
+    <ThemeContext.Provider value={{ themeName, colorMode, themeLoaded, setTheme, setColorMode }}>
+      <PaperProvider theme={resolvedTheme}>
         {children}
       </PaperProvider>
     </ThemeContext.Provider>
   );
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+// ── Hook ───────────────────────────────────────────────────────────────────────
 
 export function useThemeContext(): ThemeContextValue {
   return useContext(ThemeContext);

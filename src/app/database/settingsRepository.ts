@@ -7,6 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const SETTINGS_KEYS = {
   theme: 'theme',
+  colorMode: 'colorMode',
 } as const;
 
 export async function getSetting(

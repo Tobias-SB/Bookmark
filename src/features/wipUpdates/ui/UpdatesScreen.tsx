@@ -16,7 +16,6 @@ import {
   Card,
   Chip,
   Divider,
-  IconButton,
   Portal,
   Snackbar,
   Text,
@@ -308,12 +307,15 @@ export function UpdatesScreen({ navigation }: Props) {
             style={styles.headerSpinner}
           />
         ) : (
-          <IconButton
-            icon="refresh"
-            iconColor={theme.colors.primary}
+          <Button
+            mode="text"
             onPress={handleCheckPress}
+            textColor={theme.colors.primary}
+            style={styles.headerButton}
             accessibilityLabel="Check for updates"
-          />
+          >
+            Check for Updates
+          </Button>
         ),
     });
   }, [navigation, isChecking, handleCheckPress, theme.colors.primary]);
@@ -501,7 +503,7 @@ export function UpdatesScreen({ navigation }: Props) {
           variant="bodyMedium"
           style={{ color: theme.colors.textDisabled, textAlign: 'center' }}
         >
-          Tap the refresh icon to check your WIP fanfics for updates
+          Tap "Check for Updates" to check your WIP fanfics for updates
         </Text>
       </View>
     );
@@ -639,5 +641,8 @@ const styles = StyleSheet.create({
   },
   headerSpinner: {
     marginRight: 16,
+  },
+  headerButton: {
+    marginRight: 8,
   },
 });
