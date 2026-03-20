@@ -5,13 +5,18 @@
 //
 // Consistency rules applied here (not in repo, not in UI):
 //   - Progress entered on want_to_read → auto-change status to reading.
-//   - progressCurrent reaches totalUnits (known) → auto-change to completed.
-//   - Status completed + total known → set progressCurrent = totalUnits.
+//   - progressCurrent explicitly set and reaches threshold → auto-change to completed.
+//     Threshold: fanfic → availableChapters (if set), else totalUnits. Book → totalUnits.
+//     Rule 2 only fires when progressCurrent is explicitly in the input — inherited progress
+//     is never re-evaluated, which prevents the re-completion loop when the user manually
+//     changes status from completed to reading (progress is still at threshold in current).
+//   - Auto-completion (Rule 2) OR status explicitly set to completed → pin progressCurrent
+//     to threshold.
+//   - Status is inherited-completed and user explicitly lowers progress below threshold
+//     and no status change is in the input → revert status to reading.
 //   - Status dnf → preserve partial progress (no action needed).
 //   - Status want_to_read → clear progressCurrent.
-//   - isComplete coherence: isComplete=true with unknown total → isComplete=false.
-//     Covers the ProgressEditor path (user clears totalUnits while isComplete was true)
-//     and self-heals any pre-existing broken records on next write.
+//   - isComplete coherence: isComplete=true with unknown totalUnits → isComplete=false.
 //
 // The caller passes `current` (the existing Readable) alongside the update input
 // so the hook can resolve effective post-update values without a redundant fetch.
@@ -53,6 +58,8 @@ export function applyUpdateConsistency(
 ): UpdateReadableInput {
   // Resolve effective values after applying input over current state.
   const progressCurrentInInput = 'progressCurrent' in input;
+  const statusExplicitlySet = 'status' in input;
+  const statusExplicitlyCompleted = statusExplicitlySet && input.status === 'completed';
 
   const effectiveStatus: ReadableStatus = input.status ?? current.status;
   const effectiveProgressCurrent: number | null = progressCurrentInInput
@@ -62,6 +69,14 @@ export function applyUpdateConsistency(
     'totalUnits' in input ? (input.totalUnits ?? null) : current.totalUnits;
   const effectiveIsComplete: boolean | null =
     'isComplete' in input ? (input.isComplete ?? null) : current.isComplete;
+
+  // Completion threshold: for fanfics use availableChapters (the published count) if set,
+  // since that is what the user can actually read. Fall back to totalUnits for both kinds.
+  // availableChapters is import-only and never in UpdateReadableInput, so always from current.
+  const effectiveCompletionThreshold: number | null =
+    current.kind === 'fanfic' && current.availableChapters !== null
+      ? current.availableChapters
+      : effectiveProgressTotal;
 
   let resolvedStatus = effectiveStatus;
   let resolvedProgressCurrent = effectiveProgressCurrent;
@@ -76,19 +91,40 @@ export function applyUpdateConsistency(
     resolvedStatus = 'reading';
   }
 
-  // Rule 2: progressCurrent reaches totalUnits (known) → completed.
+  // Rule 2: progressCurrent explicitly set and reaches threshold → auto-change to completed.
+  // IMPORTANT: gated on progressCurrentInInput — inherited progress is never re-evaluated.
+  // Without this gate, changing status from completed → reading (no progress in input) would
+  // trigger Rule 2 because current.progressCurrent still equals the threshold, immediately
+  // re-completing the readable and creating an unbreakable loop.
+  let rule2Fired = false;
   if (
+    progressCurrentInInput &&
     resolvedProgressCurrent !== null &&
-    effectiveProgressTotal !== null &&
-    resolvedProgressCurrent >= effectiveProgressTotal
+    effectiveCompletionThreshold !== null &&
+    resolvedProgressCurrent >= effectiveCompletionThreshold
   ) {
     resolvedStatus = 'completed';
+    rule2Fired = true;
   }
 
-  // Rule 3: Status completed + total known → set progressCurrent = totalUnits.
-  // Also handles the case where rule 2 just set status to completed.
-  if (resolvedStatus === 'completed' && effectiveProgressTotal !== null) {
-    resolvedProgressCurrent = effectiveProgressTotal;
+  // Rule 3: Pin progressCurrent to the threshold when:
+  //   a) Rule 2 just auto-completed (progress reached threshold), or
+  //   b) User explicitly selected completed via the status pills.
+  // This keeps the displayed position consistent with "done".
+  if ((rule2Fired || statusExplicitlyCompleted) && effectiveCompletionThreshold !== null) {
+    resolvedProgressCurrent = effectiveCompletionThreshold;
+  }
+
+  // Revert rule: If the readable is already completed (status inherited, not just set or
+  // auto-completed) and the user explicitly enters a progress value below the threshold,
+  // revert status to reading so they are not locked at 100%.
+  const userLoweringBelowThreshold =
+    progressCurrentInInput &&
+    resolvedProgressCurrent !== null &&
+    effectiveCompletionThreshold !== null &&
+    resolvedProgressCurrent < effectiveCompletionThreshold;
+  if (resolvedStatus === 'completed' && !rule2Fired && !statusExplicitlySet && userLoweringBelowThreshold) {
+    resolvedStatus = 'reading';
   }
 
   // Rule 5: Status want_to_read → clear progressCurrent.
@@ -102,9 +138,8 @@ export function applyUpdateConsistency(
   // The resolved values are unchanged when status = dnf.
 
   // isComplete coherence: isComplete=true with unknown totalUnits is semantically
-  // impossible (AO3 "Complete" always has a known chapter count). This fires when
-  // the ProgressEditor clears totalUnits on a record that was already marked complete,
-  // and also self-heals any pre-existing broken records on next write.
+  // impossible (AO3 "Complete" always has a known chapter count). Self-heals any
+  // pre-existing broken records on next write.
   let resolvedIsComplete = effectiveIsComplete;
   if (resolvedIsComplete === true && effectiveProgressTotal === null) {
     resolvedIsComplete = false;

@@ -76,7 +76,7 @@ function makeCreateInput(overrides: Partial<CreateReadableInput> = {}): CreateRe
 // ── applyUpdateConsistency ────────────────────────────────────────────────────
 
 describe('applyUpdateConsistency', () => {
-  // Rule 1: progress entered on want_to_read → auto-change to reading
+  // Rule 1: progress entered on want_to_read → reading
   describe('Rule 1: progress entered on want_to_read', () => {
     it('auto-changes status to reading when progressCurrent is entered', () => {
       const current = makeReadable({ status: 'want_to_read' });
@@ -105,36 +105,93 @@ describe('applyUpdateConsistency', () => {
     });
   });
 
-  // Rule 2: progressCurrent reaches totalUnits → completed
-  describe('Rule 2: progressCurrent reaches totalUnits', () => {
-    it('auto-changes status to completed when current equals total', () => {
-      const current = makeReadable({ status: 'reading', totalUnits: 300 });
-      const result = applyUpdateConsistency({ progressCurrent: 300 }, current);
-      expect(result.status).toBe('completed');
+  // Rule 2: progressCurrent explicitly set and reaches threshold → completed
+  describe('Rule 2: progressCurrent reaches completion threshold', () => {
+    describe('book — threshold is totalUnits', () => {
+      it('auto-changes status to completed when current equals total', () => {
+        const current = makeReadable({ status: 'reading', totalUnits: 300 });
+        const result = applyUpdateConsistency({ progressCurrent: 300 }, current);
+        expect(result.status).toBe('completed');
+      });
+
+      it('auto-changes status to completed when current exceeds total', () => {
+        const current = makeReadable({ status: 'reading', totalUnits: 300 });
+        const result = applyUpdateConsistency({ progressCurrent: 305 }, current);
+        expect(result.status).toBe('completed');
+      });
+
+      it('does NOT fire when current is less than total', () => {
+        const current = makeReadable({ status: 'reading', totalUnits: 300 });
+        const result = applyUpdateConsistency({ progressCurrent: 150 }, current);
+        expect(result.status).toBe('reading');
+      });
+
+      it('does NOT fire when total is unknown (null)', () => {
+        const current = makeReadable({ status: 'reading', totalUnits: null });
+        const result = applyUpdateConsistency({ progressCurrent: 100 }, current);
+        expect(result.status).toBe('reading');
+      });
+
+      it('does NOT fire when progressCurrent is not in input (prevents re-completion loop)', () => {
+        // User changes status from completed → reading. progressCurrent is still at
+        // the threshold in current, but Rule 2 must not re-evaluate inherited progress.
+        const current = makeReadable({
+          status: 'completed',
+          progressCurrent: 300,
+          totalUnits: 300,
+        });
+        const result = applyUpdateConsistency({ status: 'reading' }, current);
+        expect(result.status).toBe('reading');
+      });
     });
 
-    it('auto-changes status to completed when current exceeds total', () => {
-      const current = makeReadable({ status: 'reading', totalUnits: 300 });
-      const result = applyUpdateConsistency({ progressCurrent: 305 }, current);
-      expect(result.status).toBe('completed');
-    });
+    describe('fanfic — threshold is availableChapters (not totalUnits)', () => {
+      it('auto-completes when progressCurrent reaches availableChapters', () => {
+        const current = makeReadable({
+          kind: 'fanfic',
+          status: 'reading',
+          availableChapters: 10,
+          totalUnits: 20,
+        });
+        const result = applyUpdateConsistency({ progressCurrent: 10 }, current);
+        expect(result.status).toBe('completed');
+        expect(result.progressCurrent).toBe(10);
+      });
 
-    it('does NOT fire when current is less than total', () => {
-      const current = makeReadable({ status: 'reading', totalUnits: 300 });
-      const result = applyUpdateConsistency({ progressCurrent: 150 }, current);
-      expect(result.status).toBe('reading');
-    });
+      it('does NOT auto-complete when progressCurrent is below availableChapters', () => {
+        const current = makeReadable({
+          kind: 'fanfic',
+          status: 'reading',
+          availableChapters: 10,
+          totalUnits: 10,
+        });
+        const result = applyUpdateConsistency({ progressCurrent: 7 }, current);
+        expect(result.status).toBe('reading');
+      });
 
-    it('does NOT fire when total is unknown (null)', () => {
-      const current = makeReadable({ status: 'reading', totalUnits: null });
-      const result = applyUpdateConsistency({ progressCurrent: 100 }, current);
-      expect(result.status).toBe('reading');
+      it('falls back to totalUnits when availableChapters is null', () => {
+        const current = makeReadable({
+          kind: 'fanfic',
+          status: 'reading',
+          availableChapters: null,
+          totalUnits: 12,
+        });
+        const result = applyUpdateConsistency({ progressCurrent: 12 }, current);
+        expect(result.status).toBe('completed');
+      });
     });
   });
 
-  // Rule 3: status completed + total known → progressCurrent = totalUnits
-  describe('Rule 3: completed status synchronises progressCurrent to totalUnits', () => {
-    it('sets progressCurrent to totalUnits when status is set to completed', () => {
+  // Rule 3: progressCurrent pinned to threshold on auto-completion or explicit completed
+  describe('Rule 3: progressCurrent pinned to threshold', () => {
+    it('pins progressCurrent to totalUnits when Rule 2 fires', () => {
+      const current = makeReadable({ status: 'reading', totalUnits: 12 });
+      const result = applyUpdateConsistency({ progressCurrent: 12 }, current);
+      expect(result.status).toBe('completed');
+      expect(result.progressCurrent).toBe(12);
+    });
+
+    it('pins progressCurrent to totalUnits when status is explicitly set to completed', () => {
       const current = makeReadable({
         status: 'reading',
         progressCurrent: 200,
@@ -145,19 +202,74 @@ describe('applyUpdateConsistency', () => {
       expect(result.progressCurrent).toBe(420);
     });
 
-    it('also fires when rule 2 just set status to completed', () => {
-      const current = makeReadable({ status: 'reading', totalUnits: 12 });
-      const result = applyUpdateConsistency({ progressCurrent: 12 }, current);
+    it('pins to availableChapters (not totalUnits) for fanfic auto-completion', () => {
+      const current = makeReadable({
+        kind: 'fanfic',
+        status: 'reading',
+        availableChapters: 10,
+        totalUnits: 20,
+      });
+      const result = applyUpdateConsistency({ progressCurrent: 10 }, current);
       expect(result.status).toBe('completed');
-      expect(result.progressCurrent).toBe(12);
+      expect(result.progressCurrent).toBe(10);
     });
 
-    it('does NOT fire when total is unknown', () => {
+    it('pins to availableChapters when status explicitly set to completed on a fanfic', () => {
+      const current = makeReadable({
+        kind: 'fanfic',
+        status: 'reading',
+        progressCurrent: 5,
+        availableChapters: 10,
+        totalUnits: 20,
+      });
+      const result = applyUpdateConsistency({ status: 'completed' }, current);
+      expect(result.status).toBe('completed');
+      expect(result.progressCurrent).toBe(10);
+    });
+
+    it('does NOT fire when total/threshold is unknown', () => {
       const current = makeReadable({ status: 'reading', totalUnits: null });
       const result = applyUpdateConsistency({ status: 'completed' }, current);
       expect(result.status).toBe('completed');
-      // progressCurrent unchanged (total unknown)
       expect(result.progressCurrent).toBe(null);
+    });
+  });
+
+  // Revert rule: lowering progress on a completed readable reverts to reading
+  describe('Revert rule: lowering progress on completed readable reverts to reading', () => {
+    it('reverts to reading when user lowers progressCurrent below threshold', () => {
+      const current = makeReadable({
+        status: 'completed',
+        progressCurrent: 300,
+        totalUnits: 300,
+      });
+      const result = applyUpdateConsistency({ progressCurrent: 150 }, current);
+      expect(result.status).toBe('reading');
+      expect(result.progressCurrent).toBe(150);
+    });
+
+    it('does NOT revert when status was explicitly set alongside the progress change', () => {
+      // User sets both status=completed and progress in one update — their explicit
+      // status choice is respected and Rule 3 pins progress to threshold.
+      const current = makeReadable({
+        status: 'reading',
+        progressCurrent: 100,
+        totalUnits: 300,
+      });
+      const result = applyUpdateConsistency({ status: 'completed', progressCurrent: 100 }, current);
+      expect(result.status).toBe('completed');
+      expect(result.progressCurrent).toBe(300);
+    });
+
+    it('does NOT revert on a title-only update for a completed readable', () => {
+      const current = makeReadable({
+        status: 'completed',
+        progressCurrent: 300,
+        totalUnits: 300,
+      });
+      const result = applyUpdateConsistency({ title: 'New Title' }, current);
+      expect(result.status).toBe('completed');
+      expect(result.progressCurrent).toBe(300);
     });
   });
 
@@ -227,7 +339,7 @@ describe('applyUpdateConsistency', () => {
     it('progress entered that also reaches total → completed + progressCurrent=total', () => {
       const current = makeReadable({ status: 'want_to_read', totalUnits: 5 });
       const result = applyUpdateConsistency({ progressCurrent: 5 }, current);
-      // Rule 1 fires → reading, Rule 2 fires → completed, Rule 3 fires → current=5
+      // Rule 1 fires → reading, Rule 2 fires → completed, Rule 3 pins → current=5
       expect(result.status).toBe('completed');
       expect(result.progressCurrent).toBe(5);
     });
