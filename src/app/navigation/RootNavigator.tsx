@@ -8,6 +8,9 @@
 //
 // Edit flow: ReadableDetail → AddEditReadable (modal). After save, goBack() returns
 // to ReadableDetail.
+//
+// ReadableDetail uses headerShown: false — the screen manages its own back bar and
+// status bar via a hero gradient that bleeds into the status bar area.
 
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -29,7 +32,7 @@ export function RootNavigator() {
       <Stack.Screen
         name="ReadableDetail"
         component={ReadableDetailScreen}
-        options={{ presentation: 'modal', title: '' }}
+        options={{ presentation: 'modal', headerShown: false }}
       />
       <Stack.Screen
         name="QuickAddReadable"
@@ -39,12 +42,7 @@ export function RootNavigator() {
       <Stack.Screen
         name="AddEditReadable"
         component={AddEditScreen}
-        options={({ route }) => ({
-          presentation: 'modal',
-          title: route.params?.id !== undefined
-            ? 'Edit'
-            : route.params?.prefill?.kind === 'fanfic' ? 'Add Fanfic' : 'Add Book',
-        })}
+        options={{ presentation: 'modal', headerShown: false }}
       />
     </Stack.Navigator>
   );

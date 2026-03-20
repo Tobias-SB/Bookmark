@@ -140,9 +140,9 @@ export function AppThemeProvider({ children }: AppThemeProviderProps) {
   );
 
   // Resolve which MD3 theme to pass to PaperProvider.
-  // 'system' follows the device colour scheme; null system scheme falls back to light.
+  // 'system' follows the device colour scheme; 'unspecified' and null fall back to light.
   const effectiveMode: 'light' | 'dark' =
-    colorMode === 'system' ? (systemScheme ?? 'light') : colorMode;
+    colorMode === 'system' ? (systemScheme === 'dark' ? 'dark' : 'light') : colorMode;
   const resolvedTheme = THEME_REGISTRY[themeName][effectiveMode];
 
   return (
