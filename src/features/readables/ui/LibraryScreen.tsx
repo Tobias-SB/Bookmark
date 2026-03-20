@@ -1,27 +1,34 @@
 // src/features/readables/ui/LibraryScreen.tsx
-// v2 Phase 6 — Library screen with filter modal, active filter chips, and badge count.
+// UI Phase 2 — Redesigned LibraryScreen with new token system.
 //
 // Layout (top to bottom):
-//   Searchbar (with filter icon button + badge in header)
-//   → Active filter chips row (horizontal scroll, one chip per active filter)
-//   → Content area
-//   → FAB
+//   Compact header (absolute, z=10) — slides+fades in from above via scrollY interpolations
+//   Full header (title fades out, search+chips scroll naturally) — inside FlatList ListHeaderComponent
+//   → FlatList
+//       ListHeaderComponent: full header + result count OR "All readables" section label
+//       Cards with gap:9 spacing (no separators)
+//   → FAB (absolute)
 //
-// Filter state is a single ReadableFilters object — local, resets on remount.
-// Initialized from route.params.initialFilters on mount (if provided).
-// The filter modal operates on a draft copy; only commits on Apply.
+// Header animation: three native-thread Animated interpolations, fixed thresholds,
+// no JS state updates during scroll (no isCompact state, no layout measurement in the
+// animation path). Eliminates the flicker caused by inputRange recalculation.
 //
-// countActiveFilters and getFilterChipLabel are module-level pure functions.
+// All filter/sort/search behaviour is unchanged from v2.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Animated,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   ActivityIndicator,
-  Badge,
-  Chip,
   FAB,
-  IconButton,
-  Searchbar,
   Text,
 } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -192,6 +199,74 @@ function buildActiveChips(f: ReadableFilters): ActiveChip[] {
   return chips;
 }
 
+// ── Local sub-components ───────────────────────────────────────────────────────
+
+function FilterIcon({ color }: { color: string }) {
+  return (
+    <View style={{ gap: 4.5, alignItems: 'center' }}>
+      <View style={{ width: 16, height: 2, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: 11, height: 2, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: 6,  height: 2, borderRadius: 1, backgroundColor: color }} />
+    </View>
+  );
+}
+
+function FilterBadge({ count }: { count: number }) {
+  const theme = useAppTheme();
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        minWidth: 17,
+        height: 17,
+        borderRadius: 9,
+        backgroundColor: theme.colors.kindBook,
+        borderWidth: 2,
+        borderColor: theme.colors.backgroundPage,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 3,
+      }}
+    >
+      <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFFFFF' }}>
+        {count}
+      </Text>
+    </View>
+  );
+}
+
+function FilterButton({
+  onPress,
+  badgeCount,
+}: {
+  onPress: () => void;
+  badgeCount: number;
+}) {
+  const theme = useAppTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: theme.colors.backgroundInput,
+        borderWidth: 1,
+        borderColor: theme.colors.backgroundBorder,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={badgeCount > 0 ? `Filters, ${badgeCount} active` : 'Filters'}
+    >
+      <FilterIcon color={theme.colors.textBody} />
+      {badgeCount > 0 && <FilterBadge count={badgeCount} />}
+    </TouchableOpacity>
+  );
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function LibraryScreen() {
@@ -221,20 +296,53 @@ export function LibraryScreen() {
   );
 
   // ── Queries ───────────────────────────────────────────────────────────────
-  // Filtered list for display
   const { readables, isLoading, isError, error, refetch } = useReadables(effectiveFilters);
-  // Unfiltered full list — passed to FilterModal for live count
   const { readables: allReadables } = useReadables({});
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const activeChips = useMemo(() => buildActiveChips(filters), [filters]);
   const badgeCount = useMemo(() => countActiveFilters(filters), [filters]);
 
-  const hasActiveFilters =
-    search.trim() !== '' || activeChips.length > 0;
+  const hasActiveFilters = search.trim() !== '' || activeChips.length > 0;
 
   const isEmptyLibrary = readables.length === 0 && !isLoading && !isError && !hasActiveFilters;
   const isNoResults = readables.length === 0 && !isLoading && !isError && hasActiveFilters;
+
+  // ── Scroll-driven header animations (native thread only, no JS state) ───────
+  // scrollY feeds three interpolations:
+  //   largeTitleOpacity  — fades the large title+count out as you scroll
+  //   compactTranslateY  — slides the compact header down from above
+  //   compactOpacity     — fades the compact header in simultaneously
+  // Fixed thresholds (based on stable title section height) prevent the
+  // inputRange from ever shifting mid-scroll.
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const compactHeaderHeight = insets.top + 62;
+
+  const fadeStart = insets.top;
+  const fadeEnd = insets.top + 80; // paddingTop(16)+title(~32)+marginTop(2)+count(~18)+paddingBottom(12)
+
+  const largeTitleOpacity = scrollY.interpolate({
+    inputRange: [0, fadeStart + 40],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const compactTranslateY = scrollY.interpolate({
+    inputRange: [fadeStart, fadeEnd],
+    outputRange: [-compactHeaderHeight, 0],
+    extrapolate: 'clamp',
+  });
+
+  const compactOpacity = scrollY.interpolate({
+    inputRange: [fadeStart, fadeEnd],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const handleScroll = Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    { useNativeDriver: true },
+  );
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -258,30 +366,6 @@ export function LibraryScreen() {
     setFilterModalVisible(false);
   }
 
-  // ── Header filter button ─────────────────────────────────────────────────
-
-  useEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <View style={styles.headerRightContainer}>
-          <IconButton
-            icon="filter-variant"
-            size={24}
-            onPress={() => setFilterModalVisible(true)}
-            accessibilityLabel={
-              badgeCount > 0 ? `Filters (${badgeCount} active)` : 'Open filters'
-            }
-          />
-          {badgeCount > 0 && (
-            <Badge style={styles.badge} size={16}>
-              {badgeCount}
-            </Badge>
-          )}
-        </View>
-      ),
-    });
-  }, [navigation, badgeCount]);
-
   // ── FlatList helpers ──────────────────────────────────────────────────────
 
   const renderItem = useCallback(
@@ -291,62 +375,321 @@ export function LibraryScreen() {
     [handleItemPress],
   );
 
-  const renderSeparator = useCallback(
-    () => (
-      <View style={[styles.separator, { backgroundColor: theme.colors.outlineVariant }]} />
-    ),
-    [theme.colors.outlineVariant],
-  );
+  function renderListHeader() {
+    return (
+      <>
+        {hasActiveFilters && !isLoading && !isError && (
+          <Text
+            style={{
+              fontSize: 12,
+              color: theme.colors.textMeta,
+              paddingHorizontal: 18,
+              paddingTop: 2,
+              paddingBottom: 6,
+            }}
+          >
+            {readables.length === 1 ? '1 result' : `${readables.length} results`}
+          </Text>
+        )}
+        {!hasActiveFilters && (
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '600',
+              color: theme.colors.textMeta,
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+              paddingHorizontal: 18,
+              paddingTop: 8,
+              paddingBottom: 6,
+            }}
+          >
+            All readables
+          </Text>
+        )}
+      </>
+    );
+  }
+
+  // ── Header renders ────────────────────────────────────────────────────────
+
+  function renderChipsRow() {
+    if (activeChips.length === 0) return null;
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: 18, gap: 8, alignItems: 'center' }}
+        style={{ flexGrow: 0 }}
+      >
+        {activeChips.map((chip) => {
+          const isExclude = chip.tagMode === 'exclude';
+          return (
+            <View
+              key={chip.key}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                paddingLeft: 14,
+                paddingRight: 10,
+                paddingVertical: 6,
+                borderRadius: theme.radii.pill,
+                backgroundColor: isExclude
+                  ? theme.colors.dangerSubtle
+                  : theme.colors.kindBookSubtle,
+                borderWidth: 1,
+                borderColor: isExclude
+                  ? theme.colors.dangerBorder
+                  : theme.colors.kindBookBorder,
+                minHeight: 34,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Active filter: ${chip.label}. Tap × to remove.`}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '500',
+                  color: isExclude ? theme.colors.danger : theme.colors.kindBook,
+                }}
+              >
+                {chip.label}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setFilters((prev) => chip.onRemove(prev))}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: isExclude ? theme.colors.danger : theme.colors.kindBook,
+                    opacity: 0.6,
+                  }}
+                >
+                  ×
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </ScrollView>
+    );
+  }
+
+  function renderFullHeader() {
+    return (
+      <LinearGradient
+        colors={[theme.colors.backgroundInput, theme.colors.backgroundPage]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={{
+          paddingHorizontal: 18,
+          paddingTop: insets.top + 16,
+          paddingBottom: 12,
+        }}
+      >
+        {/* Title row — fades out as you scroll (native thread opacity) */}
+        <Animated.View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: 12,
+            opacity: largeTitleOpacity,
+          }}
+        >
+          <View>
+            <Text
+              style={{
+                fontSize: 26,
+                fontWeight: '500',
+                color: theme.colors.textPrimary,
+                letterSpacing: -0.5,
+              }}
+            >
+              Library
+            </Text>
+            <Text
+              style={{
+                fontSize: 13,
+                color: theme.colors.textMeta,
+                marginTop: 2,
+              }}
+            >
+              {allReadables.length} {allReadables.length === 1 ? 'readable' : 'readables'}
+            </Text>
+          </View>
+          <FilterButton
+            onPress={() => setFilterModalVisible(true)}
+            badgeCount={badgeCount}
+          />
+        </Animated.View>
+
+        {/* Search bar — scrolls naturally, no fade */}
+        <View
+          style={{
+            height: 46,
+            borderRadius: 23,
+            backgroundColor: theme.colors.backgroundCard,
+            borderWidth: 1,
+            borderColor: theme.colors.backgroundBorder,
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            gap: 10,
+            marginBottom: 8,
+            ...theme.shadows.small,
+          }}
+        >
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search by title or author"
+            placeholderTextColor={theme.colors.textHint}
+            style={{ flex: 1, fontSize: 14, color: theme.colors.textPrimary }}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            accessibilityLabel="Search by title or author"
+          />
+        </View>
+
+        {/* Active chips */}
+        {renderChipsRow()}
+      </LinearGradient>
+    );
+  }
+
+  function renderCompactHeader() {
+    return (
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 14,
+          paddingVertical: 9,
+          paddingTop: insets.top + 9,
+          backgroundColor: theme.colors.backgroundPage,
+          ...theme.shadows.small,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 18,
+            fontWeight: '500',
+            color: theme.colors.textPrimary,
+          }}
+        >
+          Library
+        </Text>
+        <View
+          style={{
+            flex: 1,
+            height: 38,
+            borderRadius: 19,
+            backgroundColor: theme.colors.backgroundCard,
+            borderWidth: 1,
+            borderColor: theme.colors.backgroundBorder,
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 14,
+            marginHorizontal: 8,
+          }}
+        >
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search by title or author"
+            placeholderTextColor={theme.colors.textHint}
+            style={{ flex: 1, fontSize: 14, color: theme.colors.textPrimary }}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            accessibilityLabel="Search by title or author"
+          />
+        </View>
+        <FilterButton
+          onPress={() => setFilterModalVisible(true)}
+          badgeCount={badgeCount}
+        />
+      </View>
+    );
+  }
 
   // ── Content area ──────────────────────────────────────────────────────────
 
   function renderContent() {
     if (isLoading) {
       return (
-        <View style={styles.centeredContent}>
-          <ActivityIndicator size="large" />
-        </View>
+        <>
+          {renderFullHeader()}
+          <View style={styles.centeredContent}>
+            <ActivityIndicator size="large" />
+          </View>
+        </>
       );
     }
 
     if (isError) {
       return (
-        <EmptyState
-          title="Something went wrong"
-          message={error?.message ?? 'Unable to load your library.'}
-          action={{ label: 'Try again', onPress: refetch }}
-        />
+        <>
+          {renderFullHeader()}
+          <EmptyState
+            title="Something went wrong"
+            message={error?.message ?? 'Unable to load your library.'}
+            action={{ label: 'Try again', onPress: refetch }}
+          />
+        </>
       );
     }
 
     if (isEmptyLibrary) {
       return (
-        <EmptyState
-          title="Your library is empty"
-          message="Add a book or fanfic to get started."
-          action={{ label: 'Add your first read', onPress: handleAddPress }}
-        />
+        <>
+          {renderFullHeader()}
+          <EmptyState
+            title="Your library is empty"
+            message="Add a book or fanfic to get started."
+            action={{ label: 'Add your first read', onPress: handleAddPress }}
+          />
+        </>
       );
     }
 
     if (isNoResults) {
       return (
-        <EmptyState
-          title="No matches"
-          message="Try adjusting your search or filters."
-          action={{ label: 'Reset filters', onPress: handleResetFilters }}
-        />
+        <>
+          {renderFullHeader()}
+          <EmptyState
+            title="No matches"
+            message="Try adjusting your search or filters."
+            action={{ label: 'Reset filters', onPress: handleResetFilters }}
+          />
+        </>
       );
     }
 
     return (
-      <FlatList
+      <Animated.FlatList
         data={readables}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        ItemSeparatorComponent={renderSeparator}
+        ListHeaderComponent={() => (
+          // marginHorizontal: -14 negates contentContainerStyle.paddingHorizontal so the
+          // full header renders edge-to-edge. renderListHeader scrolls naturally below it.
+          <View style={{ marginHorizontal: -14 }}>
+            {renderFullHeader()}
+            {renderListHeader()}
+          </View>
+        )}
         removeClippedSubviews={Platform.OS === 'android'}
-        contentContainerStyle={styles.listContent}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={{
+          paddingHorizontal: 14,
+          paddingBottom: insets.bottom + 88,
+          gap: 9,
+        }}
       />
     );
   }
@@ -354,59 +697,40 @@ export function LibraryScreen() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Search */}
-      <Searchbar
-        placeholder="Search by title or author"
-        value={search}
-        onChangeText={setSearch}
-        style={styles.searchbar}
-      />
+    <View style={{ flex: 1, backgroundColor: theme.colors.backgroundPage }}>
+      {/* Compact header — slides and fades in from above, driven by scrollY on the
+          native thread. translateY puts it physically off-screen when not in compact
+          mode, so pointerEvents='auto' is safe (off-screen views don't intercept touches). */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
+          opacity: compactOpacity,
+          transform: [{ translateY: compactTranslateY }],
+        }}
+        pointerEvents="auto"
+      >
+        {renderCompactHeader()}
+      </Animated.View>
 
-      {/* Active filter chips — horizontal scroll */}
-      {activeChips.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.chipsScroll}
-          contentContainerStyle={styles.chipsContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          {activeChips.map((chip) => (
-            <Chip
-              key={chip.key}
-              onClose={() => setFilters((prev) => chip.onRemove(prev))}
-              style={[
-                styles.chip,
-                chip.tagMode === 'include' && { backgroundColor: theme.colors.primaryContainer },
-                chip.tagMode === 'exclude' && { backgroundColor: theme.colors.errorContainer },
-              ]}
-              compact
-              accessibilityLabel={`Active filter: ${chip.label}. Tap × to remove.`}
-            >
-              {chip.label}
-            </Chip>
-          ))}
-        </ScrollView>
-      )}
-
-      {/* Result count when filters are active */}
-      {hasActiveFilters && !isLoading && !isError && (
-        <Text
-          variant="labelSmall"
-          style={[styles.resultCount, { color: theme.colors.textSecondary }]}
-        >
-          {readables.length === 1 ? '1 result' : `${readables.length} results`}
-        </Text>
-      )}
-
-      {/* Content: list / empty / loading / error */}
+      {/* Content: list / empty / loading / error.
+          In list mode the full header is inside FlatList ListHeaderComponent and scrolls
+          naturally. In non-list modes it renders at the top of the content area. */}
       <View style={styles.contentArea}>{renderContent()}</View>
 
       {/* FAB — add new readable */}
       <FAB
         icon="plus"
-        style={[styles.fab, { bottom: insets.bottom + 16 }]}
+        color="#FFFFFF"
+        style={{
+          position: 'absolute',
+          right: 16,
+          bottom: insets.bottom + 16,
+          backgroundColor: theme.colors.kindBook,
+        }}
         onPress={handleAddPress}
         accessibilityLabel="Add readable"
       />
@@ -426,39 +750,6 @@ export function LibraryScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 16,
-  },
-  headerRightContainer: {
-    position: 'relative',
-    marginRight: 4,
-  },
-  badge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-  },
-  searchbar: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-  },
-  chipsScroll: {
-    flexGrow: 0,
-    marginBottom: 4,
-  },
-  chipsContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-    alignItems: 'center',
-  },
-  chip: {
-    // Compact chips — Paper handles sizing
-  },
-  resultCount: {
-    marginHorizontal: 16,
-    marginBottom: 4,
-  },
   contentArea: {
     flex: 1,
   },
@@ -466,16 +757,5 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  listContent: {
-    // No extra padding — items provide their own
-  },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: 16,
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
   },
 });

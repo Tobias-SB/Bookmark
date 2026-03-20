@@ -1,24 +1,20 @@
 // src/features/wipUpdates/ui/UpdatesScreen.tsx
+// UI Phase 6 — UpdatesScreen redesign.
 // Notification inbox for WIP update records.
 //
 // Layout:
-//   - Header right: "Check for Updates" icon button (ActivityIndicator while pending)
+//   - Header right: "Check for Updates" styled button (ActivityIndicator while pending)
 //   - FlatList with bulk action row as ListHeaderComponent
-//   - Each card: title, author, summary, checkedAt date; tap to expand diff + mark read
+//   - Each card: floating card with left accent strip; unread vs read styling
 //   - ConfirmDialog for "Clear all"
 //   - Snackbar for check results and errors
 
 import React, { useCallback, useLayoutEffect, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
   ActivityIndicator,
-  Button,
-  Card,
-  Chip,
-  Divider,
   Portal,
   Snackbar,
-  Text,
 } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -53,20 +49,14 @@ function DiffRow({ label, before, after }: DiffRowProps) {
   const theme = useAppTheme();
   return (
     <View style={styles.diffRow}>
-      <Text
-        variant="labelSmall"
-        style={[styles.diffLabel, { color: theme.colors.textSecondary }]}
-      >
+      <Text style={[styles.diffLabel, { color: theme.colors.textMeta }]}>
         {label}
       </Text>
       <View style={styles.diffValues}>
-        <Text
-          variant="bodySmall"
-          style={{ color: theme.colors.textSecondary, textDecorationLine: 'line-through' }}
-        >
+        <Text style={{ color: theme.colors.textMeta, textDecorationLine: 'line-through', fontSize: 13 }}>
           {before}
         </Text>
-        <Text variant="bodySmall" style={{ color: theme.colors.textPrimary }}>
+        <Text style={{ color: theme.colors.textPrimary, fontSize: 13 }}>
           {after}
         </Text>
       </View>
@@ -87,32 +77,29 @@ function DiffListRow({ label, added, removed }: DiffListRowProps) {
   if (added.length === 0 && removed.length === 0) return null;
   return (
     <View style={styles.diffRow}>
-      <Text
-        variant="labelSmall"
-        style={[styles.diffLabel, { color: theme.colors.textSecondary }]}
-      >
+      <Text style={[styles.diffLabel, { color: theme.colors.textMeta }]}>
         {label}
       </Text>
       <View style={styles.diffChips}>
         {added.map(item => (
-          <Chip
+          <View
             key={`add-${item}`}
-            compact
-            style={[styles.diffChip, { backgroundColor: theme.colors.primaryContainer }]}
-            textStyle={{ color: theme.colors.onPrimaryContainer, fontSize: 11 }}
+            style={[styles.diffChip, { backgroundColor: theme.colors.statusCompletedBg, borderColor: theme.colors.statusCompletedBorder }]}
           >
-            + {item}
-          </Chip>
+            <Text style={{ color: theme.colors.statusCompletedText, fontSize: 11, fontWeight: '500' }}>
+              + {item}
+            </Text>
+          </View>
         ))}
         {removed.map(item => (
-          <Chip
+          <View
             key={`rem-${item}`}
-            compact
-            style={[styles.diffChip, { backgroundColor: theme.colors.errorContainer }]}
-            textStyle={{ color: theme.colors.onErrorContainer, fontSize: 11 }}
+            style={[styles.diffChip, { backgroundColor: theme.colors.dangerSubtle, borderColor: theme.colors.dangerBorder }]}
           >
-            – {item}
-          </Chip>
+            <Text style={{ color: theme.colors.danger, fontSize: 11, fontWeight: '500' }}>
+              – {item}
+            </Text>
+          </View>
         ))}
       </View>
     </View>
@@ -129,7 +116,7 @@ function ExpandedDiff({ update }: { update: WipUpdate }) {
   if (update.statusReverted) {
     rows.push(
       <View key="reverted" style={styles.diffRow}>
-        <Text variant="bodySmall" style={{ color: theme.colors.error }}>
+        <Text style={{ color: theme.colors.danger, fontSize: 13 }}>
           Status reverted: Completed → Reading (new chapters added)
         </Text>
       </View>,
@@ -139,7 +126,7 @@ function ExpandedDiff({ update }: { update: WipUpdate }) {
   if (!update.previousIsComplete && update.fetchedIsComplete === true) {
     rows.push(
       <View key="complete" style={styles.diffRow}>
-        <Text variant="bodySmall" style={{ color: theme.colors.primary }}>
+        <Text style={{ color: theme.colors.statusCompletedText, fontSize: 13 }}>
           Marked complete
         </Text>
       </View>,
@@ -247,7 +234,7 @@ function ExpandedDiff({ update }: { update: WipUpdate }) {
   if (rows.length === 0) return null;
 
   return (
-    <View style={[styles.expandedDiff, { borderTopColor: theme.colors.outlineVariant }]}>
+    <View style={[styles.expandedDiff, { borderTopColor: theme.colors.backgroundBorder }]}>
       {rows}
     </View>
   );
@@ -303,33 +290,37 @@ export function UpdatesScreen({ navigation }: Props) {
         isChecking ? (
           <ActivityIndicator
             size="small"
-            color={theme.colors.primary}
+            color={theme.colors.kindBook}
             style={styles.headerSpinner}
           />
         ) : (
-          <Button
-            mode="text"
+          <TouchableOpacity
             onPress={handleCheckPress}
-            textColor={theme.colors.primary}
-            style={styles.headerButton}
+            style={[
+              styles.checkButton,
+              {
+                backgroundColor: theme.colors.kindBookSubtle,
+                borderColor: theme.colors.kindBookBorder,
+              },
+            ]}
             accessibilityLabel="Check for updates"
+            accessibilityRole="button"
           >
-            Check for Updates
-          </Button>
+            <Text style={[styles.checkButtonText, { color: theme.colors.kindBook }]}>
+              Check now
+            </Text>
+          </TouchableOpacity>
         ),
     });
-  }, [navigation, isChecking, handleCheckPress, theme.colors.primary]);
+  }, [navigation, isChecking, handleCheckPress, theme]);
 
   // ── Card press ───────────────────────────────────────────────────────────────
 
   const handleCardPress = useCallback(
     (update: WipUpdate) => {
-      if (update.status === 'unread') {
-        markRead(update.id);
-      }
       setExpandedId(prev => (prev === update.id ? null : update.id));
     },
-    [markRead],
+    [],
   );
 
   // ── Bulk actions ─────────────────────────────────────────────────────────────
@@ -347,23 +338,51 @@ export function UpdatesScreen({ navigation }: Props) {
     ({ item }: { item: WipUpdate }) => {
       const isUnread = item.status === 'unread';
       const isExpanded = expandedId === item.id;
-      const cardBg = isUnread ? theme.colors.primaryContainer : theme.colors.surface;
 
       return (
-        <Card
-          style={[styles.card, { backgroundColor: cardBg }]}
+        <TouchableOpacity
           onPress={() => handleCardPress(item)}
+          activeOpacity={0.85}
+          style={[
+            styles.card,
+            isUnread
+              ? {
+                  backgroundColor: theme.colors.backgroundCard,
+                  borderWidth: 0,
+                  ...theme.shadows.card,
+                }
+              : {
+                  backgroundColor: theme.colors.backgroundInput,
+                  borderWidth: 1,
+                  borderColor: theme.colors.backgroundBorder,
+                },
+          ]}
           accessibilityLabel={`Update for ${item.readableTitle}${isUnread ? ', unread' : ''}`}
           accessibilityRole="button"
         >
-          <Card.Content style={styles.cardContent}>
+          {/* Left accent strip */}
+          <View
+            style={[
+              styles.cardAccent,
+              {
+                backgroundColor: isUnread
+                  ? theme.colors.kindBook
+                  : theme.colors.backgroundBorder,
+              },
+            ]}
+          />
+
+          {/* Card body */}
+          <View style={styles.cardBody}>
             <View style={styles.cardHeader}>
               <View style={styles.cardTitles}>
                 <Text
-                  variant="titleSmall"
                   style={[
-                    { color: isUnread ? theme.colors.onPrimaryContainer : theme.colors.textPrimary },
-                    isUnread && styles.unreadTitle,
+                    styles.cardTitle,
+                    {
+                      color: theme.colors.textPrimary,
+                      fontWeight: isUnread ? '600' : '400',
+                    },
                   ]}
                   numberOfLines={1}
                 >
@@ -371,12 +390,7 @@ export function UpdatesScreen({ navigation }: Props) {
                 </Text>
                 {item.readableAuthor ? (
                   <Text
-                    variant="bodySmall"
-                    style={{
-                      color: isUnread
-                        ? theme.colors.onPrimaryContainer
-                        : theme.colors.textSecondary,
-                    }}
+                    style={[styles.cardAuthor, { color: theme.colors.textBody }]}
                     numberOfLines={1}
                   >
                     {item.readableAuthor}
@@ -384,58 +398,69 @@ export function UpdatesScreen({ navigation }: Props) {
                 ) : null}
               </View>
               {isUnread ? (
-                <View
-                  style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]}
-                />
+                <View style={[styles.unreadDot, { backgroundColor: theme.colors.kindBook }]} />
               ) : null}
             </View>
 
             <Text
-              variant="bodySmall"
-              style={{
-                color: isUnread ? theme.colors.onPrimaryContainer : theme.colors.textSecondary,
-                marginTop: 4,
-              }}
+              style={[
+                styles.cardSummary,
+                { color: isUnread ? theme.colors.textBody : theme.colors.textMeta },
+              ]}
             >
               {summarizeWipUpdate(item)}
             </Text>
 
-            <Text
-              variant="labelSmall"
-              style={{
-                color: isUnread ? theme.colors.onPrimaryContainer : theme.colors.textDisabled,
-                marginTop: 4,
-              }}
-            >
+            <Text style={[styles.cardDate, { color: theme.colors.textMeta }]}>
               {new Date(item.checkedAt).toLocaleString()}
             </Text>
 
             {isExpanded ? <ExpandedDiff update={item} /> : null}
-          </Card.Content>
 
-          {/* Swipe-to-delete stub: single delete button in expanded view */}
-          {isExpanded ? (
-            <View>
-              <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
-              <Card.Actions style={styles.cardActions}>
-                <Button
-                  compact
-                  textColor={theme.colors.error}
+            {/* Card footer */}
+            <View style={[styles.cardFooter, { borderTopColor: theme.colors.backgroundBorder }]}>
+              {isUnread ? (
+                <Text style={[styles.expandHint, { color: theme.colors.textMeta }]}>
+                  {isExpanded ? 'Tap to collapse' : 'Tap to expand'}
+                </Text>
+              ) : (
+                <Text style={[styles.expandHint, { color: theme.colors.textMeta }]}>
+                  {isExpanded ? 'Tap to collapse' : 'Tap to expand'}
+                </Text>
+              )}
+              <View style={styles.cardFooterActions}>
+                {isUnread ? (
+                  <TouchableOpacity
+                    onPress={() => markRead(item.id)}
+                    style={styles.markReadButton}
+                    accessibilityLabel={`Mark update for ${item.readableTitle} as read`}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.markReadText, { color: theme.colors.kindBook }]}>
+                      Mark read
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
                   onPress={() => {
                     remove(item.id);
                     if (expandedId === item.id) setExpandedId(null);
                   }}
+                  style={styles.deleteButton}
                   accessibilityLabel={`Delete update for ${item.readableTitle}`}
+                  accessibilityRole="button"
                 >
-                  Delete
-                </Button>
-              </Card.Actions>
+                  <Text style={[styles.deleteButtonText, { color: theme.colors.danger }]}>
+                    Delete
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          ) : null}
-        </Card>
+          </View>
+        </TouchableOpacity>
       );
     },
-    [expandedId, handleCardPress, remove, theme],
+    [expandedId, handleCardPress, markRead, remove, theme],
   );
 
   // ── List header ───────────────────────────────────────────────────────────────
@@ -443,40 +468,65 @@ export function UpdatesScreen({ navigation }: Props) {
   const renderListHeader = useCallback(() => {
     if (!hasUpdates) return null;
     return (
-      <View style={[styles.bulkRow, { borderBottomColor: theme.colors.outlineVariant }]}>
+      <View style={[styles.bulkRow, { borderBottomColor: theme.colors.backgroundBorder }]}>
         {hasUnread ? (
-          <Button
-            compact
-            mode="text"
+          <TouchableOpacity
             onPress={() => markAllRead()}
-            loading={isMarkingAllRead}
             disabled={isMarkingAllRead}
+            style={[
+              styles.bulkButton,
+              {
+                backgroundColor: theme.colors.backgroundInput,
+                borderColor: theme.colors.backgroundBorder,
+                opacity: isMarkingAllRead ? 0.5 : 1,
+              },
+            ]}
             accessibilityLabel="Mark all updates as read"
+            accessibilityRole="button"
           >
-            Mark all read
-          </Button>
+            <Text style={[styles.bulkButtonText, { color: theme.colors.textBody }]}>
+              Mark all read
+            </Text>
+          </TouchableOpacity>
         ) : null}
         {hasRead ? (
-          <Button
-            compact
-            mode="text"
+          <TouchableOpacity
             onPress={() => clear('read')}
             disabled={isClearing}
+            style={[
+              styles.bulkButton,
+              {
+                backgroundColor: theme.colors.backgroundInput,
+                borderColor: theme.colors.backgroundBorder,
+                opacity: isClearing ? 0.5 : 1,
+              },
+            ]}
             accessibilityLabel="Clear read updates"
+            accessibilityRole="button"
           >
-            Clear read
-          </Button>
+            <Text style={[styles.bulkButtonText, { color: theme.colors.textBody }]}>
+              Clear read
+            </Text>
+          </TouchableOpacity>
         ) : null}
-        <Button
-          compact
-          mode="text"
-          textColor={theme.colors.error}
+        <TouchableOpacity
           onPress={() => setClearConfirmMode('all')}
           disabled={isClearing}
+          style={[
+            styles.bulkButton,
+            {
+              backgroundColor: theme.colors.dangerSubtle,
+              borderColor: theme.colors.dangerBorder,
+              opacity: isClearing ? 0.5 : 1,
+            },
+          ]}
           accessibilityLabel="Clear all updates"
+          accessibilityRole="button"
         >
-          Clear all
-        </Button>
+          <Text style={[styles.bulkButtonText, { color: theme.colors.danger }]}>
+            Clear all
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }, [hasUpdates, hasUnread, hasRead, markAllRead, isMarkingAllRead, clear, isClearing, theme]);
@@ -487,23 +537,17 @@ export function UpdatesScreen({ navigation }: Props) {
     if (isLoading) {
       return (
         <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <ActivityIndicator size="large" color={theme.colors.kindBook} />
         </View>
       );
     }
     return (
       <View style={styles.emptyContainer}>
-        <Text
-          variant="bodyLarge"
-          style={[styles.emptyTitle, { color: theme.colors.textSecondary }]}
-        >
+        <Text style={[styles.emptyTitle, { color: theme.colors.textBody }]}>
           No updates yet
         </Text>
-        <Text
-          variant="bodyMedium"
-          style={{ color: theme.colors.textDisabled, textAlign: 'center' }}
-        >
-          Tap "Check for Updates" to check your WIP fanfics for updates
+        <Text style={[styles.emptyBody, { color: theme.colors.textMeta }]}>
+          Tap "Check now" to check your WIP fanfics for updates
         </Text>
       </View>
     );
@@ -512,7 +556,7 @@ export function UpdatesScreen({ navigation }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.backgroundPage }]}>
       <FlatList
         data={updates}
         keyExtractor={item => item.id}
@@ -557,8 +601,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingHorizontal: 12,
-    paddingTop: 8,
+    paddingHorizontal: 14,
+    paddingTop: 10,
   },
   listContentEmpty: {
     flexGrow: 1,
@@ -567,18 +611,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    marginBottom: 8,
-    gap: 4,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    marginBottom: 10,
+    gap: 8,
+  },
+  bulkButton: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   card: {
-    marginBottom: 8,
-    borderRadius: 12,
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginBottom: 10,
+    flexDirection: 'row',
   },
-  cardContent: {
-    paddingTop: 12,
-    paddingBottom: 16,
+  cardAccent: {
+    width: 4,
+    alignSelf: 'stretch',
+  },
+  cardBody: {
+    flex: 1,
+    padding: 14,
+    paddingLeft: 12,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -589,30 +653,77 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  unreadTitle: {
-    fontWeight: '700',
+  cardTitle: {
+    fontSize: 15,
+  },
+  cardAuthor: {
+    fontSize: 13,
+    marginTop: 1,
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginTop: 4,
+    marginTop: 5,
   },
-  cardActions: {
-    justifyContent: 'flex-end',
-    paddingHorizontal: 4,
+  cardSummary: {
+    fontSize: 13,
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  cardDate: {
+    fontSize: 11,
+    marginTop: 5,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+  },
+  expandHint: {
+    fontSize: 11,
+  },
+  cardFooterActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  markReadButton: {
+    minHeight: 44,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markReadText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  deleteButton: {
+    minHeight: 44,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   expandedDiff: {
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: 10,
+    paddingTop: 10,
     paddingBottom: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     gap: 8,
   },
   diffRow: {
     gap: 2,
   },
   diffLabel: {
+    fontSize: 10,
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -628,7 +739,12 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 2,
   },
-  diffChip: {},
+  diffChip: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
@@ -637,12 +753,27 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyTitle: {
+    fontSize: 17,
+    fontWeight: '600',
     textAlign: 'center',
+  },
+  emptyBody: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   headerSpinner: {
     marginRight: 16,
   },
-  headerButton: {
+  checkButton: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     marginRight: 8,
+  },
+  checkButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

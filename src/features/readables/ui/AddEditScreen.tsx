@@ -1,5 +1,5 @@
 // src/features/readables/ui/AddEditScreen.tsx
-// §10 — Add/edit screen for books and fanfics.
+// UI Phase 4 — Section-card redesign with custom header, input styling, and chip groups.
 //
 // Modes:
 //   Add: reached from QuickAddReadable, which provides an AddEditPrefill in route params.
@@ -21,36 +21,40 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
+  LayoutChangeEvent,
   Platform,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput as RNTextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import {
   ActivityIndicator,
   Button,
-  Chip,
   HelperText,
   Portal,
-  RadioButton,
-  SegmentedButtons,
   Snackbar,
   Switch,
-  Text,
   TextInput,
 } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useHeaderHeight } from '@react-navigation/elements';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import type { RootStackParamList, AddEditPrefill } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
+import type { AppTheme } from '../../../app/theme/tokens';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import { todayLocalDate } from '../../../shared/utils/dates';
 import type { ReadableStatus, AO3Rating, AuthorType } from '../domain/readable';
-import { READABLE_STATUSES, STATUS_LABELS_SHORT, AO3_RATING_LABELS } from '../domain/readable';
+import {
+  READABLE_STATUSES,
+  STATUS_LABELS_SHORT,
+  AO3_RATING_LABELS,
+} from '../domain/readable';
 import { useReadable } from '../hooks/useReadable';
 import { useReadables } from '../hooks/useReadables';
 import { useCreateReadable } from '../hooks/useCreateReadable';
@@ -148,20 +152,13 @@ function getPrefillDefaultValues(prefill: AddEditPrefill): AddEditFormValues {
     relationships: Array.isArray(prefill.relationships) ? prefill.relationships.join(', ') : '',
     rating: prefill.rating ?? null,
     archiveWarnings: prefill.archiveWarnings ?? [],
-    // isAbandoned is always false here — confirmation alert sets it via setValue if needed.
     isAbandoned: false,
   };
 }
 
 function getEditDefaultValues(readable: Readable): AddEditFormValues {
-  // Apply isComplete coherence: if a record has isComplete=true but no totalUnits
-  // (a broken state), reset isComplete to false so the form opens in a valid state
-  // and the user isn't blocked from saving by the superRefine rule.
   const isComplete =
-    readable.isComplete === true && readable.totalUnits === null
-      ? false
-      : readable.isComplete;
-
+    readable.isComplete === true && readable.totalUnits === null ? false : readable.isComplete;
   return {
     kind: readable.kind,
     title: readable.title,
@@ -187,23 +184,102 @@ function getEditDefaultValues(readable: Readable): AddEditFormValues {
   };
 }
 
+// ── Status token helper ───────────────────────────────────────────────────────
+
+function getStatusTokens(
+  status: ReadableStatus,
+  theme: AppTheme,
+): { bg: string; text: string; border: string } {
+  switch (status) {
+    case 'reading':
+      return { bg: theme.colors.statusReadingBg, text: theme.colors.statusReadingText, border: theme.colors.statusReadingBorder };
+    case 'completed':
+      return { bg: theme.colors.statusCompletedBg, text: theme.colors.statusCompletedText, border: theme.colors.statusCompletedBorder };
+    case 'dnf':
+      return { bg: theme.colors.backgroundInput, text: theme.colors.textBody, border: theme.colors.backgroundBorder };
+    case 'want_to_read':
+    default:
+      return { bg: theme.colors.backgroundInput, text: theme.colors.textMeta, border: theme.colors.backgroundBorder };
+  }
+}
+
+// ── Section card sub-components ───────────────────────────────────────────────
+
+interface SectionCardProps {
+  label: string;
+  theme: AppTheme;
+  children: React.ReactNode;
+  fanficOnly?: boolean;
+}
+
+function SectionCard({ label, theme, children, fanficOnly }: SectionCardProps) {
+  return (
+    <View
+      style={[
+        styles.sectionCard,
+        { backgroundColor: theme.colors.backgroundCard, ...theme.shadows.card },
+      ]}
+    >
+      {/* Section header */}
+      <View
+        style={[
+          styles.sectionCardHeader,
+          { borderBottomColor: theme.colors.backgroundInput },
+        ]}
+      >
+        <View style={styles.sectionCardHeaderLeft}>
+          <Text
+            style={[styles.sectionCardLabel, { color: theme.colors.textMeta }]}
+          >
+            {label}
+          </Text>
+          {fanficOnly && (
+            <View
+              style={[
+                styles.fanficOnlyBadge,
+                { backgroundColor: theme.colors.kindFanficSubtle },
+              ]}
+            >
+              <Text style={[styles.fanficOnlyText, { color: theme.colors.kindFanfic }]}>
+                FANFIC ONLY
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+      {/* Fields */}
+      <View style={styles.sectionCardFields}>{children}</View>
+    </View>
+  );
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function AddEditScreen({ route, navigation }: Props) {
   const { id } = route.params;
   const isEditMode = id !== undefined;
   const theme = useAppTheme();
-  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
+
+  // Header height — measured via onLayout, used as keyboardVerticalOffset
+  const [headerHeight, setHeaderHeight] = useState(0);
+  function onHeaderLayout(e: LayoutChangeEvent) {
+    setHeaderHeight(e.nativeEvent.layout.height);
+  }
+
+  // Focused field tracking — for input styling
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   // Prefill — provided by QuickAddReadable in add mode, absent in edit mode.
   const prefill = route.params?.prefill;
   const hasPrefill = prefill !== undefined;
-  // wasPrefilled: import actually ran (not a manual skip) — used for "not found" notices.
   const wasPrefilled = hasPrefill && prefill!.sourceType !== 'manual';
 
-  // isAbandoned confirmation gate — only active in add mode when prefill signals abandoned.
+  // isAbandoned confirmation gate
   const needsAbandonedConfirmation = !isEditMode && prefill?.isAbandoned === true;
   const [hasConfirmedAbandoned, setHasConfirmedAbandoned] = useState(!needsAbandonedConfirmation);
 
-  // importContext — computed once from stable nav params. null for manual adds and edit mode.
+  // importContext
   const importContext: ImportContext | null =
     !isEditMode && hasPrefill && prefill!.sourceType !== 'manual'
       ? {
@@ -218,20 +294,16 @@ export function AddEditScreen({ route, navigation }: Props) {
         }
       : null;
 
-  // Fields the import tried but couldn't populate — shown as "Not found in import" notices.
-  // Computed once from stable nav params.
   const prefillMissingFields = useMemo<Set<string>>(() => {
     if (!wasPrefilled || !prefill) return new Set();
     const missing = new Set<string>();
     if (!prefill.title) missing.add('title');
     if (prefill.author === null || prefill.author === undefined) missing.add('author');
     if (!prefill.summary) missing.add('summary');
-    if (prefill.totalUnits === null || prefill.totalUnits === undefined) {
-      missing.add('totalUnits');
-    }
+    if (prefill.totalUnits === null || prefill.totalUnits === undefined) missing.add('totalUnits');
     return missing;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // stable — nav params don't change during screen lifetime
+  }, []);
 
   const {
     readable: existingReadable,
@@ -241,13 +313,9 @@ export function AddEditScreen({ route, navigation }: Props) {
     refetch: refetchExisting,
   } = useReadable(id ?? '');
 
-  // Fandom vocabulary — all unique fandom strings across existing fanfic readables.
-  // Computed once; reuses TanStack Query cache from library screen.
   const { readables: allReadables } = useReadables();
   const fandomVocabulary = useMemo<string[]>(() => {
-    const all = allReadables
-      .filter((r) => r.kind === 'fanfic')
-      .flatMap((r) => r.fandom);
+    const all = allReadables.filter((r) => r.kind === 'fanfic').flatMap((r) => r.fandom);
     return [...new Set(all)].sort();
   }, [allReadables]);
 
@@ -255,13 +323,9 @@ export function AddEditScreen({ route, navigation }: Props) {
     useForm<AddEditFormValues, unknown, AddEditFormOutput>({
       resolver: zodResolver(addEditSchema),
       defaultValues:
-        !isEditMode && hasPrefill
-          ? getPrefillDefaultValues(prefill!)
-          : getAddDefaultValues(),
+        !isEditMode && hasPrefill ? getPrefillDefaultValues(prefill!) : getAddDefaultValues(),
     });
 
-  // isFormReady: false in edit mode until the repository loads the readable.
-  // In add mode (with or without prefill), defaults are already computed — starts true.
   const [isFormReady, setIsFormReady] = useState(!isEditMode);
   const hasResetRef = useRef(false);
 
@@ -273,7 +337,7 @@ export function AddEditScreen({ route, navigation }: Props) {
     }
   }, [isEditMode, existingReadable, reset]);
 
-  // isAbandoned confirmation alert — fires once on mount when needed.
+  // isAbandoned confirmation alert
   const abandonedAlertFiredRef = useRef(false);
   useEffect(() => {
     if (!needsAbandonedConfirmation || abandonedAlertFiredRef.current) return;
@@ -289,10 +353,7 @@ export function AddEditScreen({ route, navigation }: Props) {
             setHasConfirmedAbandoned(true);
           },
         },
-        {
-          text: 'No, keep as WIP',
-          onPress: () => setHasConfirmedAbandoned(true),
-        },
+        { text: 'No, keep as WIP', onPress: () => setHasConfirmedAbandoned(true) },
       ],
     );
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -301,8 +362,6 @@ export function AddEditScreen({ route, navigation }: Props) {
   const watchedTotalUnits = watch('totalUnits');
   const watchedIsComplete = watch('isComplete');
 
-  // Sync isComplete when kind changes — only relevant in manual add mode without prefill
-  // (kind is locked when prefill is present, so this only fires on unmounted kind changes).
   useEffect(() => {
     if (!isEditMode && !hasPrefill) {
       setValue('isComplete', watchedKind === 'fanfic' ? false : null, { shouldDirty: false });
@@ -317,9 +376,7 @@ export function AddEditScreen({ route, navigation }: Props) {
 
   const savedRef = useRef(false);
   const isDirtyRef = useRef(formState.isDirty);
-  useEffect(() => {
-    isDirtyRef.current = formState.isDirty;
-  }, [formState.isDirty]);
+  useEffect(() => { isDirtyRef.current = formState.isDirty; }, [formState.isDirty]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
@@ -337,9 +394,9 @@ export function AddEditScreen({ route, navigation }: Props) {
     return unsubscribe;
   }, [navigation]);
 
-  // Local text state for fandom autocomplete input
   const [fandomInput, setFandomInput] = useState('');
 
+  // Refs for focus chain
   const authorRef = useRef<RNTextInput>(null);
   const sourceUrlRef = useRef<RNTextInput>(null);
   const progressCurrentRef = useRef<RNTextInput>(null);
@@ -357,8 +414,6 @@ export function AddEditScreen({ route, navigation }: Props) {
   const onSubmit = handleSubmit((data: AddEditFormOutput) => {
     const isoDateAdded = new Date(data.dateAdded + 'T00:00:00.000Z').toISOString();
     const isFanficSubmit = data.kind === 'fanfic';
-
-    // Split comma-separated relationships string → string[]
     const relationshipsArray = data.relationships
       ? data.relationships.split(',').map((r) => r.trim()).filter(Boolean)
       : [];
@@ -381,16 +436,13 @@ export function AddEditScreen({ route, navigation }: Props) {
         isbn: importContext?.isbn ?? null,
         coverUrl: importContext?.coverUrl ?? null,
         availableChapters: importContext?.availableChapters ?? null,
-        // Import-only fields from prefill (not form fields):
         authorType: importContext?.authorType ?? null,
         publishedAt: importContext?.publishedAt ?? null,
         ao3UpdatedAt: importContext?.ao3UpdatedAt ?? null,
-        // Shared v2 fields:
         notes: data.notes,
         seriesName: data.seriesName,
         seriesPart: data.seriesPart,
         seriesTotal: data.seriesTotal,
-        // Fanfic-only (repo enforces null/[]/false for books):
         wordCount: isFanficSubmit ? (data.wordCount ?? null) : null,
         fandom: isFanficSubmit ? (data.fandom ?? []) : [],
         relationships: isFanficSubmit ? relationshipsArray : [],
@@ -399,10 +451,7 @@ export function AddEditScreen({ route, navigation }: Props) {
         isAbandoned: isFanficSubmit ? (data.isAbandoned ?? false) : false,
       };
       create(createInput, {
-        onSuccess: () => {
-          savedRef.current = true;
-          navigation.popToTop();
-        },
+        onSuccess: () => { savedRef.current = true; navigation.popToTop(); },
         onError: (err) => showSnackbar(err.message),
       });
     } else if (existingReadable) {
@@ -422,7 +471,6 @@ export function AddEditScreen({ route, navigation }: Props) {
         seriesName: data.seriesName,
         seriesPart: data.seriesPart,
         seriesTotal: data.seriesTotal,
-        // Fanfic-only:
         wordCount: isFanficEdit ? (data.wordCount ?? null) : null,
         fandom: isFanficEdit ? (data.fandom ?? []) : [],
         relationships: isFanficEdit ? relationshipsArray : [],
@@ -433,22 +481,19 @@ export function AddEditScreen({ route, navigation }: Props) {
       update(
         { id: existingReadable.id, input: updateInput, current: existingReadable },
         {
-          onSuccess: () => {
-            savedRef.current = true;
-            navigation.goBack();
-          },
+          onSuccess: () => { savedRef.current = true; navigation.goBack(); },
           onError: (err) => showSnackbar(err.message),
         },
       );
     }
   });
 
-  // ── Error / loading / not-found guards (isError → isLoading → not-found) ──
+  // ── Guards ────────────────────────────────────────────────────────────────
 
   if (isEditMode && isExistingError) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text variant="bodyMedium" style={[styles.centeredMessage, { color: theme.colors.textSecondary }]}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.backgroundPage }]}>
+        <Text style={[styles.centeredMessage, { color: theme.colors.textBody }]}>
           {existingError?.message ?? 'Failed to load readable.'}
         </Text>
         <Button mode="outlined" onPress={refetchExisting}>Try again</Button>
@@ -458,7 +503,7 @@ export function AddEditScreen({ route, navigation }: Props) {
 
   if (!isFormReady || !hasConfirmedAbandoned) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.backgroundPage }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -466,8 +511,8 @@ export function AddEditScreen({ route, navigation }: Props) {
 
   if (isEditMode && !isLoadingExisting && !existingReadable) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text variant="bodyMedium" style={{ color: theme.colors.textSecondary }}>Readable not found.</Text>
+      <View style={[styles.centered, { backgroundColor: theme.colors.backgroundPage }]}>
+        <Text style={{ color: theme.colors.textBody }}>Readable not found.</Text>
       </View>
     );
   }
@@ -476,246 +521,235 @@ export function AddEditScreen({ route, navigation }: Props) {
   const progressUnit = isFanfic ? 'chapters' : 'pages';
   const showIsCompleteHint = isFanfic && watchedIsComplete === true && watchedTotalUnits.trim() === '';
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // Derived header title
+  const headerTitle = isEditMode
+    ? 'Edit'
+    : isFanfic
+    ? 'Add Fanfic'
+    : 'Add Book';
+
+  // ── Input styling helper ──────────────────────────────────────────────────
+
+  function inputOutlineStyle(fieldName: string) {
+    const focused = focusedField === fieldName;
+    return {
+      borderColor: focused ? theme.colors.kindBook : theme.colors.backgroundBorder,
+      borderRadius: 11,
+      borderWidth: 1.5,
+    };
+  }
+
+  function inputContentStyle(fieldName: string) {
+    const focused = focusedField === fieldName;
+    return {
+      backgroundColor: focused ? theme.colors.backgroundCard : theme.colors.backgroundInput,
+    };
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={headerHeight}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+    <View style={[styles.container, { backgroundColor: theme.colors.backgroundPage }]}>
+      {/* ── Custom header ──────────────────────────────────────────────────── */}
+      <View
+        onLayout={onHeaderLayout}
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top,
+            backgroundColor: theme.colors.backgroundPage,
+            borderBottomColor: theme.colors.backgroundBorder,
+          },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.headerButton}
+          accessibilityLabel="Cancel"
+          accessibilityRole="button"
+        >
+          <Text style={[styles.headerButtonText, { color: theme.colors.kindBook }]}>Cancel</Text>
+        </TouchableOpacity>
 
-        {/* ── Kind selector (add mode, no prefill only — kind locked when prefill present) ── */}
-        {!isEditMode && !hasPrefill && (
-          <View style={styles.section}>
-            <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Kind *</Text>
-            <Controller
-              control={control}
-              name="kind"
-              render={({ field }) => (
-                <SegmentedButtons
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  buttons={[{ value: 'book', label: 'Book' }, { value: 'fanfic', label: 'Fanfic' }]}
-                />
-              )}
-            />
-          </View>
-        )}
+        <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>
+          {headerTitle}
+        </Text>
 
-        {/* ── Title ──────────────────────────────────────────────────────────── */}
-        <Controller
-          control={control}
-          name="title"
-          render={({ field, fieldState }) => (
-            <View style={styles.fieldWrapper}>
-              <TextInput
-                label="Title *"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="next"
-                onSubmitEditing={() => authorRef.current?.focus()}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Title, required"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>{fieldState.error.message}</HelperText>
-              )}
-              {!fieldState.error && prefillMissingFields.has('title') && (
-                <HelperText type="info" visible>Not found in import — please enter a title.</HelperText>
-              )}
-            </View>
-          )}
-        />
-
-        {/* ── Author ─────────────────────────────────────────────────────────── */}
-        <Controller
-          control={control}
-          name="author"
-          render={({ field, fieldState }) => (
-            <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={authorRef}
-                label="Author"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="next"
-                onSubmitEditing={() => sourceUrlRef.current?.focus()}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Author"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>{fieldState.error.message}</HelperText>
-              )}
-              {!fieldState.error && prefillMissingFields.has('author') && (
-                <HelperText type="info" visible>Not found in import</HelperText>
-              )}
-            </View>
-          )}
-        />
-
-        {/* ── Status ─────────────────────────────────────────────────────────── */}
-        <View style={styles.section}>
-          <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Status *</Text>
-          <Controller
-            control={control}
-            name="status"
-            render={({ field }) => (
-              <SegmentedButtons
-                value={field.value}
-                onValueChange={field.onChange}
-                buttons={READABLE_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS_SHORT[s] }))}
-              />
-            )}
-          />
-        </View>
-
-        {/* ── Source URL ─────────────────────────────────────────────────────── */}
-        <Controller
-          control={control}
-          name="sourceUrl"
-          render={({ field, fieldState }) => (
-            <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={sourceUrlRef}
-                label={isFanfic ? 'AO3 Work URL' : 'Source URL'}
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="next"
-                onSubmitEditing={() => progressCurrentRef.current?.focus()}
-                keyboardType="url"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel={isFanfic ? 'AO3 work URL' : 'Source URL'}
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>{fieldState.error.message}</HelperText>
-              )}
-            </View>
-          )}
-        />
-
-        {/* ── Progress ───────────────────────────────────────────────────────── */}
-        <View style={styles.section}>
-          <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>
-            Progress ({progressUnit})
+        <TouchableOpacity
+          onPress={onSubmit}
+          disabled={isSaving}
+          style={styles.headerButton}
+          accessibilityLabel={isEditMode ? 'Save changes' : 'Add to library'}
+          accessibilityRole="button"
+        >
+          <Text
+            style={[
+              styles.headerSaveText,
+              { color: isSaving ? theme.colors.textMeta : theme.colors.kindBook },
+            ]}
+          >
+            Save
           </Text>
-          <View style={styles.progressRow}>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Form ───────────────────────────────────────────────────────────── */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={headerHeight}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 32 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+
+          {/* ── BASICS CARD ─────────────────────────────────────────────────── */}
+          <SectionCard label="BASICS" theme={theme}>
+
+            {/* Kind selector — add mode, no prefill only */}
+            {!isEditMode && !hasPrefill && (
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>KIND</Text>
+                <Controller
+                  control={control}
+                  name="kind"
+                  render={({ field }) => (
+                    <View style={styles.chipRow}>
+                      {(['book', 'fanfic'] as const).map((k) => {
+                        const isActive = field.value === k;
+                        const activeBg = k === 'book' ? theme.colors.kindBookSubtle : theme.colors.kindFanficSubtle;
+                        const activeBorder = k === 'book' ? theme.colors.kindBookBorder : theme.colors.kindFanficBorder;
+                        const activeText = k === 'book' ? theme.colors.kindBook : theme.colors.kindFanfic;
+                        return (
+                          <TouchableOpacity
+                            key={k}
+                            onPress={() => field.onChange(k)}
+                            style={[
+                              styles.statusChip,
+                              {
+                                backgroundColor: isActive ? activeBg : theme.colors.backgroundInput,
+                                borderColor: isActive ? activeBorder : theme.colors.backgroundBorder,
+                              },
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: isActive }}
+                          >
+                            <Text
+                              style={[
+                                styles.statusChipText,
+                                {
+                                  color: isActive ? activeText : theme.colors.textBody,
+                                  fontWeight: isActive ? '600' : '500',
+                                },
+                              ]}
+                            >
+                              {k === 'book' ? 'Book' : 'Fanfic'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                />
+              </View>
+            )}
+
+            {/* Title */}
             <Controller
               control={control}
-              name="progressCurrent"
+              name="title"
               render={({ field, fieldState }) => (
-                <View style={styles.progressField}>
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>TITLE *</Text>
                   <TextInput
-                    ref={progressCurrentRef}
-                    label="Current"
                     value={field.value}
                     onChangeText={field.onChange}
-                    onBlur={field.onBlur}
+                    onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                    onFocus={() => setFocusedField('title')}
                     error={!!fieldState.error}
-                    keyboardType="number-pad"
                     returnKeyType="next"
-                    onSubmitEditing={() => totalUnitsRef.current?.focus()}
-                    style={styles.input}
+                    onSubmitEditing={() => authorRef.current?.focus()}
                     mode="outlined"
-                    accessibilityLabel={`Current ${progressUnit}`}
+                    placeholder="Title"
+                    placeholderTextColor={theme.colors.textHint}
+                    outlineStyle={inputOutlineStyle('title')}
+                    contentStyle={inputContentStyle('title')}
+                    accessibilityLabel="Title, required"
                   />
                   {fieldState.error && (
                     <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                  )}
+                  {!fieldState.error && prefillMissingFields.has('title') && (
+                    <HelperText type="info" visible>Not found in import — please enter a title.</HelperText>
                   )}
                 </View>
               )}
             />
+
+            {/* Author */}
             <Controller
               control={control}
-              name="totalUnits"
+              name="author"
               render={({ field, fieldState }) => (
-                <View style={styles.progressField}>
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>AUTHOR</Text>
                   <TextInput
-                    ref={totalUnitsRef}
-                    label="Total"
+                    ref={authorRef}
                     value={field.value}
                     onChangeText={field.onChange}
-                    onBlur={field.onBlur}
+                    onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                    onFocus={() => setFocusedField('author')}
                     error={!!fieldState.error}
-                    keyboardType="number-pad"
                     returnKeyType="next"
-                    onSubmitEditing={() => isFanfic ? wordCountRef.current?.focus() : summaryRef.current?.focus()}
-                    style={styles.input}
+                    onSubmitEditing={() => sourceUrlRef.current?.focus()}
                     mode="outlined"
-                    accessibilityLabel={`Total ${progressUnit}`}
+                    placeholder="Author"
+                    placeholderTextColor={theme.colors.textHint}
+                    outlineStyle={inputOutlineStyle('author')}
+                    contentStyle={inputContentStyle('author')}
+                    accessibilityLabel="Author"
                   />
                   {fieldState.error && (
                     <HelperText type="error" visible>{fieldState.error.message}</HelperText>
                   )}
-                  {!fieldState.error && showIsCompleteHint && (
-                    <HelperText type="info" visible>Set total chapters to mark as complete</HelperText>
-                  )}
-                  {!fieldState.error && !showIsCompleteHint && prefillMissingFields.has('totalUnits') && (
+                  {!fieldState.error && prefillMissingFields.has('author') && (
                     <HelperText type="info" visible>Not found in import</HelperText>
                   )}
                 </View>
               )}
             />
-          </View>
-        </View>
 
-        {/* ── isComplete toggle (fanfic only) ────────────────────────────────── */}
-        {isFanfic && (
-          <View style={styles.section}>
-            <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Completion status</Text>
+            {/* Source URL */}
             <Controller
               control={control}
-              name="isComplete"
-              render={({ field }) => (
-                <View style={styles.switchRow}>
-                  <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                    {field.value === true ? 'Complete' : 'WIP (work in progress)'}
-                  </Text>
-                  <Switch
-                    value={field.value === true}
-                    onValueChange={(v) => field.onChange(v)}
-                    accessibilityLabel="Mark as complete"
-                  />
-                </View>
-              )}
-            />
-          </View>
-        )}
-
-        {/* ── Fanfic-only fields ──────────────────────────────────────────────── */}
-        {isFanfic && (
-          <>
-            {/* Word count */}
-            <Controller
-              control={control}
-              name="wordCount"
+              name="sourceUrl"
               render={({ field, fieldState }) => (
-                <View style={styles.fieldWrapper}>
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>
+                    {isFanfic ? 'AO3 WORK URL' : 'SOURCE URL'}
+                  </Text>
                   <TextInput
-                    ref={wordCountRef}
-                    label="Word count"
-                    value={field.value ?? ''}
+                    ref={sourceUrlRef}
+                    value={field.value}
                     onChangeText={field.onChange}
-                    onBlur={field.onBlur}
+                    onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                    onFocus={() => setFocusedField('sourceUrl')}
                     error={!!fieldState.error}
-                    keyboardType="number-pad"
                     returnKeyType="next"
-                    onSubmitEditing={() => summaryRef.current?.focus()}
-                    style={styles.input}
+                    onSubmitEditing={() => progressCurrentRef.current?.focus()}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
                     mode="outlined"
-                    accessibilityLabel="Word count"
+                    placeholder={isFanfic ? 'https://archiveofourown.org/works/...' : 'https://...'}
+                    placeholderTextColor={theme.colors.textHint}
+                    outlineStyle={inputOutlineStyle('sourceUrl')}
+                    contentStyle={inputContentStyle('sourceUrl')}
+                    accessibilityLabel={isFanfic ? 'AO3 work URL' : 'Source URL'}
                   />
                   {fieldState.error && (
                     <HelperText type="error" visible>{fieldState.error.message}</HelperText>
@@ -724,344 +758,677 @@ export function AddEditScreen({ route, navigation }: Props) {
               )}
             />
 
-            {/* isAbandoned switch */}
-            <View style={styles.section}>
-              <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Abandoned</Text>
+            {/* Summary */}
+            <Controller
+              control={control}
+              name="summary"
+              render={({ field, fieldState }) => (
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>SUMMARY</Text>
+                  <TextInput
+                    ref={summaryRef}
+                    value={field.value}
+                    onChangeText={field.onChange}
+                    onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                    onFocus={() => setFocusedField('summary')}
+                    error={!!fieldState.error}
+                    multiline
+                    numberOfLines={4}
+                    mode="outlined"
+                    placeholder="Brief summary..."
+                    placeholderTextColor={theme.colors.textHint}
+                    outlineStyle={inputOutlineStyle('summary')}
+                    contentStyle={[inputContentStyle('summary'), styles.multilineContent]}
+                    accessibilityLabel="Summary"
+                  />
+                  {fieldState.error && (
+                    <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                  )}
+                  {!fieldState.error && prefillMissingFields.has('summary') && (
+                    <HelperText type="info" visible>Not found in import</HelperText>
+                  )}
+                </View>
+              )}
+            />
+          </SectionCard>
+
+          {/* ── STATUS & PROGRESS CARD ──────────────────────────────────────── */}
+          <SectionCard label="STATUS & PROGRESS" theme={theme}>
+
+            {/* Status chips */}
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>STATUS *</Text>
               <Controller
                 control={control}
-                name="isAbandoned"
+                name="status"
                 render={({ field }) => (
-                  <View style={styles.switchRow}>
-                    <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                      {field.value ? 'Marked as abandoned' : 'Not abandoned'}
-                    </Text>
-                    <Switch
-                      value={field.value === true}
-                      onValueChange={(v) => field.onChange(v)}
-                      accessibilityLabel="Mark as abandoned"
-                    />
+                  <View style={[styles.chipRow, { flexWrap: 'wrap' }]}>
+                    {READABLE_STATUSES.map((s) => {
+                      const isActive = field.value === s;
+                      const tok = getStatusTokens(s, theme);
+                      return (
+                        <TouchableOpacity
+                          key={s}
+                          onPress={() => field.onChange(s)}
+                          style={[
+                            styles.statusChip,
+                            {
+                              backgroundColor: isActive ? tok.bg : theme.colors.backgroundInput,
+                              borderColor: isActive ? tok.border : theme.colors.backgroundBorder,
+                            },
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isActive }}
+                        >
+                          <Text
+                            style={[
+                              styles.statusChipText,
+                              {
+                                color: isActive ? tok.text : theme.colors.textBody,
+                                fontWeight: isActive ? '600' : '500',
+                              },
+                            ]}
+                          >
+                            {STATUS_LABELS_SHORT[s]}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 )}
               />
             </View>
 
-            {/* Rating */}
-            <View style={styles.section}>
-              <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Rating</Text>
-              <Controller
-                control={control}
-                name="rating"
-                render={({ field }) => (
-                  <RadioButton.Group
-                    value={field.value ?? '__none__'}
-                    onValueChange={(v) => field.onChange(v === '__none__' ? null : (v as AO3Rating))}
-                  >
-                    <View style={styles.radioItem}>
-                      <RadioButton.Item
-                        label="Not specified"
-                        value="__none__"
-                        status={field.value == null ? 'checked' : 'unchecked'}
-                        labelStyle={{ color: theme.colors.textPrimary }}
-                      />
-                    </View>
-                    {(Object.keys(AO3_RATING_LABELS) as AO3Rating[]).map((r) => (
-                      <View key={r} style={styles.radioItem}>
-                        <RadioButton.Item
-                          label={AO3_RATING_LABELS[r]}
-                          value={r}
-                          status={field.value === r ? 'checked' : 'unchecked'}
-                          labelStyle={{ color: theme.colors.textPrimary }}
-                        />
-                      </View>
-                    ))}
-                  </RadioButton.Group>
-                )}
-              />
-            </View>
-
-            {/* Archive warnings */}
-            <View style={styles.section}>
-              <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Archive warnings</Text>
-              <Controller
-                control={control}
-                name="archiveWarnings"
-                render={({ field }) => {
-                  const selected = field.value ?? [];
-                  return (
-                    <View style={styles.chipWrap}>
-                      {CANONICAL_ARCHIVE_WARNINGS.map((warning) => {
-                        const isSelected = selected.includes(warning);
-                        return (
-                          <Chip
-                            key={warning}
-                            selected={isSelected}
-                            mode={isSelected ? 'flat' : 'outlined'}
-                            onPress={() => {
-                              const next = isSelected
-                                ? selected.filter((w) => w !== warning)
-                                : [...selected, warning];
-                              field.onChange(next);
-                            }}
-                            style={styles.chip}
-                            accessibilityLabel={`Archive warning: ${warning}`}
-                          >
-                            {warning}
-                          </Chip>
-                        );
-                      })}
-                    </View>
-                  );
-                }}
-              />
-            </View>
-
-            {/* Fandom autocomplete */}
-            <View style={styles.section}>
-              <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Fandom</Text>
-              <Controller
-                control={control}
-                name="fandom"
-                render={({ field }) => {
-                  const confirmed = field.value ?? [];
-                  const trimmedInput = fandomInput.trim();
-                  const filtered = fandomVocabulary.filter(
-                    (f) =>
-                      f.toLowerCase().includes(trimmedInput.toLowerCase()) &&
-                      !confirmed.includes(f),
-                  );
-                  const isNewEntry =
-                    trimmedInput.length > 0 &&
-                    !fandomVocabulary.some(
-                      (f) => f.toLowerCase() === trimmedInput.toLowerCase(),
-                    ) &&
-                    !confirmed.includes(trimmedInput);
-
-                  const appendFandom = (value: string) => {
-                    field.onChange([...confirmed, value]);
-                    setFandomInput('');
-                  };
-
-                  return (
-                    <>
-                      {/* Confirmed fandom chips */}
-                      {confirmed.length > 0 && (
-                        <View style={[styles.chipWrap, styles.chipWrapBottom]}>
-                          {confirmed.map((f) => (
-                            <Chip
-                              key={f}
-                              onClose={() => field.onChange(confirmed.filter((x) => x !== f))}
-                              style={styles.chip}
-                              accessibilityLabel={`Remove fandom: ${f}`}
-                            >
-                              {f}
-                            </Chip>
-                          ))}
-                        </View>
-                      )}
-
-                      {/* Fandom text input */}
+            {/* Progress */}
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>
+                {`PROGRESS (${progressUnit.toUpperCase()})`}
+              </Text>
+              <View style={styles.progressRow}>
+                <Controller
+                  control={control}
+                  name="progressCurrent"
+                  render={({ field, fieldState }) => (
+                    <View style={styles.progressField}>
                       <TextInput
-                        label="Add fandom"
-                        value={fandomInput}
-                        onChangeText={setFandomInput}
-                        style={styles.input}
+                        ref={progressCurrentRef}
+                        value={field.value}
+                        onChangeText={field.onChange}
+                        onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                        onFocus={() => setFocusedField('progressCurrent')}
+                        error={!!fieldState.error}
+                        keyboardType="number-pad"
+                        returnKeyType="next"
+                        onSubmitEditing={() => totalUnitsRef.current?.focus()}
                         mode="outlined"
-                        returnKeyType="done"
-                        onSubmitEditing={() => {
-                          if (trimmedInput.length > 0 && !confirmed.includes(trimmedInput)) {
-                            appendFandom(trimmedInput);
-                          }
-                        }}
-                        accessibilityLabel="Add fandom"
+                        placeholder="Current"
+                        placeholderTextColor={theme.colors.textHint}
+                        outlineStyle={inputOutlineStyle('progressCurrent')}
+                        contentStyle={inputContentStyle('progressCurrent')}
+                        accessibilityLabel={`Current ${progressUnit}`}
                       />
-
-                      {/* Suggestions */}
-                      {trimmedInput.length > 0 && (
-                        <View style={[styles.chipWrap, styles.chipWrapTop]}>
-                          {filtered.map((f) => (
-                            <Chip
-                              key={f}
-                              mode="outlined"
-                              onPress={() => appendFandom(f)}
-                              style={styles.chip}
-                              accessibilityLabel={`Add fandom: ${f}`}
-                            >
-                              {f}
-                            </Chip>
-                          ))}
-                          {isNewEntry && (
-                            <Chip
-                              mode="outlined"
-                              onPress={() => appendFandom(trimmedInput)}
-                              style={styles.chip}
-                              accessibilityLabel={`Add new fandom: ${trimmedInput}`}
-                            >
-                              Add: {trimmedInput}
-                            </Chip>
-                          )}
-                        </View>
+                      {fieldState.error && (
+                        <HelperText type="error" visible>{fieldState.error.message}</HelperText>
                       )}
-                    </>
-                  );
-                }}
-              />
-            </View>
-
-            {/* Relationships */}
-            <Controller
-              control={control}
-              name="relationships"
-              render={({ field, fieldState }) => (
-                <View style={styles.fieldWrapper}>
-                  <TextInput
-                    ref={relationshipsRef}
-                    label="Relationships"
-                    value={field.value ?? ''}
-                    onChangeText={field.onChange}
-                    onBlur={field.onBlur}
-                    error={!!fieldState.error}
-                    returnKeyType="next"
-                    onSubmitEditing={() => summaryRef.current?.focus()}
-                    style={styles.input}
-                    mode="outlined"
-                    accessibilityLabel="Relationships, separate with commas"
-                  />
-                  <HelperText type="info" visible={!fieldState.error}>Separate with commas</HelperText>
-                  {fieldState.error && (
-                    <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                    </View>
                   )}
-                </View>
-              )}
-            />
-          </>
-        )}
-
-        {/* ── Summary ─────────────────────────────────────────────────────────── */}
-        <Controller
-          control={control}
-          name="summary"
-          render={({ field, fieldState }) => (
-            <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={summaryRef}
-                label="Summary"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                multiline
-                numberOfLines={4}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Summary"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>{fieldState.error.message}</HelperText>
-              )}
-              {!fieldState.error && prefillMissingFields.has('summary') && (
-                <HelperText type="info" visible>Not found in import</HelperText>
-              )}
-            </View>
-          )}
-        />
-
-        {/* ── Tags ─────────────────────────────────────────────────────────────── */}
-        <Controller
-          control={control}
-          name="tags"
-          render={({ field, fieldState }) => (
-            <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={tagsRef}
-                label="Tags (comma-separated)"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="next"
-                onSubmitEditing={() => seriesNameRef.current?.focus()}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Tags, comma separated"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>{fieldState.error.message}</HelperText>
-              )}
-            </View>
-          )}
-        />
-
-        {/* ── Series ───────────────────────────────────────────────────────────── */}
-        <View style={styles.section}>
-          <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>Series</Text>
-          <Controller
-            control={control}
-            name="seriesName"
-            render={({ field, fieldState }) => (
-              <View style={styles.fieldWrapper}>
-                <TextInput
-                  ref={seriesNameRef}
-                  label="Series name"
-                  value={field.value ?? ''}
-                  onChangeText={field.onChange}
-                  onBlur={field.onBlur}
-                  error={!!fieldState.error}
-                  returnKeyType="next"
-                  onSubmitEditing={() => seriesPartRef.current?.focus()}
-                  style={styles.input}
-                  mode="outlined"
-                  accessibilityLabel="Series name"
                 />
-                {fieldState.error && (
-                  <HelperText type="error" visible>{fieldState.error.message}</HelperText>
-                )}
-              </View>
-            )}
-          />
-          <View style={styles.progressRow}>
-            <Controller
-              control={control}
-              name="seriesPart"
-              render={({ field, fieldState }) => (
-                <View style={styles.progressField}>
-                  <TextInput
-                    ref={seriesPartRef}
-                    label="Part"
-                    value={field.value ?? ''}
-                    onChangeText={field.onChange}
-                    onBlur={field.onBlur}
-                    error={!!fieldState.error}
-                    keyboardType="number-pad"
-                    returnKeyType="next"
-                    onSubmitEditing={() => seriesTotalRef.current?.focus()}
-                    style={styles.input}
-                    mode="outlined"
-                    accessibilityLabel="Series part number"
-                  />
-                  {fieldState.error && (
-                    <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                <Controller
+                  control={control}
+                  name="totalUnits"
+                  render={({ field, fieldState }) => (
+                    <View style={styles.progressField}>
+                      <TextInput
+                        ref={totalUnitsRef}
+                        value={field.value}
+                        onChangeText={field.onChange}
+                        onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                        onFocus={() => setFocusedField('totalUnits')}
+                        error={!!fieldState.error}
+                        keyboardType="number-pad"
+                        returnKeyType="next"
+                        onSubmitEditing={() =>
+                          isFanfic ? wordCountRef.current?.focus() : seriesNameRef.current?.focus()
+                        }
+                        mode="outlined"
+                        placeholder="Total"
+                        placeholderTextColor={theme.colors.textHint}
+                        outlineStyle={inputOutlineStyle('totalUnits')}
+                        contentStyle={inputContentStyle('totalUnits')}
+                        accessibilityLabel={`Total ${progressUnit}`}
+                      />
+                      {fieldState.error && (
+                        <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                      )}
+                      {!fieldState.error && showIsCompleteHint && (
+                        <HelperText type="info" visible>Set total chapters to mark as complete</HelperText>
+                      )}
+                      {!fieldState.error && !showIsCompleteHint && prefillMissingFields.has('totalUnits') && (
+                        <HelperText type="info" visible>Not found in import</HelperText>
+                      )}
+                    </View>
                   )}
+                />
+              </View>
+            </View>
+
+            {/* isComplete (fanfic only) */}
+            {isFanfic && (
+              <Controller
+                control={control}
+                name="isComplete"
+                render={({ field }) => (
+                  <View
+                    style={[
+                      styles.switchRow,
+                      { borderBottomColor: theme.colors.backgroundInput },
+                    ]}
+                  >
+                    <Text style={[styles.switchLabel, { color: theme.colors.textPrimary }]}>
+                      {field.value === true ? 'Complete' : 'WIP (work in progress)'}
+                    </Text>
+                    <Switch
+                      value={field.value === true}
+                      onValueChange={(v) => field.onChange(v)}
+                      accessibilityLabel="Mark as complete"
+                    />
+                  </View>
+                )}
+              />
+            )}
+
+            {/* Fanfic-only fields */}
+            {isFanfic && (
+              <>
+                {/* Word count */}
+                <Controller
+                  control={control}
+                  name="wordCount"
+                  render={({ field, fieldState }) => (
+                    <View style={styles.fieldGroup}>
+                      <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>
+                        WORD COUNT
+                      </Text>
+                      <TextInput
+                        ref={wordCountRef}
+                        value={field.value ?? ''}
+                        onChangeText={field.onChange}
+                        onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                        onFocus={() => setFocusedField('wordCount')}
+                        error={!!fieldState.error}
+                        keyboardType="number-pad"
+                        returnKeyType="next"
+                        onSubmitEditing={() => relationshipsRef.current?.focus()}
+                        mode="outlined"
+                        placeholder="e.g. 50000"
+                        placeholderTextColor={theme.colors.textHint}
+                        outlineStyle={inputOutlineStyle('wordCount')}
+                        contentStyle={inputContentStyle('wordCount')}
+                        accessibilityLabel="Word count"
+                      />
+                      {fieldState.error && (
+                        <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                      )}
+                    </View>
+                  )}
+                />
+
+                {/* isAbandoned */}
+                <Controller
+                  control={control}
+                  name="isAbandoned"
+                  render={({ field }) => (
+                    <View
+                      style={[
+                        styles.switchRow,
+                        { borderBottomColor: theme.colors.backgroundInput },
+                      ]}
+                    >
+                      <Text style={[styles.switchLabel, { color: theme.colors.textPrimary }]}>
+                        {field.value ? 'Marked as abandoned' : 'Not abandoned'}
+                      </Text>
+                      <Switch
+                        value={field.value === true}
+                        onValueChange={(v) => field.onChange(v)}
+                        accessibilityLabel="Mark as abandoned"
+                      />
+                    </View>
+                  )}
+                />
+
+                {/* Rating chips */}
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>RATING</Text>
+                  <Controller
+                    control={control}
+                    name="rating"
+                    render={({ field }) => (
+                      <View style={[styles.chipRow, { flexWrap: 'wrap' }]}>
+                        {/* "Not specified" option */}
+                        <TouchableOpacity
+                          onPress={() => field.onChange(null)}
+                          style={[
+                            styles.statusChip,
+                            {
+                              backgroundColor:
+                                field.value === null
+                                  ? theme.colors.kindBookSubtle
+                                  : theme.colors.backgroundInput,
+                              borderColor:
+                                field.value === null
+                                  ? theme.colors.kindBookBorder
+                                  : theme.colors.backgroundBorder,
+                            },
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: field.value === null }}
+                        >
+                          <Text
+                            style={[
+                              styles.statusChipText,
+                              {
+                                color:
+                                  field.value === null
+                                    ? theme.colors.kindBook
+                                    : theme.colors.textBody,
+                                fontWeight: field.value === null ? '600' : '500',
+                              },
+                            ]}
+                          >
+                            Not specified
+                          </Text>
+                        </TouchableOpacity>
+                        {(Object.keys(AO3_RATING_LABELS) as AO3Rating[]).map((r) => {
+                          const isActive = field.value === r;
+                          return (
+                            <TouchableOpacity
+                              key={r}
+                              onPress={() => field.onChange(r)}
+                              style={[
+                                styles.statusChip,
+                                {
+                                  backgroundColor: isActive
+                                    ? theme.colors.kindBookSubtle
+                                    : theme.colors.backgroundInput,
+                                  borderColor: isActive
+                                    ? theme.colors.kindBookBorder
+                                    : theme.colors.backgroundBorder,
+                                },
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: isActive }}
+                            >
+                              <Text
+                                style={[
+                                  styles.statusChipText,
+                                  {
+                                    color: isActive ? theme.colors.kindBook : theme.colors.textBody,
+                                    fontWeight: isActive ? '600' : '500',
+                                  },
+                                ]}
+                              >
+                                {AO3_RATING_LABELS[r]}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  />
                 </View>
-              )}
-            />
+
+                {/* Archive warnings */}
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>
+                    ARCHIVE WARNINGS
+                  </Text>
+                  <Controller
+                    control={control}
+                    name="archiveWarnings"
+                    render={({ field }) => {
+                      const selected = field.value ?? [];
+                      return (
+                        <View style={[styles.chipRow, { flexWrap: 'wrap' }]}>
+                          {CANONICAL_ARCHIVE_WARNINGS.map((warning) => {
+                            const isSelected = selected.includes(warning);
+                            return (
+                              <TouchableOpacity
+                                key={warning}
+                                onPress={() => {
+                                  const next = isSelected
+                                    ? selected.filter((w) => w !== warning)
+                                    : [...selected, warning];
+                                  field.onChange(next);
+                                }}
+                                style={[
+                                  styles.statusChip,
+                                  {
+                                    backgroundColor: isSelected
+                                      ? theme.colors.dangerSubtle
+                                      : theme.colors.backgroundInput,
+                                    borderColor: isSelected
+                                      ? theme.colors.dangerBorder
+                                      : theme.colors.backgroundBorder,
+                                  },
+                                ]}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected: isSelected }}
+                                accessibilityLabel={`Archive warning: ${warning}`}
+                              >
+                                <Text
+                                  style={[
+                                    styles.statusChipText,
+                                    {
+                                      color: isSelected
+                                        ? theme.colors.danger
+                                        : theme.colors.textBody,
+                                      fontWeight: isSelected ? '600' : '500',
+                                    },
+                                  ]}
+                                >
+                                  {warning}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      );
+                    }}
+                  />
+                </View>
+
+                {/* Fandom autocomplete */}
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>FANDOM</Text>
+                  <Controller
+                    control={control}
+                    name="fandom"
+                    render={({ field }) => {
+                      const confirmed = field.value ?? [];
+                      const trimmedInput = fandomInput.trim();
+                      const filtered = fandomVocabulary.filter(
+                        (f) =>
+                          f.toLowerCase().includes(trimmedInput.toLowerCase()) &&
+                          !confirmed.includes(f),
+                      );
+                      const isNewEntry =
+                        trimmedInput.length > 0 &&
+                        !fandomVocabulary.some(
+                          (f) => f.toLowerCase() === trimmedInput.toLowerCase(),
+                        ) &&
+                        !confirmed.includes(trimmedInput);
+
+                      const appendFandom = (value: string) => {
+                        field.onChange([...confirmed, value]);
+                        setFandomInput('');
+                      };
+
+                      return (
+                        <>
+                          {/* Confirmed fandom chips */}
+                          {confirmed.length > 0 && (
+                            <View style={[styles.chipRow, { flexWrap: 'wrap', marginBottom: 8 }]}>
+                              {confirmed.map((f) => (
+                                <TouchableOpacity
+                                  key={f}
+                                  onPress={() =>
+                                    field.onChange(confirmed.filter((x) => x !== f))
+                                  }
+                                  style={[
+                                    styles.statusChip,
+                                    {
+                                      backgroundColor: theme.colors.kindFanficSubtle,
+                                      borderColor: theme.colors.kindFanficBorder,
+                                    },
+                                  ]}
+                                  accessibilityLabel={`Remove fandom: ${f}`}
+                                  accessibilityRole="button"
+                                >
+                                  <Text
+                                    style={[
+                                      styles.statusChipText,
+                                      { color: theme.colors.kindFanfic, fontWeight: '500' },
+                                    ]}
+                                  >
+                                    {f} ×
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          )}
+
+                          {/* Fandom input */}
+                          <TextInput
+                            value={fandomInput}
+                            onChangeText={setFandomInput}
+                            onBlur={() => setFocusedField(null)}
+                            onFocus={() => setFocusedField('fandom')}
+                            mode="outlined"
+                            placeholder="Search or add fandom"
+                            placeholderTextColor={theme.colors.textHint}
+                            returnKeyType="done"
+                            onSubmitEditing={() => {
+                              if (trimmedInput.length > 0 && !confirmed.includes(trimmedInput)) {
+                                appendFandom(trimmedInput);
+                              }
+                            }}
+                            outlineStyle={inputOutlineStyle('fandom')}
+                            contentStyle={inputContentStyle('fandom')}
+                            accessibilityLabel="Add fandom"
+                          />
+
+                          {/* Suggestions */}
+                          {trimmedInput.length > 0 && (
+                            <View style={[styles.chipRow, { flexWrap: 'wrap', marginTop: 8 }]}>
+                              {filtered.map((f) => (
+                                <TouchableOpacity
+                                  key={f}
+                                  onPress={() => appendFandom(f)}
+                                  style={[
+                                    styles.statusChip,
+                                    {
+                                      backgroundColor: theme.colors.backgroundInput,
+                                      borderColor: theme.colors.backgroundBorder,
+                                    },
+                                  ]}
+                                  accessibilityLabel={`Add fandom: ${f}`}
+                                  accessibilityRole="button"
+                                >
+                                  <Text
+                                    style={[
+                                      styles.statusChipText,
+                                      { color: theme.colors.textBody },
+                                    ]}
+                                  >
+                                    {f}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                              {isNewEntry && (
+                                <TouchableOpacity
+                                  onPress={() => appendFandom(trimmedInput)}
+                                  style={[
+                                    styles.statusChip,
+                                    {
+                                      backgroundColor: theme.colors.backgroundInput,
+                                      borderColor: theme.colors.kindFanficBorder,
+                                      borderStyle: 'dashed',
+                                    },
+                                  ]}
+                                  accessibilityLabel={`Add new fandom: ${trimmedInput}`}
+                                  accessibilityRole="button"
+                                >
+                                  <Text
+                                    style={[
+                                      styles.statusChipText,
+                                      { color: theme.colors.kindFanfic },
+                                    ]}
+                                  >
+                                    Add: {trimmedInput}
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          )}
+                        </>
+                      );
+                    }}
+                  />
+                </View>
+
+                {/* Relationships */}
+                <Controller
+                  control={control}
+                  name="relationships"
+                  render={({ field, fieldState }) => (
+                    <View style={styles.fieldGroup}>
+                      <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>
+                        RELATIONSHIPS
+                      </Text>
+                      <TextInput
+                        ref={relationshipsRef}
+                        value={field.value ?? ''}
+                        onChangeText={field.onChange}
+                        onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                        onFocus={() => setFocusedField('relationships')}
+                        error={!!fieldState.error}
+                        returnKeyType="next"
+                        onSubmitEditing={() => summaryRef.current?.focus()}
+                        mode="outlined"
+                        placeholder="Character A/Character B, ..."
+                        placeholderTextColor={theme.colors.textHint}
+                        outlineStyle={inputOutlineStyle('relationships')}
+                        contentStyle={inputContentStyle('relationships')}
+                        accessibilityLabel="Relationships, separate with commas"
+                      />
+                      <HelperText type="info" visible={!fieldState.error}>
+                        Separate with commas
+                      </HelperText>
+                      {fieldState.error && (
+                        <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                      )}
+                    </View>
+                  )}
+                />
+              </>
+            )}
+          </SectionCard>
+
+          {/* ── NOTES & META CARD ───────────────────────────────────────────── */}
+          <SectionCard label="NOTES & META" theme={theme}>
+
+            {/* Series */}
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>SERIES</Text>
+              <Controller
+                control={control}
+                name="seriesName"
+                render={({ field, fieldState }) => (
+                  <View style={{ marginBottom: 8 }}>
+                    <TextInput
+                      ref={seriesNameRef}
+                      value={field.value ?? ''}
+                      onChangeText={field.onChange}
+                      onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                      onFocus={() => setFocusedField('seriesName')}
+                      error={!!fieldState.error}
+                      returnKeyType="next"
+                      onSubmitEditing={() => seriesPartRef.current?.focus()}
+                      mode="outlined"
+                      placeholder="Series name"
+                      placeholderTextColor={theme.colors.textHint}
+                      outlineStyle={inputOutlineStyle('seriesName')}
+                      contentStyle={inputContentStyle('seriesName')}
+                      accessibilityLabel="Series name"
+                    />
+                    {fieldState.error && (
+                      <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                    )}
+                  </View>
+                )}
+              />
+              <View style={styles.progressRow}>
+                <Controller
+                  control={control}
+                  name="seriesPart"
+                  render={({ field, fieldState }) => (
+                    <View style={styles.progressField}>
+                      <TextInput
+                        ref={seriesPartRef}
+                        value={field.value ?? ''}
+                        onChangeText={field.onChange}
+                        onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                        onFocus={() => setFocusedField('seriesPart')}
+                        error={!!fieldState.error}
+                        keyboardType="number-pad"
+                        returnKeyType="next"
+                        onSubmitEditing={() => seriesTotalRef.current?.focus()}
+                        mode="outlined"
+                        placeholder="Part"
+                        placeholderTextColor={theme.colors.textHint}
+                        outlineStyle={inputOutlineStyle('seriesPart')}
+                        contentStyle={inputContentStyle('seriesPart')}
+                        accessibilityLabel="Series part number"
+                      />
+                      {fieldState.error && (
+                        <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                      )}
+                    </View>
+                  )}
+                />
+                <Controller
+                  control={control}
+                  name="seriesTotal"
+                  render={({ field, fieldState }) => (
+                    <View style={styles.progressField}>
+                      <TextInput
+                        ref={seriesTotalRef}
+                        value={field.value ?? ''}
+                        onChangeText={field.onChange}
+                        onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                        onFocus={() => setFocusedField('seriesTotal')}
+                        error={!!fieldState.error}
+                        keyboardType="number-pad"
+                        returnKeyType="next"
+                        onSubmitEditing={() => tagsRef.current?.focus()}
+                        mode="outlined"
+                        placeholder="Total"
+                        placeholderTextColor={theme.colors.textHint}
+                        outlineStyle={inputOutlineStyle('seriesTotal')}
+                        contentStyle={inputContentStyle('seriesTotal')}
+                        accessibilityLabel="Series total parts"
+                      />
+                      {fieldState.error && (
+                        <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                      )}
+                    </View>
+                  )}
+                />
+              </View>
+            </View>
+
+            {/* Tags */}
             <Controller
               control={control}
-              name="seriesTotal"
+              name="tags"
               render={({ field, fieldState }) => (
-                <View style={styles.progressField}>
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>TAGS</Text>
                   <TextInput
-                    ref={seriesTotalRef}
-                    label="Total parts"
-                    value={field.value ?? ''}
+                    ref={tagsRef}
+                    value={field.value}
                     onChangeText={field.onChange}
-                    onBlur={field.onBlur}
+                    onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                    onFocus={() => setFocusedField('tags')}
                     error={!!fieldState.error}
-                    keyboardType="number-pad"
                     returnKeyType="next"
                     onSubmitEditing={() => notesRef.current?.focus()}
-                    style={styles.input}
                     mode="outlined"
-                    accessibilityLabel="Series total parts"
+                    placeholder="tag1, tag2, tag3"
+                    placeholderTextColor={theme.colors.textHint}
+                    outlineStyle={inputOutlineStyle('tags')}
+                    contentStyle={inputContentStyle('tags')}
+                    accessibilityLabel="Tags, comma separated"
                   />
                   {fieldState.error && (
                     <HelperText type="error" visible>{fieldState.error.message}</HelperText>
@@ -1069,103 +1436,208 @@ export function AddEditScreen({ route, navigation }: Props) {
                 </View>
               )}
             />
-          </View>
-        </View>
 
-        {/* ── Notes ─────────────────────────────────────────────────────────────── */}
-        <Controller
-          control={control}
-          name="notes"
-          render={({ field, fieldState }) => (
-            <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={notesRef}
-                label="Notes"
-                value={field.value ?? ''}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                multiline
-                numberOfLines={3}
-                returnKeyType="next"
-                onSubmitEditing={() => dateAddedRef.current?.focus()}
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Notes"
-              />
-              <HelperText type="info" visible={!fieldState.error}>Private — not imported from AO3</HelperText>
-              {fieldState.error && (
-                <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+            {/* Notes */}
+            <Controller
+              control={control}
+              name="notes"
+              render={({ field, fieldState }) => (
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>NOTES</Text>
+                  <TextInput
+                    ref={notesRef}
+                    value={field.value ?? ''}
+                    onChangeText={field.onChange}
+                    onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                    onFocus={() => setFocusedField('notes')}
+                    error={!!fieldState.error}
+                    multiline
+                    numberOfLines={3}
+                    returnKeyType="next"
+                    onSubmitEditing={() => dateAddedRef.current?.focus()}
+                    mode="outlined"
+                    placeholder="Private notes..."
+                    placeholderTextColor={theme.colors.textHint}
+                    outlineStyle={inputOutlineStyle('notes')}
+                    contentStyle={[inputContentStyle('notes'), styles.multilineContent]}
+                    accessibilityLabel="Notes"
+                  />
+                  <HelperText type="info" visible={!fieldState.error}>
+                    Private — not imported from AO3
+                  </HelperText>
+                  {fieldState.error && (
+                    <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                  )}
+                </View>
               )}
-            </View>
-          )}
-        />
+            />
 
-        {/* ── Date Added ───────────────────────────────────────────────────────── */}
-        <Controller
-          control={control}
-          name="dateAdded"
-          render={({ field, fieldState }) => (
-            <View style={styles.fieldWrapper}>
-              <TextInput
-                ref={dateAddedRef}
-                label="Date Added (YYYY-MM-DD)"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={!!fieldState.error}
-                returnKeyType="done"
-                style={styles.input}
-                mode="outlined"
-                accessibilityLabel="Date added in format YYYY-MM-DD"
-              />
-              {fieldState.error && (
-                <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+            {/* Date Added */}
+            <Controller
+              control={control}
+              name="dateAdded"
+              render={({ field, fieldState }) => (
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, { color: theme.colors.textMeta }]}>
+                    DATE ADDED
+                  </Text>
+                  <TextInput
+                    ref={dateAddedRef}
+                    value={field.value}
+                    onChangeText={field.onChange}
+                    onBlur={() => { field.onBlur(); setFocusedField(null); }}
+                    onFocus={() => setFocusedField('dateAdded')}
+                    error={!!fieldState.error}
+                    returnKeyType="done"
+                    mode="outlined"
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={theme.colors.textHint}
+                    outlineStyle={inputOutlineStyle('dateAdded')}
+                    contentStyle={inputContentStyle('dateAdded')}
+                    accessibilityLabel="Date added in format YYYY-MM-DD"
+                  />
+                  {fieldState.error && (
+                    <HelperText type="error" visible>{fieldState.error.message}</HelperText>
+                  )}
+                </View>
               )}
-            </View>
-          )}
-        />
+            />
+          </SectionCard>
 
-        {/* ── Submit button ─────────────────────────────────────────────────────── */}
-        <Button
-          mode="contained"
-          onPress={onSubmit}
-          loading={isSaving}
-          disabled={isSaving}
-          style={styles.submitButton}
-          accessibilityLabel={isEditMode ? 'Save changes' : 'Add to library'}
-        >
-          {isEditMode ? 'Save Changes' : 'Add to Library'}
-        </Button>
+          {/* ── Save button ────────────────────────────────────────────────── */}
+          <TouchableOpacity
+            onPress={onSubmit}
+            disabled={isSaving}
+            style={[
+              styles.saveButton,
+              {
+                backgroundColor: theme.colors.kindBook,
+                ...theme.shadows.button,
+                opacity: isSaving ? 0.7 : 1,
+              },
+            ]}
+            accessibilityLabel={isEditMode ? 'Save changes' : 'Add to library'}
+            accessibilityRole="button"
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveButtonText}>
+                {isEditMode ? 'Save Changes' : 'Add to Library'}
+              </Text>
+            )}
+          </TouchableOpacity>
 
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-      {/* ── Snackbar (save errors only) ───────────────────────────────────────── */}
+      {/* ── Snackbar ────────────────────────────────────────────────────────── */}
       <Portal>
         <Snackbar visible={snackbarMessage !== null} onDismiss={hideSnackbar} duration={4000}>
           {snackbarMessage ?? ''}
         </Snackbar>
       </Portal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
   centeredMessage: { textAlign: 'center' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  section: { marginBottom: 12 },
-  sectionLabel: { marginBottom: 8 },
-  fieldWrapper: { marginBottom: 4 },
-  input: {},
+
+  // Custom header
+  header: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerButton: { minHeight: 44, justifyContent: 'center' },
+  headerButtonText: { fontSize: 13, fontWeight: '500' },
+  headerTitle: { fontSize: 17, fontWeight: '500' },
+  headerSaveText: { fontSize: 13, fontWeight: '600' },
+
+  // ScrollView
+  scrollContent: { padding: 14, gap: 9 },
+
+  // Section cards
+  sectionCard: {
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  sectionCardHeader: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+  },
+  sectionCardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionCardLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  fanficOnlyBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  fanficOnlyText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.2 },
+  sectionCardFields: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 14, gap: 8 },
+
+  // Field groups
+  fieldGroup: { gap: 4 },
+  fieldLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+
+  // Multiline input min-height
+  multilineContent: { minHeight: 72 },
+
+  // Progress row
   progressRow: { flexDirection: 'row', gap: 12 },
   progressField: { flex: 1 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
-  radioItem: {},
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chipWrapTop: { marginTop: 8 },
-  chipWrapBottom: { marginBottom: 8 },
-  chip: {},
-  submitButton: { marginTop: 16 },
+
+  // Status/rating/warning chips
+  chipRow: { flexDirection: 'row', gap: 6 },
+  statusChip: {
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusChipText: { fontSize: 12 },
+
+  // Switch rows
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 0,
+    paddingVertical: 10,
+    minHeight: 44,
+  },
+  switchLabel: { fontSize: 14, flex: 1 },
+
+  // Save button
+  saveButton: {
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  saveButtonText: { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
 });

@@ -1,16 +1,69 @@
 // src/features/readables/ui/ReadableListItem.tsx
 // §8 — Memoized list item for the library FlatList.
-// Displays: cover thumbnail (when available), title, author (if present),
-// status, progress summary, kind indicator.
-// No tags, summaries, or heavy metadata — keeps items lightweight and fast.
+// Displays: kind accent strip, cover thumbnail (image when available, placeholder otherwise),
+// title, author (with authorType handling), status pill, progress bar, progress string,
+// fandom tag (fanfic only). No tags, summaries, or heavy metadata.
 
 import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { Text, TouchableRipple } from 'react-native-paper';
 
 import { useAppTheme } from '../../../app/theme';
-import type { Readable } from '../domain/readable';
-import { STATUS_LABELS_FULL, KIND_LABELS, formatProgressString } from '../domain/readable';
+import type { AppTheme } from '../../../app/theme';
+import type { Readable, ReadableStatus } from '../domain/readable';
+import { STATUS_LABELS_FULL, formatProgressString } from '../domain/readable';
+
+// ── Status pill helper ────────────────────────────────────────────────────────
+
+function getPillStyle(status: ReadableStatus, colors: AppTheme['colors']) {
+  switch (status) {
+    case 'reading':
+      return {
+        backgroundColor: colors.statusReadingBg,
+        color: colors.statusReadingText,
+        borderWidth: 0,
+        borderColor: undefined,
+      };
+    case 'completed':
+      return {
+        backgroundColor: colors.statusCompletedBg,
+        color: colors.statusCompletedText,
+        borderWidth: 0,
+        borderColor: undefined,
+      };
+    case 'dnf':
+      return {
+        backgroundColor: colors.backgroundInput,
+        color: colors.textBody,
+        borderWidth: 1,
+        borderColor: colors.backgroundBorder,
+      };
+    case 'want_to_read':
+      return {
+        backgroundColor: colors.backgroundInput,
+        color: colors.textMeta,
+        borderWidth: 1,
+        borderColor: colors.backgroundBorder,
+      };
+  }
+}
+
+// ── Progress string ───────────────────────────────────────────────────────────
+
+function getProgressText(item: Readable): string {
+  if (item.kind === 'book') {
+    return formatProgressString(item.progressCurrent, item.totalUnits, item.progressUnit) ?? '';
+  }
+  // Fanfic
+  const cur = item.progressCurrent;
+  const avail = item.availableChapters;
+  const total = item.totalUnits;
+
+  if (avail === 1 && total === 1) return '1 chapter';
+  if (cur !== null && avail !== null) return `ch. ${cur} · ${avail}/${total ?? '?'} avail.`;
+  if (avail !== null) return `${avail}/${total ?? '?'} ch.`;
+  return '';
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -24,81 +77,148 @@ export const ReadableListItem = React.memo(function ReadableListItem({
   onPress,
 }: Props) {
   const theme = useAppTheme();
-  const progress = formatProgressString(item.progressCurrent, item.totalUnits, item.progressUnit);
-  const hasCover = item.coverUrl !== null;
+  const { colors } = theme;
+
+  // Author display — authorType overrides raw author string for anonymous/orphaned works
+  const displayAuthor =
+    item.authorType === 'anonymous' ? 'Anonymous' :
+    item.authorType === 'orphaned'  ? 'Orphaned work' :
+    item.author;
+
+  // Progress
+  const progressText = getProgressText(item);
+
+  // Progress bar percentage — kind-specific denominator.
+  // For fanfic, prefer availableChapters (supports ? totalUnits); fall back to totalUnits.
+  const fanficDenominator = item.availableChapters ?? item.totalUnits;
+  const pct =
+    item.kind === 'book'
+      ? (item.progressCurrent && item.totalUnits
+          ? Math.round((item.progressCurrent / item.totalUnits) * 100)
+          : 0)
+      : (item.progressCurrent && fanficDenominator
+          ? Math.round((item.progressCurrent / fanficDenominator) * 100)
+          : 0);
+
+  const showProgressBar = pct > 0 || item.status === 'reading';
+
+  // Kind accent colour
+  const accentColor = item.kind === 'book' ? colors.kindBook : colors.kindFanfic;
+  const subtleColor = item.kind === 'book' ? colors.kindBookSubtle : colors.kindFanficSubtle;
+
+  // Status pill
+  const pillStyle = getPillStyle(item.status, colors);
+
+  // Accessible card label
+  const cardLabel = [
+    item.title,
+    displayAuthor ?? '',
+    STATUS_LABELS_FULL[item.status],
+    progressText,
+  ].filter(Boolean).join(', ');
 
   return (
     <TouchableRipple
       onPress={() => onPress(item.id)}
       accessibilityRole="button"
-      accessibilityLabel={
-        item.author !== null
-          ? `${item.title}, by ${item.author}`
-          : item.title
-      }
+      accessibilityLabel={cardLabel}
+      style={[styles.card, theme.shadows.card, { borderRadius: theme.radii.card, backgroundColor: colors.backgroundCard }]}
     >
-      <View style={styles.container}>
-        {/* Cover thumbnail — only when available */}
-        {hasCover && (
-          <Image
-            source={{ uri: item.coverUrl! }}
-            style={[styles.cover, { backgroundColor: theme.colors.surfaceVariant }]}
-            resizeMode="cover"
-          />
-        )}
+      <View style={styles.row}>
+        {/* Kind accent strip */}
+        <View style={[styles.accentStrip, { backgroundColor: accentColor }]} />
 
-        {/* Text content */}
+        {/* Content row */}
         <View style={styles.content}>
-          {/* Row 1: title + kind badge */}
-          <View style={styles.topRow}>
+          {/* Thumbnail — image if available, placeholder otherwise */}
+          <View style={[styles.thumbnail, { backgroundColor: subtleColor }]}>
+            {item.coverUrl !== null ? (
+              <Image
+                source={{ uri: item.coverUrl }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.thumbnailSpine} />
+            )}
+          </View>
+
+          {/* Text block */}
+          <View style={styles.textBlock}>
+            {/* Title */}
             <Text
               variant="bodyLarge"
-              style={[styles.title, { color: theme.colors.textPrimary }]}
               numberOfLines={2}
+              style={{ color: colors.textPrimary }}
             >
               {item.title}
             </Text>
-            <View
-              style={[
-                styles.kindBadge,
-                { backgroundColor: theme.colors.surfaceVariant },
-              ]}
-            >
+
+            {/* Author */}
+            {displayAuthor !== null && (
               <Text
-                variant="labelSmall"
-                style={{ color: theme.colors.textSecondary }}
+                numberOfLines={1}
+                style={[styles.author, { color: colors.textBody }]}
               >
-                {KIND_LABELS[item.kind]}
+                {displayAuthor}
               </Text>
-            </View>
-          </View>
+            )}
 
-          {/* Row 2: author */}
-          {item.author !== null && (
-            <Text
-              variant="bodySmall"
-              style={[styles.author, { color: theme.colors.textSecondary }]}
-              numberOfLines={1}
-            >
-              {item.author}
-            </Text>
-          )}
-
-          {/* Row 3: status · progress */}
-          <View style={styles.metaRow}>
-            <Text
-              variant="labelSmall"
-              style={{ color: theme.colors.textSecondary }}
-            >
-              {STATUS_LABELS_FULL[item.status]}
-            </Text>
-            {progress !== null && (
-              <Text
-                variant="labelSmall"
-                style={{ color: theme.colors.textDisabled }}
+            {/* Meta row: status pill + progress string */}
+            <View style={styles.metaRow}>
+              <View
+                style={[
+                  styles.pill,
+                  {
+                    backgroundColor: pillStyle.backgroundColor,
+                    borderWidth: pillStyle.borderWidth,
+                    borderColor: pillStyle.borderColor,
+                  },
+                ]}
               >
-                {' · '}
-                {progress}
+                <Text style={[styles.pillText, { color: pillStyle.color }]}>
+                  {STATUS_LABELS_FULL[item.status]}
+                </Text>
+              </View>
+              {progressText !== '' && (
+                <Text style={[styles.progressText, { color: colors.textMeta }]}>
+                  {progressText}
+                </Text>
+              )}
+            </View>
+
+            {/* Progress bar */}
+            {showProgressBar && (
+              <View
+                style={[styles.progressTrack, { backgroundColor: colors.backgroundInput }]}
+                accessibilityRole="progressbar"
+                accessibilityValue={{ min: 0, max: 100, now: pct }}
+                accessibilityLabel={`${pct}% complete`}
+              >
+                {pct > 0 && (
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${pct}%`,
+                        backgroundColor:
+                          item.status === 'completed'
+                            ? colors.statusCompletedText
+                            : accentColor,
+                      },
+                    ]}
+                  />
+                )}
+              </View>
+            )}
+
+            {/* Fandom tag — fanfic only */}
+            {item.kind === 'fanfic' && item.fandom.length > 0 && (
+              <Text
+                numberOfLines={1}
+                style={[styles.fandom, { color: colors.kindFanfic }]}
+              >
+                {item.fandom.join(', ')}
               </Text>
             )}
           </View>
@@ -111,44 +231,78 @@ export const ReadableListItem = React.memo(function ReadableListItem({
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
+  card: {
+    overflow: 'hidden',
   },
-  cover: {
-    width: 48,
-    height: 64,
-    borderRadius: 4,
-    flexShrink: 0,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  accentStrip: {
+    width: 4,
   },
   content: {
     flex: 1,
-    gap: 2,
-  },
-  topRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+    paddingVertical: 14,
+    paddingLeft: 12,
+    paddingRight: 13,
+    gap: 11,
   },
-  title: {
+  thumbnail: {
+    width: 42,
+    height: 58,
+    borderRadius: 8,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  thumbnailSpine: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: 'rgba(0,0,0,0.10)',
+  },
+  textBlock: {
     flex: 1,
   },
-  kindBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 2,
-  },
   author: {
-    marginTop: 1,
+    fontSize: 12,
+    marginBottom: 8,
+    marginTop: 2,
   },
   metaRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
-    flexWrap: 'wrap',
+    marginBottom: 6,
+  },
+  pill: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  pillText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  progressText: {
+    fontSize: 11,
+  },
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  progressFill: {
+    height: 4,
+    borderRadius: 2,
+  },
+  fandom: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1,
   },
 });

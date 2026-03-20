@@ -3,8 +3,10 @@
 // Opened from ReadableDetailScreen. The calling screen owns the mutation —
 // this component only validates input and calls onSave with the result.
 //
+// Only edits progressCurrent. totalUnits is edited via the full AddEditScreen.
+//
 // Uses RHF + Zod with the same string → number | null transform as the
-// add/edit form (§10). keyboardType="number-pad" on both fields (§10).
+// add/edit form (§10). keyboardType="number-pad" on the current field.
 // Re-populates from readable each time the dialog opens so it always
 // reflects the current saved state.
 //
@@ -16,8 +18,8 @@
 // It is not exported from features/readables/index.ts — only ReadableDetailScreen
 // imports it directly (same feature, same ui/ folder).
 
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, TextInput as RNTextInput } from 'react-native';
+import React, { useEffect } from 'react';
+import { StyleSheet } from 'react-native';
 import {
   Button,
   Dialog,
@@ -38,7 +40,6 @@ import { progressNumberField } from './addEditSchema';
 
 const progressEditorSchema = z.object({
   current: progressNumberField,
-  total: progressNumberField,
 });
 
 type ProgressEditorValues = z.input<typeof progressEditorSchema>;
@@ -65,8 +66,8 @@ export interface ProgressEditorProps {
    */
   errorMessage?: string;
   onDismiss: () => void;
-  /** Called with validated (number | null) values on submit. */
-  onSave: (progressCurrent: number | null, totalUnits: number | null) => void;
+  /** Called with the validated progressCurrent value on submit. */
+  onSave: (progressCurrent: number | null) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -80,7 +81,6 @@ export function ProgressEditor({
   onSave,
 }: ProgressEditorProps) {
   const theme = useAppTheme();
-  const totalRef = useRef<RNTextInput>(null);
 
   const { control, handleSubmit, reset } = useForm<
     ProgressEditorValues,
@@ -90,7 +90,6 @@ export function ProgressEditor({
     resolver: zodResolver(progressEditorSchema),
     defaultValues: {
       current: toFormString(readable.progressCurrent),
-      total: toFormString(readable.totalUnits),
     },
   });
 
@@ -100,13 +99,12 @@ export function ProgressEditor({
     if (visible) {
       reset({
         current: toFormString(readable.progressCurrent),
-        total: toFormString(readable.totalUnits),
       });
     }
-  }, [visible, readable.progressCurrent, readable.totalUnits, reset]);
+  }, [visible, readable.progressCurrent, reset]);
 
   const onSubmit = handleSubmit((data: ProgressEditorOutput) => {
-    onSave(data.current, data.total);
+    onSave(data.current);
   });
 
   const unit = readable.progressUnit;
@@ -130,40 +128,11 @@ export function ProgressEditor({
                   onBlur={field.onBlur}
                   error={!!fieldState.error}
                   keyboardType="number-pad"
-                  returnKeyType="next"
-                  onSubmitEditing={() => totalRef.current?.focus()}
-                  mode="outlined"
-                  style={styles.input}
-                  accessibilityLabel={`Current ${unit}`}
-                />
-                {fieldState.error && (
-                  <HelperText type="error" visible>
-                    {fieldState.error.message}
-                  </HelperText>
-                )}
-              </>
-            )}
-          />
-
-          {/* Total */}
-          <Controller
-            control={control}
-            name="total"
-            render={({ field, fieldState }) => (
-              <>
-                <TextInput
-                  ref={totalRef}
-                  label={`Total ${unit} (optional)`}
-                  value={field.value}
-                  onChangeText={field.onChange}
-                  onBlur={field.onBlur}
-                  error={!!fieldState.error}
-                  keyboardType="number-pad"
                   returnKeyType="done"
                   onSubmitEditing={onSubmit}
                   mode="outlined"
                   style={styles.input}
-                  accessibilityLabel={`Total ${unit}, optional`}
+                  accessibilityLabel={`Current ${unit}`}
                 />
                 {fieldState.error && (
                   <HelperText type="error" visible>

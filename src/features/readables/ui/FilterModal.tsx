@@ -1,5 +1,5 @@
 // src/features/readables/ui/FilterModal.tsx
-// v2 Phase 6 — Full filter modal with all v2 filter sections.
+// UI Phase 5 — Full filter modal redesign.
 // Feature-internal — not exported from readables/index.ts.
 //
 // Props:
@@ -24,7 +24,7 @@
 //   5. Tags          — rendered when kind has tagged readables
 //      - Active tag chips with include/exclude toggle cycle
 //      - Tag search input + vocabulary chips
-//   6. Sort          — RadioButton.Group with kind-conditional options
+//   6. Sort          — custom radio rows with kind-conditional options
 //
 // Footer (sticky): live count · Clear all · Apply
 
@@ -35,20 +35,15 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  View,
-} from 'react-native';
-import {
-  Button,
-  Chip,
-  Divider,
-  IconButton,
-  RadioButton,
   Text,
   TextInput,
-} from 'react-native-paper';
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppTheme } from '../../../app/theme';
+import type { AppTheme } from '../../../app/theme/tokens';
 import type {
   AO3Rating,
   Readable,
@@ -107,6 +102,30 @@ function clearAo3FilterValues(f: ReadableFilters): ReadableFilters {
 
 function kindSpecificSort(sortBy: ReadableFilters['sortBy']): boolean {
   return sortBy === 'wordCount' || sortBy === 'totalUnits';
+}
+
+interface ChipColors {
+  bg: string;
+  border: string;
+  text: string;
+}
+
+function getActiveChipColors(theme: AppTheme, variant: 'book' | 'fanfic' | 'include' | 'exclude' | 'neutral'): ChipColors {
+  switch (variant) {
+    case 'fanfic':
+      return { bg: theme.colors.kindFanficSubtle, border: theme.colors.kindFanficBorder, text: theme.colors.kindFanfic };
+    case 'exclude':
+      return { bg: theme.colors.dangerSubtle, border: theme.colors.dangerBorder, text: theme.colors.danger };
+    case 'include':
+    case 'book':
+    case 'neutral':
+    default:
+      return { bg: theme.colors.kindBookSubtle, border: theme.colors.kindBookBorder, text: theme.colors.kindBook };
+  }
+}
+
+function getInactiveChipColors(theme: AppTheme): ChipColors {
+  return { bg: theme.colors.backgroundInput, border: theme.colors.backgroundBorder, text: theme.colors.textBody };
 }
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -318,6 +337,50 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
     ...(draft.kind === 'book' ? SORT_OPTIONS_BOOK : []),
   ];
 
+  // ── Local chip renderer ───────────────────────────────────────────────────
+
+  function renderChip(opts: {
+    label: string;
+    active: boolean;
+    onPress: () => void;
+    activeVariant?: 'book' | 'fanfic' | 'include' | 'exclude' | 'neutral';
+    onRemove?: () => void;
+    accessibilityLabel?: string;
+  }) {
+    const { label, active, onPress, activeVariant = 'neutral', onRemove, accessibilityLabel } = opts;
+    const colors = active
+      ? getActiveChipColors(theme, activeVariant)
+      : getInactiveChipColors(theme);
+
+    return (
+      <TouchableOpacity
+        key={label}
+        onPress={onPress}
+        style={[
+          chipStyles.chip,
+          {
+            backgroundColor: colors.bg,
+            borderColor: colors.border,
+          },
+        ]}
+        accessibilityLabel={accessibilityLabel ?? label}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+      >
+        <Text style={[chipStyles.chipText, { color: colors.text }]}>{label}</Text>
+        {onRemove && (
+          <TouchableOpacity
+            onPress={onRemove}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+            accessibilityLabel={`Remove ${label}`}
+          >
+            <Text style={[chipStyles.chipRemove, { color: colors.text }]}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+    );
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -329,31 +392,43 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
       statusBarTranslucent
     >
       <Pressable
-        style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+        style={styles.overlay}
         onPress={onDismiss}
         accessibilityLabel="Close filter modal"
       >
         <Pressable
           style={[
             styles.sheet,
-            { backgroundColor: theme.colors.surface, paddingBottom: insets.bottom },
+            {
+              backgroundColor: theme.colors.backgroundPage,
+              paddingBottom: insets.bottom,
+            },
           ]}
           onPress={() => undefined}
         >
 
           {/* ── Header ── */}
           <View
-            style={[styles.header, { borderBottomColor: theme.colors.outlineVariant }]}
+            style={[
+              styles.header,
+              {
+                backgroundColor: theme.colors.backgroundInput,
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+              },
+            ]}
           >
-            <Text variant="titleMedium" style={{ color: theme.colors.textPrimary }}>
+            <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>
               Filters
             </Text>
-            <IconButton
-              icon="close"
-              size={20}
+            <TouchableOpacity
               onPress={onDismiss}
+              style={[styles.closeButton, { backgroundColor: theme.colors.backgroundBorder }]}
               accessibilityLabel="Close filters"
-            />
+              accessibilityRole="button"
+            >
+              <Text style={[styles.closeButtonText, { color: theme.colors.textBody }]}>✕</Text>
+            </TouchableOpacity>
           </View>
 
           {/* ── Scrollable body ── */}
@@ -364,202 +439,148 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
           >
 
             {/* ── Section: Kind ── */}
-            <Text
-              variant="labelLarge"
-              style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
-            >
-              Kind
-            </Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>KIND</Text>
             <View style={styles.chipRow}>
-              <Chip
-                selected={draft.kind === 'book'}
-                onPress={() => setKind(draft.kind === 'book' ? undefined : 'book')}
-                style={styles.chip}
-              >
-                Books
-              </Chip>
-              <Chip
-                selected={draft.kind === 'fanfic'}
-                onPress={() => setKind(draft.kind === 'fanfic' ? undefined : 'fanfic')}
-                style={styles.chip}
-              >
-                Fanfic
-              </Chip>
+              {renderChip({
+                label: 'Books',
+                active: draft.kind === 'book',
+                activeVariant: 'book',
+                onPress: () => setKind(draft.kind === 'book' ? undefined : 'book'),
+              })}
+              {renderChip({
+                label: 'Fanfic',
+                active: draft.kind === 'fanfic',
+                activeVariant: 'fanfic',
+                onPress: () => setKind(draft.kind === 'fanfic' ? undefined : 'fanfic'),
+              })}
             </View>
 
-            <Divider style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
             {/* ── Section: Status ── */}
-            <Text
-              variant="labelLarge"
-              style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
-            >
-              Status
-            </Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>STATUS</Text>
             <View style={styles.chipRow}>
-              {READABLE_STATUSES.map((status) => (
-                <Chip
-                  key={status}
-                  selected={draft.status?.includes(status) ?? false}
-                  onPress={() => toggleStatus(status)}
-                  style={styles.chip}
-                >
-                  {STATUS_LABELS_FULL[status]}
-                </Chip>
-              ))}
+              {READABLE_STATUSES.map((status) =>
+                renderChip({
+                  label: STATUS_LABELS_FULL[status],
+                  active: draft.status?.includes(status) ?? false,
+                  onPress: () => toggleStatus(status),
+                })
+              )}
             </View>
 
-            <Divider style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
             {/* ── Section: General Filters ── */}
-            <Text
-              variant="labelLarge"
-              style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
-            >
-              General
-            </Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>GENERAL</Text>
             <View style={styles.chipRow}>
-              <Chip
-                selected={draft.seriesOnly === true}
-                onPress={() =>
+              {renderChip({
+                label: 'In a series',
+                active: draft.seriesOnly === true,
+                onPress: () =>
                   setDraft((prev) => ({
                     ...prev,
                     seriesOnly: prev.seriesOnly === true ? undefined : true,
-                  }))
-                }
-                style={styles.chip}
-              >
-                In a series
-              </Chip>
+                  })),
+              })}
             </View>
 
-            <Divider style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
             {/* ── Section: AO3 Filters ── */}
-            <Text
-              variant="labelLarge"
-              style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
-            >
-              AO3 Filters
-            </Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>AO3 FILTERS</Text>
 
             {draft.kind === 'fanfic' ? (
               <>
                 {/* WIP / Complete */}
                 <View style={styles.chipRow}>
-                  <Chip
-                    selected={draft.isComplete === false}
-                    onPress={() => toggleIsComplete(false)}
-                    style={styles.chip}
-                  >
-                    WIP
-                  </Chip>
-                  <Chip
-                    selected={draft.isComplete === true}
-                    onPress={() => toggleIsComplete(true)}
-                    style={styles.chip}
-                  >
-                    Complete
-                  </Chip>
+                  {renderChip({
+                    label: 'WIP',
+                    active: draft.isComplete === false,
+                    onPress: () => toggleIsComplete(false),
+                  })}
+                  {renderChip({
+                    label: 'Complete',
+                    active: draft.isComplete === true,
+                    onPress: () => toggleIsComplete(true),
+                  })}
                 </View>
 
                 {/* Abandoned */}
-                <Text
-                  variant="labelSmall"
-                  style={[styles.subLabel, { color: theme.colors.textSecondary }]}
-                >
-                  Abandoned
-                </Text>
+                <Text style={[styles.subLabel, { color: theme.colors.textMeta }]}>Abandoned</Text>
                 <View style={styles.chipRow}>
-                  <Chip
-                    selected={draft.isAbandoned === true}
-                    onPress={() => toggleIsAbandoned(true)}
-                    style={styles.chip}
-                  >
-                    Abandoned only
-                  </Chip>
-                  <Chip
-                    selected={draft.isAbandoned === false}
-                    onPress={() => toggleIsAbandoned(false)}
-                    style={styles.chip}
-                  >
-                    Hide abandoned
-                  </Chip>
+                  {renderChip({
+                    label: 'Abandoned only',
+                    active: draft.isAbandoned === true,
+                    onPress: () => toggleIsAbandoned(true),
+                  })}
+                  {renderChip({
+                    label: 'Hide abandoned',
+                    active: draft.isAbandoned === false,
+                    onPress: () => toggleIsAbandoned(false),
+                  })}
                 </View>
 
                 {/* Rating */}
-                <Text
-                  variant="labelSmall"
-                  style={[styles.subLabel, { color: theme.colors.textSecondary }]}
-                >
-                  Rating
-                </Text>
+                <Text style={[styles.subLabel, { color: theme.colors.textMeta }]}>Rating</Text>
                 <View style={styles.chipRow}>
-                  {AO3_RATINGS.map((rating) => (
-                    <Chip
-                      key={rating}
-                      selected={draft.rating?.includes(rating) ?? false}
-                      onPress={() => toggleRating(rating)}
-                      style={styles.chip}
-                    >
-                      {AO3_RATING_LABELS[rating]}
-                    </Chip>
-                  ))}
+                  {AO3_RATINGS.map((rating) =>
+                    renderChip({
+                      label: AO3_RATING_LABELS[rating],
+                      active: draft.rating?.includes(rating) ?? false,
+                      onPress: () => toggleRating(rating),
+                    })
+                  )}
                 </View>
 
                 {/* Fandom */}
-                <Text
-                  variant="labelSmall"
-                  style={[styles.subLabel, { color: theme.colors.textSecondary }]}
-                >
-                  Fandom
-                </Text>
+                <Text style={[styles.subLabel, { color: theme.colors.textMeta }]}>Fandom</Text>
                 {draft.fandom !== undefined ? (
-                  <Chip
-                    onClose={clearFandom}
-                    style={styles.chip}
-                    selected
-                    accessibilityLabel={`Active fandom filter: ${draft.fandom}`}
-                  >
-                    {draft.fandom}
-                  </Chip>
+                  <View style={styles.chipRow}>
+                    {renderChip({
+                      label: draft.fandom,
+                      active: true,
+                      activeVariant: 'fanfic',
+                      onPress: () => undefined,
+                      onRemove: clearFandom,
+                      accessibilityLabel: `Active fandom filter: ${draft.fandom}`,
+                    })}
+                  </View>
                 ) : (
                   <>
                     <TextInput
-                      mode="outlined"
                       placeholder="Search fandoms…"
                       value={fandomInput}
                       onChangeText={setFandomInput}
-                      dense
-                      style={styles.textInput}
+                      style={[
+                        styles.searchInput,
+                        {
+                          backgroundColor: theme.colors.backgroundCard,
+                          borderColor: theme.colors.backgroundBorder,
+                          color: theme.colors.textPrimary,
+                        },
+                      ]}
+                      placeholderTextColor={theme.colors.textHint}
                       accessibilityLabel="Search fandom vocabulary"
                     />
                     {filteredFandomVocab.length > 0 && (
                       <View style={styles.chipRow}>
-                        {filteredFandomVocab.slice(0, 20).map((f) => (
-                          <Chip
-                            key={f}
-                            onPress={() => selectFandom(f)}
-                            style={styles.chip}
-                          >
-                            {f}
-                          </Chip>
-                        ))}
+                        {filteredFandomVocab.slice(0, 20).map((f) =>
+                          renderChip({
+                            label: f,
+                            active: false,
+                            onPress: () => selectFandom(f),
+                          })
+                        )}
                       </View>
                     )}
                     {filteredFandomVocab.length === 0 && fandomInput.trim() !== '' && (
-                      <Text
-                        variant="bodySmall"
-                        style={{ color: theme.colors.textSecondary }}
-                      >
+                      <Text style={[styles.emptyText, { color: theme.colors.textMeta }]}>
                         No matching fandoms in library
                       </Text>
                     )}
                     {fandomVocabulary.length === 0 && (
-                      <Text
-                        variant="bodySmall"
-                        style={{ color: theme.colors.textSecondary }}
-                      >
+                      <Text style={[styles.emptyText, { color: theme.colors.textMeta }]}>
                         No fandoms in library yet
                       </Text>
                     )}
@@ -567,120 +588,97 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
                 )}
               </>
             ) : draft.kind === 'book' ? (
-              <Text
-                variant="bodySmall"
-                style={{ color: theme.colors.textSecondary }}
-              >
+              <Text style={[styles.emptyText, { color: theme.colors.textMeta }]}>
                 AO3 filters are not available for books.
               </Text>
             ) : (
-              <Text
-                variant="bodySmall"
-                style={{ color: theme.colors.textSecondary }}
-              >
+              <Text style={[styles.emptyText, { color: theme.colors.textMeta }]}>
                 Select Fanfic to filter by AO3 fields.
               </Text>
             )}
 
-            <Divider style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
             {/* ── Section: Tags ── */}
             {hasTaggedReadables && (
               <>
-                <Text
-                  variant="labelLarge"
-                  style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
-                >
-                  Tags
-                </Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>TAGS</Text>
 
                 {/* Active tag chips with toggle cycle */}
                 {activeTags.length > 0 && (
                   <View style={styles.chipRow}>
-                    {activeTags.map(({ tag, mode }) => (
-                      <Chip
-                        key={`${mode}-${tag}`}
-                        onPress={() => cycleTag(tag)}
-                        onClose={() => removeTag(tag)}
-                        style={[
-                          styles.chip,
-                          mode === 'include'
-                            ? { backgroundColor: theme.colors.primaryContainer }
-                            : { backgroundColor: theme.colors.errorContainer },
-                        ]}
-                        accessibilityLabel={`${mode === 'include' ? 'Include' : 'Exclude'} tag: ${tag}. Tap to cycle.`}
-                      >
-                        {mode === 'exclude' ? `not ${tag}` : tag}
-                      </Chip>
-                    ))}
+                    {activeTags.map(({ tag, mode }) =>
+                      renderChip({
+                        label: mode === 'exclude' ? `not ${tag}` : tag,
+                        active: true,
+                        activeVariant: mode === 'exclude' ? 'exclude' : 'include',
+                        onPress: () => cycleTag(tag),
+                        onRemove: () => removeTag(tag),
+                        accessibilityLabel: `${mode === 'include' ? 'Include' : 'Exclude'} tag: ${tag}. Tap to cycle.`,
+                      })
+                    )}
                   </View>
                 )}
 
                 {/* Tag search input */}
                 <TextInput
-                  mode="outlined"
                   placeholder="Search tags…"
                   value={tagInput}
                   onChangeText={setTagInput}
-                  dense
-                  style={styles.textInput}
+                  style={[
+                    styles.searchInput,
+                    {
+                      backgroundColor: theme.colors.backgroundCard,
+                      borderColor: theme.colors.backgroundBorder,
+                      color: theme.colors.textPrimary,
+                    },
+                  ]}
+                  placeholderTextColor={theme.colors.textHint}
                   accessibilityLabel="Search tag vocabulary"
                 />
 
                 {/* Tag vocabulary chips */}
                 {filteredTagVocab.length > 0 && (
                   <View style={styles.chipRow}>
-                    {filteredTagVocab.slice(0, 30).map((tag) => (
-                      <Chip
-                        key={tag}
-                        onPress={() => addIncludeTag(tag)}
-                        style={styles.chip}
-                      >
-                        {tag}
-                      </Chip>
-                    ))}
+                    {filteredTagVocab.slice(0, 30).map((tag) =>
+                      renderChip({
+                        label: tag,
+                        active: false,
+                        onPress: () => addIncludeTag(tag),
+                      })
+                    )}
                   </View>
                 )}
 
-                <Divider style={styles.divider} />
+                <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
               </>
             )}
 
             {/* ── Section: Sort ── */}
-            <Text
-              variant="labelLarge"
-              style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
-            >
-              Sort
-            </Text>
-            <RadioButton.Group
-              value={currentSortKey}
-              onValueChange={(key) => {
-                const opt = sortOptions.find((o) => sortOptionKey(o) === key);
-                if (opt) setSort(opt);
-              }}
-            >
-              {sortOptions.map((opt) => {
-                const key = sortOptionKey(opt);
-                return (
-                  <Pressable
-                    key={key}
-                    style={styles.radioRow}
-                    onPress={() => setSort(opt)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: currentSortKey === key }}
-                  >
-                    <RadioButton value={key} />
-                    <Text
-                      variant="bodyMedium"
-                      style={[styles.radioLabel, { color: theme.colors.textPrimary }]}
-                    >
-                      {opt.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </RadioButton.Group>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>SORT</Text>
+            {sortOptions.map((opt) => {
+              const key = sortOptionKey(opt);
+              const isSelected = currentSortKey === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={styles.radioRow}
+                  onPress={() => setSort(opt)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: isSelected }}
+                  accessibilityLabel={opt.label}
+                >
+                  <View style={[styles.radioOuter, { borderColor: isSelected ? theme.colors.kindBook : theme.colors.backgroundBorder }]}>
+                    {isSelected && (
+                      <View style={[styles.radioInner, { backgroundColor: theme.colors.kindBook }]} />
+                    )}
+                  </View>
+                  <Text style={[styles.radioLabel, { color: theme.colors.textPrimary }]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
 
           </ScrollView>
 
@@ -688,29 +686,31 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
           <View
             style={[
               styles.footer,
-              {
-                borderTopColor: theme.colors.outlineVariant,
-                backgroundColor: theme.colors.surface,
-              },
+              { backgroundColor: theme.colors.backgroundInput },
             ]}
           >
-            <Text
-              variant="bodySmall"
-              style={[styles.liveCount, { color: theme.colors.textSecondary }]}
-            >
+            <Text style={[styles.liveCount, { color: theme.colors.textMeta }]}>
               {liveCount === 1 ? '1 readable matches' : `${liveCount} readables match`}
             </Text>
             <View style={styles.footerActions}>
-              <Button onPress={handleClearAll} accessibilityLabel="Clear all filters">
-                Clear all
-              </Button>
-              <Button
-                mode="contained"
-                onPress={handleApply}
-                accessibilityLabel="Apply filters"
+              <TouchableOpacity
+                onPress={handleClearAll}
+                style={styles.clearButton}
+                accessibilityLabel="Clear all filters"
+                accessibilityRole="button"
               >
-                Apply
-              </Button>
+                <Text style={[styles.clearButtonText, { color: theme.colors.textBody }]}>
+                  Clear all
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleApply}
+                style={[styles.applyButton, { backgroundColor: theme.colors.kindBook }]}
+                accessibilityLabel="Apply filters"
+                accessibilityRole="button"
+              >
+                <Text style={styles.applyButtonText}>Apply</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -720,26 +720,63 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
   );
 }
 
+// ── Chip styles (shared) ───────────────────────────────────────────────────────
+
+const chipStyles = StyleSheet.create({
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    gap: 6,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  chipRemove: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+});
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   sheet: {
     maxHeight: '90%',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   body: {
     flexShrink: 1,
@@ -750,48 +787,98 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   sectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
     marginTop: 4,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   subLabel: {
-    marginTop: 8,
-    marginBottom: 4,
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 10,
+    marginBottom: 5,
   },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  chip: {
-    // Paper chip handles sizing
-  },
-  textInput: {
+  searchInput: {
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    paddingHorizontal: 14,
+    fontSize: 14,
     marginBottom: 8,
   },
+  emptyText: {
+    fontSize: 13,
+  },
   divider: {
+    height: 1,
     marginVertical: 12,
   },
   radioRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: Platform.OS === 'ios' ? 2 : 0,
+    paddingVertical: Platform.OS === 'ios' ? 7 : 5,
+    minHeight: 44,
+    gap: 12,
+  },
+  radioOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioInner: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
   },
   radioLabel: {
     flex: 1,
+    fontSize: 14,
   },
   footer: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 8,
+    gap: 10,
   },
   liveCount: {
     textAlign: 'center',
+    fontSize: 12,
   },
   footerActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 8,
+    alignItems: 'center',
+    gap: 10,
+  },
+  clearButton: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  applyButton: {
+    height: 44,
+    borderRadius: 22,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

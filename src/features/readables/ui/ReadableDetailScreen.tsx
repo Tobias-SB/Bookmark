@@ -1,46 +1,36 @@
 // src/features/readables/ui/ReadableDetailScreen.tsx
-// v2 Phase 5 — Detail screen with all v2 fields, notes editor, and refresh button.
+// UI Phase 3 — Full card-based redesign.
 //
-// Display order (v2 §5.1):
-//   cover image (books with coverUrl)
-//   title
-//   author (+ authorType label when fanfic and authorType !== 'known')
-//   kind / source
-//   series (when seriesName non-null)
-//   status (inline — segmented buttons)
-//   progress:
-//     books:  progressCurrent / totalUnits pages
-//     fanfic: row 1 — availableChapters / totalUnits chapters available
-//             row 2 — Reading: chapter progressCurrent
-//   isComplete / isAbandoned indicators
-//   rating (fanfic only, when non-null)
-//   fandom (fanfic only, when non-empty)
-//   relationships (fanfic only, when non-empty — first 3, collapse/expand)
-//   archiveWarnings (fanfic only, when non-empty — distinct visual treatment)
-//   summary
-//   notes (all, when non-null — collapsible at 3 lines, edit via NotesEditor modal)
-//   tags (collapsed — tappable, navigate to Library with includeTags filter)
-//   wordCount (fanfic only, when non-null and > 0)
-//   publishedAt (fanfic only, when non-null) — "Published on AO3"
-//   ao3UpdatedAt (fanfic only, when non-null) — "Last updated on AO3"
-//   dateAdded
-//   actions: Edit · View on AO3 + Refresh · Delete
+// Layout:
+//   [hero — fixed, not scrollable]
+//     LinearGradient (backgroundBorder → backgroundPage)
+//       back bar · kind badge + source line · title · author · custom status pills
+//   [ScrollView]
+//     Progress card (floating)
+//     Metadata section cards (each section is its own card)
+//     Action buttons row
 
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Image,
+  Platform,
+  ScrollView,
+  StatusBar as RNStatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import {
   ActivityIndicator,
   Button,
-  Chip,
   Dialog,
-  Divider,
-  Icon,
   Portal,
-  SegmentedButtons,
   Snackbar,
-  Text,
-  TouchableRipple,
 } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
@@ -50,6 +40,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import type { RootStackParamList, TabParamList } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
+import type { AppTheme } from '../../../app/theme/tokens';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import type { ReadableStatus } from '../domain/readable';
@@ -88,15 +79,6 @@ const PREVIEW_TAG_COUNT = 3;
 const PREVIEW_RELATIONSHIP_COUNT = 3;
 const NOTES_COLLAPSE_LINES = 3;
 
-const ARCHIVE_WARNING_ORDER = [
-  'Creator Chose Not To Use Archive Warnings',
-  'No Archive Warnings Apply',
-  'Graphic Depictions Of Violence',
-  'Major Character Death',
-  'Rape/Non-Con',
-  'Underage',
-] as const;
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDisplayDate(iso: string): string {
@@ -123,11 +105,92 @@ function formatSeriesDisplay(
   return `Part ${seriesPart} of ${total} in ${seriesName}`;
 }
 
+function getStatusTokens(
+  status: ReadableStatus,
+  theme: AppTheme,
+): { bg: string; text: string; border: string } {
+  switch (status) {
+    case 'reading':
+      return {
+        bg: theme.colors.statusReadingBg,
+        text: theme.colors.statusReadingText,
+        border: theme.colors.statusReadingBorder,
+      };
+    case 'completed':
+      return {
+        bg: theme.colors.statusCompletedBg,
+        text: theme.colors.statusCompletedText,
+        border: theme.colors.statusCompletedBorder,
+      };
+    case 'dnf':
+      return {
+        bg: theme.colors.backgroundInput,
+        text: theme.colors.textBody,
+        border: theme.colors.backgroundBorder,
+      };
+    case 'want_to_read':
+    default:
+      return {
+        bg: theme.colors.backgroundInput,
+        text: theme.colors.textMeta,
+        border: theme.colors.backgroundBorder,
+      };
+  }
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function ChevronLeftIcon({ color }: { color: string }) {
+  return (
+    <View style={{ width: 10, height: 18, justifyContent: 'center' }}>
+      <View
+        style={{
+          width: 10,
+          height: 10,
+          borderLeftWidth: 2,
+          borderBottomWidth: 2,
+          borderColor: color,
+          borderRadius: 1,
+          transform: [{ rotate: '45deg' }, { translateX: 3 }],
+        }}
+      />
+    </View>
+  );
+}
+
+interface SectionCardProps {
+  label: string;
+  children: React.ReactNode;
+  theme: AppTheme;
+  headerRight?: React.ReactNode;
+}
+
+function SectionCard({ label, children, theme, headerRight }: SectionCardProps) {
+  return (
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.colors.backgroundCard,
+          ...theme.shadows.card,
+        },
+      ]}
+    >
+      <View style={styles.cardHeaderRow}>
+        <Text style={[styles.cardLabel, { color: theme.colors.textMeta }]}>{label}</Text>
+        {headerRight}
+      </View>
+      {children}
+    </View>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ReadableDetailScreen({ route, navigation }: Props) {
   const { id } = route.params;
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const detailNav = useNavigation<DetailNavProp>();
 
   const { readable, isLoading, isError, error, refetch } = useReadable(id);
@@ -137,6 +200,17 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
   const { refreshAsync, isPending: isRefreshing } = useRefreshReadableMetadata();
 
   const { snackbarMessage, showSnackbar, hideSnackbar } = useSnackbar();
+
+  // ── Android status bar translucency ───────────────────────────────────────
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      RNStatusBar.setTranslucent(true);
+      RNStatusBar.setBackgroundColor('transparent');
+      return () => {
+        RNStatusBar.setTranslucent(false);
+      };
+    }
+  }, []);
 
   // ── Modal / UI state ───────────────────────────────────────────────────────
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
@@ -159,18 +233,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
 
   const displayStatus: ReadableStatus = localStatus ?? readable?.status ?? 'want_to_read';
 
-  // ── Header title ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (readable) {
-      navigation.setOptions({ title: readable.title });
-    }
-  }, [navigation, readable?.title]);
-
   // ── Handlers ──────────────────────────────────────────────────────────────
-
-  function handleEdit() {
-    navigation.navigate('AddEditReadable', { id });
-  }
 
   function handleStatusChange(newStatus: ReadableStatus) {
     if (!readable || newStatus === displayStatus || isUpdating) return;
@@ -186,11 +249,11 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  function handleProgressSave(progressCurrent: number | null, totalUnits: number | null) {
+  function handleProgressSave(progressCurrent: number | null) {
     if (!readable) return;
     setProgressEditorError(null);
     update(
-      { id: readable.id, input: { progressCurrent, totalUnits }, current: readable },
+      { id: readable.id, input: { progressCurrent }, current: readable },
       {
         onSuccess: () => {
           setProgressEditorVisible(false);
@@ -216,7 +279,6 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           ? String((err as { message: unknown }).message)
           : 'Failed to save notes.';
       showSnackbar(msg);
-      // Modal stays open — caller controls visible
     }
   }
 
@@ -265,38 +327,61 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
     );
   }
 
+  // ── Mini back bar for loading/error states ────────────────────────────────
+
+  function MiniBackBar() {
+    return (
+      <View style={[styles.miniBackBar, { paddingTop: insets.top }]}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.heroBackButton}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <ChevronLeftIcon color={theme.colors.textMeta} />
+          <Text style={[styles.heroBackText, { color: theme.colors.textMeta }]}>Library</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   // ── Guards ────────────────────────────────────────────────────────────────
 
   if (isError) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text
-          variant="bodyMedium"
-          style={[styles.centeredMessage, { color: theme.colors.textSecondary }]}
-        >
-          {error?.message ?? 'Failed to load readable.'}
-        </Text>
-        <Button mode="outlined" onPress={refetch}>
-          Try again
-        </Button>
+      <View style={{ flex: 1, backgroundColor: theme.colors.backgroundPage }}>
+        <StatusBar style="dark" />
+        <MiniBackBar />
+        <View style={styles.centered}>
+          <Text style={[styles.centeredMessage, { color: theme.colors.textSecondary }]}>
+            {error?.message ?? 'Failed to load readable.'}
+          </Text>
+          <Button mode="outlined" onPress={refetch}>Try again</Button>
+        </View>
       </View>
     );
   }
 
   if (isLoading) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" />
+      <View style={{ flex: 1, backgroundColor: theme.colors.backgroundPage }}>
+        <StatusBar style="dark" />
+        <MiniBackBar />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" />
+        </View>
       </View>
     );
   }
 
   if (!readable) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text variant="bodyMedium" style={{ color: theme.colors.textSecondary }}>
-          Readable not found.
-        </Text>
+      <View style={{ flex: 1, backgroundColor: theme.colors.backgroundPage }}>
+        <StatusBar style="dark" />
+        <MiniBackBar />
+        <View style={styles.centered}>
+          <Text style={{ color: theme.colors.textSecondary }}>Readable not found.</Text>
+        </View>
       </View>
     );
   }
@@ -322,7 +407,6 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
     : readable.relationships.slice(0, PREVIEW_RELATIONSHIP_COUNT);
   const hiddenRelationshipCount = readable.relationships.length - PREVIEW_RELATIONSHIP_COUNT;
 
-  // authorType display
   const isAnonymous = readable.authorType === 'anonymous';
   const isOrphaned = readable.authorType === 'orphaned';
   const displayAuthor = isAnonymous
@@ -331,12 +415,180 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
     ? 'Orphaned work'
     : (readable.author ?? null);
 
+  const kindAccentColor =
+    readable.kind === 'book' ? theme.colors.kindBook : theme.colors.kindFanfic;
+  const kindSubtleColor =
+    readable.kind === 'book' ? theme.colors.kindBookSubtle : theme.colors.kindFanficSubtle;
+  const kindBorderColor =
+    readable.kind === 'book' ? theme.colors.kindBookBorder : theme.colors.kindFanficBorder;
+
+  const sourceLabel = SOURCE_TYPE_LABELS[readable.sourceType];
+
+  // Progress bar percentage.
+  // For fanfic, prefer availableChapters (supports ? totalUnits); fall back to totalUnits.
+  // For book, totalUnits is always the page count denominator.
+  const progressDenominator =
+    readable.kind === 'fanfic'
+      ? (readable.availableChapters ?? readable.totalUnits)
+      : readable.totalUnits;
+  const progressPct =
+    readable.progressCurrent !== null && progressDenominator !== null && progressDenominator > 0
+      ? Math.min(100, Math.round((readable.progressCurrent / progressDenominator) * 100))
+      : null;
+
+  // Progress subtext
+  let progressSubtext: string;
+  if (readable.kind === 'fanfic') {
+    const chapterPos =
+      readable.progressCurrent !== null ? `Reading ch. ${readable.progressCurrent}` : null;
+    const chapterAvail =
+      readable.availableChapters !== null || readable.totalUnits !== null
+        ? `${readable.availableChapters ?? '--'} of ${readable.totalUnits ?? '?'} chapters available`
+        : null;
+    if (chapterPos && chapterAvail) {
+      progressSubtext = `${chapterPos} · ${chapterAvail}`;
+    } else if (chapterPos) {
+      progressSubtext = chapterPos;
+    } else if (chapterAvail) {
+      progressSubtext = chapterAvail;
+    } else {
+      progressSubtext = 'No progress recorded';
+    }
+  } else {
+    progressSubtext =
+      readable.progressCurrent !== null || readable.totalUnits !== null
+        ? `${readable.progressCurrent ?? '--'} / ${readable.totalUnits ?? '?'} pages`
+        : 'No progress recorded';
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <View style={{ flex: 1, backgroundColor: theme.colors.backgroundPage }}>
+      <StatusBar style="dark" />
 
+      {/* ── Hero gradient — fixed, not scrollable ──────────────────────────── */}
+      <LinearGradient
+        colors={[theme.colors.backgroundInput, theme.colors.backgroundPage]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={[styles.hero, { paddingTop: insets.top }]}
+      >
+        {/* Back row + centered title */}
+        <View style={styles.heroTitleRow}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.heroBackButton}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <ChevronLeftIcon color={theme.colors.textMeta} />
+            <Text style={[styles.heroBackText, { color: theme.colors.textMeta }]}>Library</Text>
+          </TouchableOpacity>
+          <Text
+            style={[styles.heroTitle, { color: theme.colors.textPrimary }]}
+            numberOfLines={2}
+          >
+            {readable.title}
+          </Text>
+        </View>
+
+        {/* Meta row: author · kind · source */}
+        <View style={styles.heroMetaRow}>
+          {displayAuthor !== null && (
+            <>
+              <Text
+                style={[
+                  styles.heroMetaAuthor,
+                  {
+                    color:
+                      isAnonymous || isOrphaned
+                        ? theme.colors.textMeta
+                        : theme.colors.textBody,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {displayAuthor}
+              </Text>
+              {isOrphaned && (
+                <TouchableOpacity
+                  onPress={() => setOrphanedDialogVisible(true)}
+                  style={styles.orphanedIcon}
+                  accessibilityLabel="What does Orphaned work mean?"
+                  accessibilityRole="button"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.orphanedCircle, { color: theme.colors.textMeta }]}>ⓘ</Text>
+                </TouchableOpacity>
+              )}
+              <Text style={{ color: theme.colors.textMeta, fontSize: 12 }}> · </Text>
+            </>
+          )}
+          <View
+            style={[
+              styles.kindBadge,
+              { backgroundColor: kindSubtleColor, borderColor: kindBorderColor },
+            ]}
+          >
+            <Text style={[styles.kindBadgeText, { color: kindAccentColor }]}>
+              {KIND_LABELS[readable.kind]}
+            </Text>
+          </View>
+          <Text style={{ color: theme.colors.textMeta, fontSize: 12 }}> · </Text>
+          <Text style={[styles.heroMetaSource, { color: theme.colors.textMeta }]} numberOfLines={1}>
+            {sourceLabel}
+          </Text>
+        </View>
+
+        {/* Custom status pill buttons */}
+        <View style={styles.heroStatusRow}>
+          {READABLE_STATUSES.map((s) => {
+            const isActive = s === displayStatus;
+            const tok = getStatusTokens(s, theme);
+            return (
+              <TouchableOpacity
+                key={s}
+                onPress={() => handleStatusChange(s)}
+                disabled={isUpdating}
+                style={[
+                  styles.statusPill,
+                  {
+                    backgroundColor: isActive ? tok.bg : theme.colors.backgroundInput,
+                    borderColor: isActive ? tok.border : theme.colors.backgroundBorder,
+                    opacity: isUpdating ? 0.6 : 1,
+                  },
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={STATUS_LABELS_SHORT[s]}
+              >
+                <Text
+                  style={[
+                    styles.statusPillText,
+                    {
+                      color: isActive ? tok.text : theme.colors.textBody,
+                      fontWeight: isActive ? '600' : '400',
+                    },
+                  ]}
+                >
+                  {STATUS_LABELS_SHORT[s]}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </LinearGradient>
+
+      {/* ── Scrollable content ─────────────────────────────────────────────── */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={Platform.OS === 'android'}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 24 },
+        ]}
+      >
         {/* ── Cover image (books with coverUrl only) ─────────────────────── */}
         {readable.coverUrl !== null && (
           <View style={styles.coverContainer}>
@@ -348,538 +600,428 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           </View>
         )}
 
-        {/* ── Title ────────────────────────────────────────────────────────── */}
-        <Text
-          variant="headlineMedium"
-          style={[styles.title, { color: theme.colors.textPrimary }]}
+        {/* ── Progress card ──────────────────────────────────────────────────── */}
+        <View
+          style={[
+            styles.progressCard,
+            {
+              backgroundColor: theme.colors.backgroundCard,
+              ...theme.shadows.card,
+            },
+          ]}
         >
-          {readable.title}
-        </Text>
-
-        {/* ── Author (with authorType label for fanfic) ─────────────────────── */}
-        {displayAuthor !== null && (
-          <View style={styles.authorRow}>
-            <Text
-              variant="titleMedium"
-              style={[styles.author, { color: theme.colors.textSecondary }]}
-            >
-              {displayAuthor}
+          <View style={styles.progressCardHeader}>
+            <Text style={[styles.progressCardTitle, { color: theme.colors.textPrimary }]}>
+              Progress
             </Text>
-            {isOrphaned && (
-              <TouchableRipple
-                onPress={() => setOrphanedDialogVisible(true)}
-                style={styles.orphanedIcon}
-                accessibilityLabel="What does Orphaned work mean?"
-                accessibilityRole="button"
-              >
-                <Icon source="information-outline" size={18} color={theme.colors.textSecondary} />
-              </TouchableRipple>
+            {progressPct !== null && (
+              <Text style={[styles.progressCardPct, { color: theme.colors.textBody }]}>
+                {progressPct}%
+              </Text>
             )}
           </View>
-        )}
 
-        <Divider style={styles.divider} />
-
-        {/* ── Kind / Source ──────────────────────────────────────────────────── */}
-        <View style={styles.section}>
-          <Text
-            variant="labelSmall"
-            style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
+          {/* Progress bar */}
+          <View
+            style={[styles.progressBarTrack, { backgroundColor: kindSubtleColor }]}
           >
-            KIND
-          </Text>
-          <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-            {KIND_LABELS[readable.kind]}{'  ·  '}{SOURCE_TYPE_LABELS[readable.sourceType]}
-          </Text>
-        </View>
+            {progressPct !== null && (
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { backgroundColor: kindAccentColor, width: `${progressPct}%` as any },
+                ]}
+              />
+            )}
+          </View>
 
-        {/* ── ISBN (books with isbn only) ──────────────────────────────────── */}
-        {readable.isbn !== null && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                ISBN
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                {readable.isbn}
-              </Text>
-            </View>
-          </>
-        )}
-
-        {/* ── Series ───────────────────────────────────────────────────────── */}
-        {seriesDisplay !== null && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                SERIES
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                {seriesDisplay}
-              </Text>
-            </View>
-          </>
-        )}
-
-        <Divider style={styles.divider} />
-
-        {/* ── Status ────────────────────────────────────────────────────────── */}
-        <View style={styles.section}>
-          <Text
-            variant="labelSmall"
-            style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-          >
-            STATUS
-          </Text>
-          <SegmentedButtons
-            value={displayStatus}
-            onValueChange={(v) => handleStatusChange(v as ReadableStatus)}
-            buttons={READABLE_STATUSES.map((s) => ({
-              value: s,
-              label: STATUS_LABELS_SHORT[s],
-              disabled: isUpdating,
-            }))}
-          />
-        </View>
-
-        <Divider style={styles.divider} />
-
-        {/* ── Progress ──────────────────────────────────────────────────────── */}
-        <View style={styles.section}>
-          <Text
-            variant="labelSmall"
-            style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-          >
-            PROGRESS
+          <Text style={[styles.progressSubtext, { color: theme.colors.textMeta }]}>
+            {progressSubtext}
           </Text>
 
-          {readable.kind === 'fanfic' ? (
-            // Fanfic: two rows — author progress + user progress
-            <View style={styles.fanficProgressBlock}>
-              {/* Row 1: availableChapters / totalUnits chapters available */}
-              {(readable.availableChapters !== null || readable.totalUnits !== null) && (
-                <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                  {readable.availableChapters !== null
-                    ? String(readable.availableChapters)
-                    : '--'}{' / '}
-                  {readable.totalUnits !== null ? String(readable.totalUnits) : '?'}{' chapters available'}
-                </Text>
-              )}
-              {/* Row 2: Reading: chapter X (user position) */}
-              {readable.progressCurrent !== null && (
-                <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                  {'Reading: chapter '}{readable.progressCurrent}
-                </Text>
-              )}
-              {readable.availableChapters === null &&
-                readable.totalUnits === null &&
-                readable.progressCurrent === null && (
-                  <Text variant="bodyMedium" style={{ color: theme.colors.textSecondary }}>
-                    No progress recorded
-                  </Text>
-                )}
-            </View>
-          ) : (
-            // Books: single row — progressCurrent / totalUnits pages
-            <View style={styles.progressRow}>
-              <Text
-                variant="bodyMedium"
-                style={[styles.progressText, { color: theme.colors.textPrimary }]}
-              >
-                {readable.progressCurrent !== null || readable.totalUnits !== null
-                  ? `${readable.progressCurrent !== null ? readable.progressCurrent : '--'} / ${readable.totalUnits !== null ? readable.totalUnits : '?'} pages`
-                  : 'No progress recorded'}
-              </Text>
-            </View>
-          )}
-
-          <Button
-            compact
-            mode="outlined"
+          <TouchableOpacity
             onPress={() => setProgressEditorVisible(true)}
             disabled={isUpdating}
+            style={styles.editProgressButton}
             accessibilityLabel="Edit progress"
-            style={styles.progressEditButton}
+            accessibilityRole="button"
           >
-            Edit
-          </Button>
+            <Text
+              style={[
+                styles.editProgressText,
+                {
+                  color: kindAccentColor,
+                  textDecorationColor: kindBorderColor,
+                },
+              ]}
+            >
+              Edit progress
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* ── isComplete / isAbandoned indicators ───────────────────────────── */}
-        {(readable.kind === 'fanfic' && readable.isComplete !== null) ||
-          (readable.kind === 'fanfic' && readable.isAbandoned) ? (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                STATUS FLAGS
-              </Text>
+        {/* ── STATUS FLAGS ──────────────────────────────────────────────────── */}
+        {readable.kind === 'fanfic' &&
+          (readable.isComplete !== null || readable.isAbandoned) && (
+            <SectionCard label="STATUS FLAGS" theme={theme}>
               <View style={styles.chipRow}>
-                {readable.kind === 'fanfic' && readable.isComplete !== null && (
-                  <Chip compact>
-                    {readable.isComplete ? 'Complete' : 'WIP'}
-                  </Chip>
-                )}
-                {readable.kind === 'fanfic' && readable.isAbandoned && (
-                  <Chip
-                    compact
-                    style={{ backgroundColor: theme.colors.errorContainer }}
-                    textStyle={{ color: theme.colors.error }}
+                {readable.isComplete !== null && (
+                  <View
+                    style={[
+                      styles.chip,
+                      readable.isComplete
+                        ? {
+                            backgroundColor: theme.colors.statusCompletedBg,
+                            borderColor: theme.colors.statusCompletedBorder,
+                          }
+                        : {
+                            backgroundColor: theme.colors.backgroundInput,
+                            borderColor: theme.colors.backgroundBorder,
+                          },
+                    ]}
                   >
-                    Abandoned
-                  </Chip>
+                    <Text
+                      style={[
+                        styles.chipText,
+                        {
+                          color: readable.isComplete
+                            ? theme.colors.statusCompletedText
+                            : theme.colors.textBody,
+                        },
+                      ]}
+                    >
+                      {readable.isComplete ? 'Complete' : 'WIP'}
+                    </Text>
+                  </View>
+                )}
+                {readable.isAbandoned && (
+                  <View
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: theme.colors.dangerSubtle,
+                        borderColor: theme.colors.dangerBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.chipText, { color: theme.colors.danger }]}>
+                      Abandoned
+                    </Text>
+                  </View>
                 )}
               </View>
-            </View>
-          </>
-        ) : null}
+            </SectionCard>
+          )}
 
-        {/* ── Rating (fanfic only, when non-null) ───────────────────────────── */}
+        {/* ── ARCHIVE WARNINGS ──────────────────────────────────────────────── */}
+        {readable.kind === 'fanfic' && readable.archiveWarnings.length > 0 && (
+          <SectionCard label="ARCHIVE WARNINGS" theme={theme}>
+            <View style={styles.chipRow}>
+              {readable.archiveWarnings.map((w) => {
+                const isNoWarning = w === 'No Archive Warnings Apply';
+                return (
+                  <View
+                    key={w}
+                    style={[
+                      styles.chip,
+                      isNoWarning
+                        ? {
+                            backgroundColor: theme.colors.backgroundInput,
+                            borderColor: theme.colors.backgroundBorder,
+                          }
+                        : {
+                            backgroundColor: theme.colors.dangerSubtle,
+                            borderColor: theme.colors.dangerBorder,
+                          },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        isNoWarning
+                          ? { color: theme.colors.textBody }
+                          : { color: theme.colors.danger, fontWeight: '500' },
+                      ]}
+                    >
+                      {isNoWarning ? w : `⚠ ${w}`}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </SectionCard>
+        )}
+
+        {/* ── RATING ────────────────────────────────────────────────────────── */}
         {readable.kind === 'fanfic' && readable.rating !== null && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                RATING
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                {AO3_RATING_LABELS[readable.rating]}
-              </Text>
-            </View>
-          </>
+          <SectionCard label="RATING" theme={theme}>
+            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
+              {AO3_RATING_LABELS[readable.rating]}
+            </Text>
+          </SectionCard>
         )}
 
-        {/* ── Fandom (fanfic only, when non-empty) ──────────────────────────── */}
+        {/* ── FANDOM ────────────────────────────────────────────────────────── */}
         {readable.kind === 'fanfic' && readable.fandom.length > 0 && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                FANDOM
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                {readable.fandom.join(', ')}
-              </Text>
-            </View>
-          </>
+          <SectionCard label="FANDOM" theme={theme}>
+            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
+              {readable.fandom.join(', ')}
+            </Text>
+          </SectionCard>
         )}
 
-        {/* ── Relationships (fanfic only, first 3 + expand) ─────────────────── */}
+        {/* ── RELATIONSHIPS ─────────────────────────────────────────────────── */}
         {readable.kind === 'fanfic' && readable.relationships.length > 0 && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                RELATIONSHIPS
-              </Text>
+          <SectionCard label="RELATIONSHIPS" theme={theme}>
+            <View style={{ gap: 4 }}>
               {previewRelationships.map((rel) => (
-                <Text
-                  key={rel}
-                  variant="bodyMedium"
-                  style={{ color: theme.colors.textPrimary }}
-                >
+                <Text key={rel} style={[styles.bodyText, { color: theme.colors.textBody }]}>
                   {rel}
                 </Text>
               ))}
-              {hiddenRelationshipCount > 0 && (
-                <Button
-                  compact
-                  mode="text"
-                  onPress={() => setRelshipsExpanded((prev) => !prev)}
-                  style={styles.expandButton}
-                  accessibilityLabel={
-                    relshipsExpanded ? 'Show fewer relationships' : 'Show all relationships'
-                  }
-                >
+            </View>
+            {hiddenRelationshipCount > 0 && (
+              <TouchableOpacity
+                onPress={() => setRelshipsExpanded((p) => !p)}
+                style={styles.expandButton}
+                accessibilityLabel={
+                  relshipsExpanded ? 'Show fewer relationships' : 'Show all relationships'
+                }
+                accessibilityRole="button"
+              >
+                <Text style={[styles.expandText, { color: kindAccentColor }]}>
                   {relshipsExpanded ? 'Show less' : `+${hiddenRelationshipCount} more`}
-                </Button>
-              )}
-            </View>
-          </>
-        )}
-
-        {/* ── Archive Warnings (fanfic only — distinct visual treatment) ───── */}
-        {readable.kind === 'fanfic' && readable.archiveWarnings.length > 0 && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <View style={styles.warningHeader}>
-                <Icon source="alert" size={14} color={theme.colors.error} />
-                <Text
-                  variant="labelSmall"
-                  style={[styles.sectionLabel, { color: theme.colors.error }]}
-                >
-                  {'  ARCHIVE WARNINGS'}
                 </Text>
-              </View>
-              <View style={styles.chipRow}>
-                {readable.archiveWarnings.map((w) => (
-                  <Chip
-                    key={w}
-                    compact
-                    icon="alert-circle-outline"
-                    style={{ backgroundColor: theme.colors.errorContainer }}
-                    textStyle={{ color: theme.colors.error }}
-                  >
-                    {w}
-                  </Chip>
-                ))}
-              </View>
-            </View>
-          </>
-        )}
-
-        {/* ── Summary ───────────────────────────────────────────────────────── */}
-        {readable.summary !== null && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                SUMMARY
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                {readable.summary}
-              </Text>
-            </View>
-          </>
-        )}
-
-        {/* ── Notes (all kinds — collapsible, editable) ─────────────────────── */}
-        <>
-          <Divider style={styles.divider} />
-          <View style={styles.section}>
-            <View style={styles.notesTitleRow}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                NOTES
-              </Text>
-              <Button
-                compact
-                mode="text"
-                onPress={() => setNotesEditorVisible(true)}
-                accessibilityLabel={readable.notes ? 'Edit notes' : 'Add notes'}
-              >
-                {readable.notes ? 'Edit' : 'Add'}
-              </Button>
-            </View>
-            {readable.notes !== null ? (
-              <>
-                <Text
-                  variant="bodyMedium"
-                  style={{ color: theme.colors.textPrimary }}
-                  numberOfLines={notesExpanded ? undefined : NOTES_COLLAPSE_LINES}
-                >
-                  {readable.notes}
-                </Text>
-                {readable.notes.split('\n').length > NOTES_COLLAPSE_LINES ||
-                readable.notes.length > 200 ? (
-                  <Button
-                    compact
-                    mode="text"
-                    onPress={() => setNotesExpanded((prev) => !prev)}
-                    style={styles.expandButton}
-                    accessibilityLabel={notesExpanded ? 'Collapse notes' : 'Expand notes'}
-                  >
-                    {notesExpanded ? 'Show less' : 'Show more'}
-                  </Button>
-                ) : null}
-                {readable.notesUpdatedAt !== null && (
-                  <Text
-                    variant="bodySmall"
-                    style={[styles.notesTimestamp, { color: theme.colors.textSecondary }]}
-                  >
-                    {`Note last updated ${formatDisplayDate(readable.notesUpdatedAt)}`}
-                  </Text>
-                )}
-              </>
-            ) : (
-              <Text variant="bodySmall" style={{ color: theme.colors.textSecondary }}>
-                Private — not imported from AO3
-              </Text>
+              </TouchableOpacity>
             )}
-          </View>
-        </>
-
-        {/* ── Tags (tappable — navigate to Library with includeTags filter) ── */}
-        {readable.tags.length > 0 && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                TAGS
-              </Text>
-              <View style={styles.chipRow}>
-                {previewTags.map((tag) => (
-                  <Chip
-                    key={tag}
-                    compact
-                    onPress={() => handleTagPress(tag)}
-                    accessibilityLabel={`Filter by tag: ${tag}`}
-                    accessibilityRole="button"
-                    style={styles.tag}
-                  >
-                    {tag}
-                  </Chip>
-                ))}
-              </View>
-              {hiddenTagCount > 0 && (
-                <Button
-                  compact
-                  mode="text"
-                  onPress={() => setTagsExpanded((prev) => !prev)}
-                  style={styles.expandButton}
-                  accessibilityLabel={tagsExpanded ? 'Show fewer tags' : 'Show all tags'}
-                >
-                  {tagsExpanded ? 'Show less' : `+${hiddenTagCount} more`}
-                </Button>
-              )}
-            </View>
-          </>
+          </SectionCard>
         )}
 
-        {/* ── Word count (fanfic only, when non-null and > 0) ───────────────── */}
+        {/* ── SERIES ────────────────────────────────────────────────────────── */}
+        {seriesDisplay !== null && (
+          <SectionCard label="SERIES" theme={theme}>
+            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
+              {seriesDisplay}
+            </Text>
+          </SectionCard>
+        )}
+
+        {/* ── SUMMARY ───────────────────────────────────────────────────────── */}
+        {readable.summary !== null && (
+          <SectionCard label="SUMMARY" theme={theme}>
+            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
+              {readable.summary}
+            </Text>
+          </SectionCard>
+        )}
+
+        {/* ── NOTES — always rendered ────────────────────────────────────────── */}
+        <SectionCard
+          label="NOTES"
+          theme={theme}
+          headerRight={
+            <TouchableOpacity
+              onPress={() => setNotesEditorVisible(true)}
+              style={styles.notesEditButton}
+              accessibilityLabel={readable.notes ? 'Edit notes' : 'Add notes'}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.notesEditText, { color: kindAccentColor }]}>
+                {readable.notes ? 'Edit' : 'Add'}
+              </Text>
+            </TouchableOpacity>
+          }
+        >
+          {readable.notes !== null ? (
+            <>
+              <Text
+                style={[styles.bodyText, { color: theme.colors.textBody }]}
+                numberOfLines={notesExpanded ? undefined : NOTES_COLLAPSE_LINES}
+              >
+                {readable.notes}
+              </Text>
+              {(readable.notes.split('\n').length > NOTES_COLLAPSE_LINES ||
+                readable.notes.length > 200) && (
+                <TouchableOpacity
+                  onPress={() => setNotesExpanded((p) => !p)}
+                  style={styles.expandButton}
+                  accessibilityLabel={notesExpanded ? 'Collapse notes' : 'Expand notes'}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.expandText, { color: kindAccentColor }]}>
+                    {notesExpanded ? 'Show less' : 'Show more'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {readable.notesUpdatedAt !== null && (
+                <Text style={[styles.notesTimestamp, { color: theme.colors.textMeta }]}>
+                  {`Note last updated ${formatDisplayDate(readable.notesUpdatedAt)}`}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text style={[styles.bodyText, { color: theme.colors.textMeta, fontSize: 12 }]}>
+              Private — not imported from AO3
+            </Text>
+          )}
+        </SectionCard>
+
+        {/* ── TAGS ──────────────────────────────────────────────────────────── */}
+        {readable.tags.length > 0 && (
+          <SectionCard label="TAGS" theme={theme}>
+            <View style={styles.chipRow}>
+              {previewTags.map((tag) => (
+                <TouchableOpacity
+                  key={tag}
+                  onPress={() => handleTagPress(tag)}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: theme.colors.backgroundInput,
+                      borderColor: theme.colors.backgroundBorder,
+                    },
+                  ]}
+                  accessibilityLabel={`Filter by tag: ${tag}`}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.chipText, { color: theme.colors.textBody }]}>{tag}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {hiddenTagCount > 0 && (
+              <TouchableOpacity
+                onPress={() => setTagsExpanded((p) => !p)}
+                style={styles.expandButton}
+                accessibilityLabel={tagsExpanded ? 'Show fewer tags' : 'Show all tags'}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.expandText, { color: kindAccentColor, fontWeight: '500' }]}>
+                  {tagsExpanded ? 'Show less' : `+${hiddenTagCount} more`}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </SectionCard>
+        )}
+
+        {/* ── WORD COUNT ────────────────────────────────────────────────────── */}
         {readable.kind === 'fanfic' &&
           readable.wordCount !== null &&
           readable.wordCount > 0 && (
-            <>
-              <Divider style={styles.divider} />
-              <View style={styles.section}>
-                <Text
-                  variant="labelSmall"
-                  style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-                >
-                  WORD COUNT
-                </Text>
-                <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                  {formatWordCount(readable.wordCount)}
-                </Text>
-              </View>
-            </>
+            <SectionCard label="WORD COUNT" theme={theme}>
+              <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
+                {formatWordCount(readable.wordCount)}
+              </Text>
+            </SectionCard>
           )}
 
-        {/* ── Published on AO3 (fanfic only, when non-null) ────────────────── */}
+        {/* ── PUBLISHED ON AO3 ──────────────────────────────────────────────── */}
         {readable.kind === 'fanfic' && readable.publishedAt !== null && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                PUBLISHED ON AO3
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                {formatDisplayDate(readable.publishedAt)}
-              </Text>
-            </View>
-          </>
+          <SectionCard label="PUBLISHED ON AO3" theme={theme}>
+            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
+              {formatDisplayDate(readable.publishedAt)}
+            </Text>
+          </SectionCard>
         )}
 
-        {/* ── Last updated on AO3 (fanfic only, when non-null) ──────────────── */}
+        {/* ── LAST UPDATED ON AO3 ───────────────────────────────────────────── */}
         {readable.kind === 'fanfic' && readable.ao3UpdatedAt !== null && (
-          <>
-            <Divider style={styles.divider} />
-            <View style={styles.section}>
-              <Text
-                variant="labelSmall"
-                style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-              >
-                LAST UPDATED ON AO3
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-                {formatDisplayDate(readable.ao3UpdatedAt)}
-              </Text>
-            </View>
-          </>
+          <SectionCard label="LAST UPDATED ON AO3" theme={theme}>
+            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
+              {formatDisplayDate(readable.ao3UpdatedAt)}
+            </Text>
+          </SectionCard>
         )}
 
-        <Divider style={styles.divider} />
-
-        {/* ── Date Added ────────────────────────────────────────────────────── */}
-        <View style={styles.section}>
-          <Text
-            variant="labelSmall"
-            style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-          >
-            DATE ADDED
-          </Text>
-          <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
+        {/* ── DATE ADDED — always rendered ──────────────────────────────────── */}
+        <SectionCard label="DATE ADDED" theme={theme}>
+          <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
             {formatDisplayDate(readable.dateAdded)}
           </Text>
-        </View>
+        </SectionCard>
 
-        <Divider style={styles.divider} />
-
-        {/* ── Actions ───────────────────────────────────────────────────────── */}
-        <View style={styles.actionsSection}>
-          <Button
-            mode="contained"
-            onPress={handleEdit}
+        {/* ── Action buttons ────────────────────────────────────────────────── */}
+        <View style={styles.actionsRow}>
+          {/* Edit */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('AddEditReadable', { id })}
+            style={[
+              styles.actionButton,
+              {
+                backgroundColor: kindAccentColor,
+                borderColor: kindAccentColor,
+                ...theme.shadows.button,
+              },
+            ]}
             accessibilityLabel="Edit readable"
+            accessibilityRole="button"
           >
-            Edit
-          </Button>
+            <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>Edit</Text>
+          </TouchableOpacity>
 
+          {/* View on AO3 */}
           {isAo3FanficWithUrl && (
-            <>
-              <Button
-                mode="outlined"
-                onPress={() => void handleViewOnAo3()}
-                accessibilityLabel="View on AO3"
-              >
+            <TouchableOpacity
+              onPress={() => void handleViewOnAo3()}
+              style={[
+                styles.actionButton,
+                {
+                  backgroundColor: theme.colors.kindFanficSubtle,
+                  borderColor: theme.colors.kindFanficBorder,
+                },
+              ]}
+              accessibilityLabel="View on AO3"
+              accessibilityRole="button"
+            >
+              <Text style={[styles.actionButtonText, { color: theme.colors.kindFanfic }]}>
                 View on AO3
-              </Button>
-              <Button
-                mode="outlined"
-                onPress={() => void handleRefresh()}
-                loading={isRefreshing}
-                disabled={isRefreshing}
-                accessibilityLabel="Refresh AO3 metadata"
-              >
-                {isRefreshing ? 'Refreshing…' : 'Refresh'}
-              </Button>
-            </>
+              </Text>
+            </TouchableOpacity>
           )}
 
-          <Button
-            mode="outlined"
-            onPress={() => setConfirmDeleteVisible(true)}
-            textColor={theme.colors.error}
-            disabled={isDeleting}
-            accessibilityLabel="Delete readable"
-          >
-            Delete
-          </Button>
-        </View>
+          {/* Refresh */}
+          {isAo3FanficWithUrl && (
+            <TouchableOpacity
+              onPress={() => void handleRefresh()}
+              disabled={isRefreshing}
+              style={[
+                styles.actionButton,
+                {
+                  backgroundColor: theme.colors.backgroundCard,
+                  borderColor: theme.colors.backgroundBorder,
+                  ...theme.shadows.small,
+                  opacity: isRefreshing ? 0.7 : 1,
+                },
+              ]}
+              accessibilityLabel="Refresh AO3 metadata"
+              accessibilityRole="button"
+            >
+              {isRefreshing ? (
+                <ActivityIndicator size="small" color={theme.colors.textPrimary} />
+              ) : null}
+              <Text style={[styles.actionButtonText, { color: theme.colors.textPrimary }]}>
+                {isRefreshing ? 'Refreshing…' : 'Refresh'}
+              </Text>
+            </TouchableOpacity>
+          )}
 
+          {/* Delete */}
+          <TouchableOpacity
+            onPress={() => setConfirmDeleteVisible(true)}
+            disabled={isDeleting}
+            style={[
+              styles.actionButton,
+              {
+                backgroundColor: theme.colors.dangerSubtle,
+                borderColor: theme.colors.dangerBorder,
+                opacity: isDeleting ? 0.7 : 1,
+              },
+            ]}
+            accessibilityLabel="Delete readable"
+            accessibilityRole="button"
+          >
+            <Text style={[styles.actionButtonText, { color: theme.colors.danger }]}>Delete</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* ── ProgressEditor modal ────────────────────────────────────────────── */}
@@ -919,15 +1061,13 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           onDismiss={() => setOrphanedDialogVisible(false)}
           style={{ backgroundColor: theme.colors.surface }}
         >
-          <Dialog.Title style={{ color: theme.colors.textPrimary }}>
-            Orphaned work
-          </Dialog.Title>
+          <Dialog.Title style={{ color: theme.colors.textPrimary }}>Orphaned work</Dialog.Title>
           <Dialog.Content>
-            <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
+            <Text style={{ color: theme.colors.textPrimary }}>
               The author transferred this work to AO3&apos;s orphan_account, permanently severing
               their account association. The work remains available on AO3, but no named author
-              is associated with it. This is distinct from an anonymous posting — orphaning is
-              a deliberate, permanent action.
+              is associated with it. This is distinct from an anonymous posting — orphaning is a
+              deliberate, permanent action.
             </Text>
           </Dialog.Content>
           <Dialog.Actions>
@@ -953,36 +1093,167 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  // Loading / error states
+  miniBackBar: { paddingHorizontal: 16, paddingBottom: 8 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
   centeredMessage: { textAlign: 'center' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  coverContainer: { alignItems: 'center', marginBottom: 16 },
+
+  // Hero gradient band
+  hero: { paddingHorizontal: 18, paddingBottom: 20 },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 4 },
+  heroBackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingRight: 12,
+    minHeight: 44,
+  },
+  heroBackText: { fontSize: 15, fontWeight: '500' },
+
+  // Kind badge (used in meta row)
+  kindBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 11,
+    borderWidth: 1,
+  },
+  kindBadgeText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.1 },
+
+  // Title — absolutely centered in heroTitleRow, paddingHorizontal keeps it clear of back button
+  heroTitle: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    lineHeight: 26,
+    paddingHorizontal: 80,
+  },
+
+  // Meta row: author · kind · source
+  heroMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  heroMetaAuthor: { fontSize: 13, flexShrink: 1 },
+  heroMetaSource: { fontSize: 12, flexShrink: 1 },
+  orphanedIcon: { marginLeft: 4 },
+  orphanedCircle: { fontSize: 16 },
+
+  // Custom status pill buttons
+  heroStatusRow: { flexDirection: 'row', gap: 6 },
+  statusPill: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  statusPillText: { fontSize: 11.5 },
+
+  // ScrollView
+  scrollContent: { paddingTop: 12 },
+
+  // Cover image
+  coverContainer: { alignItems: 'center', marginBottom: 12, marginHorizontal: 14 },
   cover: { width: 120, height: 160, borderRadius: 6 },
-  title: { marginBottom: 4 },
-  authorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  author: { flexShrink: 1 },
-  orphanedIcon: { marginLeft: 4, padding: 2, borderRadius: 10 },
-  divider: { marginVertical: 12 },
-  section: { gap: 6 },
-  sectionLabel: {},
-  // Fanfic progress block — stacked rows
-  fanficProgressBlock: { gap: 4 },
-  // Book progress row
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  progressText: { flex: 1 },
-  progressEditButton: { alignSelf: 'flex-start', marginTop: 4 },
-  // Status flags + chips
+
+  // Progress card
+  progressCard: {
+    borderRadius: 18,
+    marginHorizontal: 12,
+    marginBottom: 9,
+    padding: 15,
+  },
+  progressCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressCardTitle: { fontSize: 13, fontWeight: '600' },
+  progressCardPct: { fontSize: 12 },
+  progressBarTrack: { height: 5, borderRadius: 3, overflow: 'hidden', marginBottom: 6 },
+  progressBarFill: { height: 5, borderRadius: 3 },
+  progressSubtext: { fontSize: 12, marginBottom: 2 },
+  editProgressButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  editProgressText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+
+  // Section cards
+  card: {
+    borderRadius: 16,
+    marginHorizontal: 14,
+    marginBottom: 9,
+    padding: 14,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 7,
+  },
+  cardLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
+  // Body text in cards
+  bodyText: { fontSize: 13, lineHeight: 20 },
+
+  // Chip rows
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  // Warning header (icon + label)
-  warningHeader: { flexDirection: 'row', alignItems: 'center' },
-  // Notes
-  notesTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  notesTimestamp: { marginTop: 4 },
-  // Tags
-  tag: {},
-  // Expand/collapse buttons
-  expandButton: { alignSelf: 'flex-start', marginTop: 2 },
-  // Actions
-  actionsSection: { gap: 12, marginTop: 8 },
+  chip: {
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  chipText: { fontSize: 12 },
+
+  // Notes section
+  notesEditButton: { minHeight: 44, justifyContent: 'center' },
+  notesEditText: { fontSize: 12, fontWeight: '600' },
+  notesTimestamp: { marginTop: 6, fontSize: 11 },
+
+  // Expand/collapse
+  expandButton: { marginTop: 6, alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center' },
+  expandText: { fontSize: 12 },
+
+  // Action buttons row
+  actionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginHorizontal: 14,
+    marginBottom: 24,
+    marginTop: 4,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 22,
+    minHeight: 44,
+    borderWidth: 1,
+  },
+  actionButtonText: { fontSize: 13, fontWeight: '500' },
 });

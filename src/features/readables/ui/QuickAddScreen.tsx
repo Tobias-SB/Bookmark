@@ -1,10 +1,7 @@
 // src/features/readables/ui/QuickAddScreen.tsx
+// UI Phase 7 — QuickAddScreen redesign.
 // First step when adding a new readable. Presented with presentation: 'modal'
 // from the root stack navigator, giving a bottom-up slide-in feel.
-//
-// New pattern: first "multi-step intake modal screen" in the codebase.
-// The screen captures kind + optional metadata before sending the user to
-// AddEditScreen for final review and save.
 //
 // Book flow:
 //   Kind = Book → search field → results list (up to 5 per page) →
@@ -30,19 +27,12 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput as RNTextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  ActivityIndicator,
-  Button,
-  Divider,
-  HelperText,
-  SegmentedButtons,
-  Text,
-  TextInput,
-  TouchableRipple,
-} from 'react-native-paper';
+import { ActivityIndicator } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useHeaderHeight } from '@react-navigation/elements';
 
@@ -82,6 +72,7 @@ export function QuickAddScreen({ navigation }: Props) {
   const headerHeight = useHeaderHeight();
 
   const [kind, setKind] = useState<'book' | 'fanfic'>('book');
+  const [urlFocused, setUrlFocused] = useState(false);
 
   // ── Book search state ──────────────────────────────────────────────────────
   const [bookQuery, setBookQuery] = useState('');
@@ -213,7 +204,7 @@ export function QuickAddScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      style={[styles.container, { backgroundColor: theme.colors.backgroundPage }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={headerHeight}
     >
@@ -223,40 +214,95 @@ export function QuickAddScreen({ navigation }: Props) {
       >
 
         {/* ── Kind selector ──────────────────────────────────────────────────── */}
-        <View style={styles.kindSection}>
-          <Text
-            variant="labelLarge"
-            style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}
-          >
-            What are you adding?
-          </Text>
-          <SegmentedButtons
-            value={kind}
-            onValueChange={(v) => handleKindChange(v as 'book' | 'fanfic')}
-            buttons={[
-              { value: 'book', label: 'Book' },
-              { value: 'fanfic', label: 'Fanfic' },
+        <Text style={[styles.kindLabel, { color: theme.colors.textMeta }]}>
+          What are you adding?
+        </Text>
+        <View style={styles.kindRow}>
+          {/* Book button */}
+          <TouchableOpacity
+            onPress={() => handleKindChange('book')}
+            style={[
+              styles.kindButton,
+              kind === 'book'
+                ? {
+                    backgroundColor: theme.colors.kindBookSubtle,
+                    borderColor: theme.colors.kindBookBorder,
+                  }
+                : {
+                    backgroundColor: theme.colors.backgroundInput,
+                    borderColor: theme.colors.backgroundBorder,
+                  },
             ]}
-          />
+            accessibilityLabel="Book"
+            accessibilityRole="button"
+            accessibilityState={{ selected: kind === 'book' }}
+          >
+            <View
+              style={[
+                styles.kindDot,
+                { backgroundColor: kind === 'book' ? theme.colors.kindBook : theme.colors.backgroundBorder },
+              ]}
+            />
+            <Text
+              style={[
+                styles.kindButtonText,
+                { color: kind === 'book' ? theme.colors.kindBook : theme.colors.textBody },
+              ]}
+            >
+              Book
+            </Text>
+          </TouchableOpacity>
+
+          {/* Fanfic button */}
+          <TouchableOpacity
+            onPress={() => handleKindChange('fanfic')}
+            style={[
+              styles.kindButton,
+              kind === 'fanfic'
+                ? {
+                    backgroundColor: theme.colors.kindFanficSubtle,
+                    borderColor: theme.colors.kindFanficBorder,
+                  }
+                : {
+                    backgroundColor: theme.colors.backgroundInput,
+                    borderColor: theme.colors.backgroundBorder,
+                  },
+            ]}
+            accessibilityLabel="Fanfic"
+            accessibilityRole="button"
+            accessibilityState={{ selected: kind === 'fanfic' }}
+          >
+            <View
+              style={[
+                styles.kindDot,
+                { backgroundColor: kind === 'fanfic' ? theme.colors.kindFanfic : theme.colors.backgroundBorder },
+              ]}
+            />
+            <Text
+              style={[
+                styles.kindButtonText,
+                { color: kind === 'fanfic' ? theme.colors.kindFanfic : theme.colors.textBody },
+              ]}
+            >
+              Fanfic
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        <Divider style={styles.kindDivider} />
+        <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
         {/* ── Book path ─────────────────────────────────────────────────────── */}
         {kind === 'book' && (
           <>
-            <Text
-              variant="bodyMedium"
-              style={[styles.pathHint, { color: theme.colors.textSecondary }]}
-            >
+            <Text style={[styles.pathHint, { color: theme.colors.textBody }]}>
               Search for your book to pre-fill its details, or skip to enter them manually.
             </Text>
 
             {/* Search row */}
             <View style={styles.searchRow}>
-              <TextInput
+              <RNTextInput
                 ref={bookQueryRef}
-                label="Title, author, or ISBN"
+                placeholder="Title, author, or ISBN"
                 value={bookQuery}
                 onChangeText={(t) => {
                   setBookQuery(t);
@@ -266,125 +312,145 @@ export function QuickAddScreen({ navigation }: Props) {
                 onSubmitEditing={() => { if (canSearch) void handleBookSearch(0); }}
                 autoCapitalize="none"
                 autoCorrect={false}
-                style={[styles.input, styles.searchInput]}
-                mode="outlined"
+                style={[
+                  styles.searchInput,
+                  {
+                    backgroundColor: theme.colors.backgroundCard,
+                    borderColor: theme.colors.backgroundBorder,
+                    color: theme.colors.textPrimary,
+                    ...theme.shadows.small,
+                  },
+                ]}
+                placeholderTextColor={theme.colors.textHint}
                 editable={!isImporting}
                 accessibilityLabel="Search query: title, author, or ISBN"
               />
-              <Button
-                mode="contained"
+              <TouchableOpacity
                 onPress={() => void handleBookSearch(0)}
-                loading={isImporting && allResults.length === 0}
                 disabled={!canSearch}
-                style={styles.searchButton}
+                style={[
+                  styles.actionButton,
+                  {
+                    backgroundColor: theme.colors.kindBook,
+                    opacity: canSearch ? 1 : 0.5,
+                    ...theme.shadows.button,
+                  },
+                ]}
                 accessibilityLabel="Search Google Books"
+                accessibilityRole="button"
               >
-                Search
-              </Button>
+                {isImporting && allResults.length === 0 ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.actionButtonText}>Search</Text>
+                )}
+              </TouchableOpacity>
             </View>
 
             {/* No results message */}
             {noResultsMessage !== null && (
-              <HelperText type="info" visible style={styles.noResultsText}>
+              <Text style={[styles.infoText, { color: theme.colors.textMeta }]}>
                 {noResultsMessage}
-              </HelperText>
+              </Text>
             )}
 
             {/* Results list */}
             {allResults.length > 0 && (
               <>
-                <Divider style={styles.resultsDivider} />
+                <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
                 {allResults.map((result, index) => (
-                  <React.Fragment key={`${result.isbn ?? result.displayTitle}-${index}`}>
-                    <TouchableRipple
-                      onPress={() => handleSelectBookResult(result)}
-                      accessibilityLabel={`Select ${result.displayTitle}`}
-                      accessibilityRole="button"
-                    >
-                      <View style={styles.resultItem}>
-                        {result.coverUrl !== null ? (
-                          <Image
-                            source={{ uri: result.coverUrl }}
-                            style={[
-                              styles.resultCover,
-                              { backgroundColor: theme.colors.surfaceVariant },
-                            ]}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <View
-                            style={[
-                              styles.resultCover,
-                              { backgroundColor: theme.colors.surfaceVariant },
-                            ]}
-                          />
-                        )}
-                        <View style={styles.resultDetails}>
-                          <Text
-                            variant="bodyLarge"
-                            style={{ color: theme.colors.textPrimary }}
-                            numberOfLines={2}
-                          >
-                            {result.displayTitle}
-                          </Text>
-                          {result.subtitle !== null && (
-                            <Text
-                              variant="bodySmall"
-                              style={{ color: theme.colors.textSecondary }}
-                              numberOfLines={1}
-                            >
-                              {result.subtitle}
-                            </Text>
-                          )}
-                          {result.allContributors.length > 0 && (
-                            <Text
-                              variant="bodySmall"
-                              style={{ color: theme.colors.textSecondary }}
-                              numberOfLines={2}
-                            >
-                              {result.allContributors.join(', ')}
-                            </Text>
-                          )}
-                          {result.displayInfo !== '' && (
-                            <Text
-                              variant="bodySmall"
-                              style={{ color: theme.colors.textDisabled }}
-                              numberOfLines={1}
-                            >
-                              {result.displayInfo}
-                            </Text>
-                          )}
-                          {result.isbn !== null && (
-                            <Text
-                              variant="bodySmall"
-                              style={{ color: theme.colors.textDisabled }}
-                              numberOfLines={1}
-                            >
-                              ISBN: {result.isbn}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    </TouchableRipple>
-                    {index < allResults.length - 1 && <Divider />}
-                  </React.Fragment>
+                  <TouchableOpacity
+                    key={`${result.isbn ?? result.displayTitle}-${index}`}
+                    onPress={() => handleSelectBookResult(result)}
+                    style={[
+                      styles.resultItem,
+                      {
+                        backgroundColor: theme.colors.backgroundCard,
+                        ...theme.shadows.small,
+                      },
+                    ]}
+                    accessibilityLabel={`Select ${result.displayTitle}`}
+                    accessibilityRole="button"
+                  >
+                    {result.coverUrl !== null ? (
+                      <Image
+                        source={{ uri: result.coverUrl }}
+                        style={[
+                          styles.resultCover,
+                          { backgroundColor: theme.colors.backgroundInput },
+                        ]}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.resultCover,
+                          { backgroundColor: theme.colors.backgroundInput },
+                        ]}
+                      />
+                    )}
+                    <View style={styles.resultDetails}>
+                      <Text
+                        style={[styles.resultTitle, { color: theme.colors.textPrimary }]}
+                        numberOfLines={2}
+                      >
+                        {result.displayTitle}
+                      </Text>
+                      {result.subtitle !== null && (
+                        <Text
+                          style={[styles.resultSubtext, { color: theme.colors.textBody }]}
+                          numberOfLines={1}
+                        >
+                          {result.subtitle}
+                        </Text>
+                      )}
+                      {result.allContributors.length > 0 && (
+                        <Text
+                          style={[styles.resultSubtext, { color: theme.colors.textBody }]}
+                          numberOfLines={2}
+                        >
+                          {result.allContributors.join(', ')}
+                        </Text>
+                      )}
+                      {result.displayInfo !== '' && (
+                        <Text
+                          style={[styles.resultMeta, { color: theme.colors.textMeta }]}
+                          numberOfLines={1}
+                        >
+                          {result.displayInfo}
+                        </Text>
+                      )}
+                      {result.isbn !== null && (
+                        <Text
+                          style={[styles.resultMeta, { color: theme.colors.textMeta }]}
+                          numberOfLines={1}
+                        >
+                          ISBN: {result.isbn}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
                 ))}
-                <Divider />
               </>
             )}
 
             {/* Load more */}
             {allResults.length > 0 && hasMore && (
-              <Button
-                mode="text"
+              <TouchableOpacity
                 onPress={() => void handleBookSearch(nextStartIndex)}
-                loading={isImporting}
                 disabled={isImporting}
-                style={styles.loadMoreButton}
+                style={[styles.loadMoreButton, { opacity: isImporting ? 0.5 : 1 }]}
                 accessibilityLabel="Load more results"
+                accessibilityRole="button"
               >
-                Load more results
-              </Button>
+                {isImporting ? (
+                  <ActivityIndicator size="small" color={theme.colors.kindBook} />
+                ) : (
+                  <Text style={[styles.loadMoreText, { color: theme.colors.kindBook }]}>
+                    Load more results
+                  </Text>
+                )}
+              </TouchableOpacity>
             )}
           </>
         )}
@@ -392,72 +458,84 @@ export function QuickAddScreen({ navigation }: Props) {
         {/* ── Fanfic path ───────────────────────────────────────────────────── */}
         {kind === 'fanfic' && (
           <>
-            <Text
-              variant="bodyMedium"
-              style={[styles.pathHint, { color: theme.colors.textSecondary }]}
-            >
+            <Text style={[styles.pathHint, { color: theme.colors.textBody }]}>
               Paste the AO3 work URL to import its details automatically, or skip to enter them manually.
             </Text>
 
-            <TextInput
-              label="AO3 Work URL"
+            <RNTextInput
+              placeholder="https://archiveofourown.org/works/…"
               value={ao3Url}
               onChangeText={(t) => {
                 setAo3Url(t);
                 if (ao3Error) setAo3Error(null);
               }}
+              onFocus={() => setUrlFocused(true)}
+              onBlur={() => setUrlFocused(false)}
               keyboardType="url"
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="done"
               onSubmitEditing={() => { if (canImportAo3) void handleAo3Import(); }}
-              style={styles.input}
-              mode="outlined"
+              style={[
+                styles.urlInput,
+                {
+                  backgroundColor: urlFocused ? theme.colors.backgroundCard : theme.colors.backgroundInput,
+                  borderColor: urlFocused ? theme.colors.kindBookBorder : theme.colors.backgroundBorder,
+                  color: theme.colors.textPrimary,
+                },
+              ]}
+              placeholderTextColor={theme.colors.textHint}
               editable={!isImporting}
               accessibilityLabel="AO3 work URL"
             />
 
             {ao3Error !== null && (
-              <HelperText type="error" visible>
+              <Text style={[styles.errorText, { color: theme.colors.danger }]}>
                 {ao3Error}
-              </HelperText>
+              </Text>
             )}
 
             {isImporting ? (
               <View style={styles.importingRow}>
-                <ActivityIndicator size="small" />
-                <Text
-                  variant="bodySmall"
-                  style={[styles.importingLabel, { color: theme.colors.textSecondary }]}
-                >
+                <ActivityIndicator size="small" color={theme.colors.kindBook} />
+                <Text style={[styles.importingLabel, { color: theme.colors.textMeta }]}>
                   Fetching from AO3…
                 </Text>
               </View>
             ) : (
-              <Button
-                mode="contained"
+              <TouchableOpacity
                 onPress={() => void handleAo3Import()}
                 disabled={!canImportAo3}
-                style={styles.importButton}
+                style={[
+                  styles.actionButtonFull,
+                  {
+                    backgroundColor: theme.colors.kindBook,
+                    opacity: canImportAo3 ? 1 : 0.5,
+                    ...theme.shadows.button,
+                  },
+                ]}
                 accessibilityLabel="Import from AO3"
+                accessibilityRole="button"
               >
-                Import from AO3
-              </Button>
+                <Text style={styles.actionButtonText}>Import from AO3</Text>
+              </TouchableOpacity>
             )}
           </>
         )}
 
         {/* ── Skip to manual add — always reachable ─────────────────────────── */}
-        <Divider style={styles.skipDivider} />
-        <Button
-          mode="text"
+        <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder, marginTop: 24 }]} />
+        <TouchableOpacity
           onPress={handleSkip}
           disabled={isImporting}
-          style={styles.skipButton}
+          style={[styles.skipButton, { opacity: isImporting ? 0.5 : 1 }]}
           accessibilityLabel="Skip import and add manually"
+          accessibilityRole="button"
         >
-          Skip, add manually
-        </Button>
+          <Text style={[styles.skipText, { color: theme.colors.kindBook }]}>
+            Skip, add manually
+          </Text>
+        </TouchableOpacity>
 
       </ScrollView>
     </KeyboardAvoidingView>
@@ -467,29 +545,143 @@ export function QuickAddScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 40 },
-  kindSection: { marginBottom: 12 },
-  sectionLabel: { marginBottom: 8 },
-  kindDivider: { marginBottom: 20 },
-  pathHint: { marginBottom: 16 },
-  searchRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 4 },
-  input: {},
-  searchInput: { flex: 1 },
-  searchButton: { alignSelf: 'center', marginTop: 4 },
-  noResultsText: { marginBottom: 4 },
-  resultsDivider: { marginTop: 8, marginBottom: 4 },
+
+  kindLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  kindRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 4,
+  },
+  kindButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  kindDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  kindButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  divider: {
+    height: 1,
+    marginVertical: 16,
+  },
+
+  pathHint: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 6,
+  },
+  searchInput: {
+    flex: 1,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    fontSize: 14,
+  },
+  actionButton: {
+    height: 46,
+    borderRadius: 23,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 80,
+  },
+  actionButtonFull: {
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  actionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  infoText: {
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  errorText: {
+    fontSize: 13,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+
   resultItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
+    padding: 12,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 8,
     gap: 12,
   },
-  resultCover: { width: 40, height: 53, borderRadius: 3, flexShrink: 0 },
+  resultCover: { width: 40, height: 53, borderRadius: 4, flexShrink: 0 },
   resultDetails: { flex: 1, gap: 2 },
-  loadMoreButton: { marginTop: 4, alignSelf: 'center' },
+  resultTitle: { fontSize: 15, fontWeight: '500' },
+  resultSubtext: { fontSize: 13 },
+  resultMeta: { fontSize: 12 },
+
+  loadMoreButton: {
+    alignSelf: 'center',
+    minHeight: 44,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+
+  urlInput: {
+    height: 46,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    paddingHorizontal: 14,
+    fontSize: 14,
+    marginBottom: 4,
+  },
   importingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
-  importingLabel: {},
-  importButton: { marginTop: 12 },
-  skipDivider: { marginTop: 28, marginBottom: 4 },
-  skipButton: { alignSelf: 'center' },
+  importingLabel: { fontSize: 13 },
+
+  skipButton: {
+    alignSelf: 'center',
+    minHeight: 44,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skipText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
 });
