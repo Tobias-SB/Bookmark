@@ -31,7 +31,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -64,34 +63,25 @@ const DEFAULT_FILTERS: ReadableFilters = { sortBy: 'dateAdded', sortOrder: 'desc
 
 const AO3_RATINGS: AO3Rating[] = ['general', 'teen', 'mature', 'explicit', 'not_rated'];
 
-interface SortOption {
+interface SortCriterion {
   label: string;
   sortBy: NonNullable<ReadableFilters['sortBy']>;
-  sortOrder: NonNullable<ReadableFilters['sortOrder']>;
+  defaultOrder: 'asc' | 'desc';
 }
 
-const SORT_OPTIONS_ALWAYS: SortOption[] = [
-  { label: 'Date added (newest first)', sortBy: 'dateAdded', sortOrder: 'desc' },
-  { label: 'Date added (oldest first)', sortBy: 'dateAdded', sortOrder: 'asc' },
-  { label: 'Title A → Z', sortBy: 'title', sortOrder: 'asc' },
-  { label: 'Title Z → A', sortBy: 'title', sortOrder: 'desc' },
-  { label: 'Last updated (newest first)', sortBy: 'dateUpdated', sortOrder: 'desc' },
-  { label: 'Last updated (oldest first)', sortBy: 'dateUpdated', sortOrder: 'asc' },
+const SORT_CRITERIA_ALWAYS: SortCriterion[] = [
+  { label: 'Date added', sortBy: 'dateAdded', defaultOrder: 'desc' },
+  { label: 'Title', sortBy: 'title', defaultOrder: 'asc' },
+  { label: 'Last updated', sortBy: 'dateUpdated', defaultOrder: 'desc' },
 ];
 
-const SORT_OPTIONS_FANFIC: SortOption[] = [
-  { label: 'Word count (longest first)', sortBy: 'wordCount', sortOrder: 'desc' },
-  { label: 'Word count (shortest first)', sortBy: 'wordCount', sortOrder: 'asc' },
+const SORT_CRITERIA_FANFIC: SortCriterion[] = [
+  { label: 'Word count', sortBy: 'wordCount', defaultOrder: 'desc' },
 ];
 
-const SORT_OPTIONS_BOOK: SortOption[] = [
-  { label: 'Page count (longest first)', sortBy: 'totalUnits', sortOrder: 'desc' },
-  { label: 'Page count (shortest first)', sortBy: 'totalUnits', sortOrder: 'asc' },
+const SORT_CRITERIA_BOOK: SortCriterion[] = [
+  { label: 'Page count', sortBy: 'totalUnits', defaultOrder: 'desc' },
 ];
-
-function sortOptionKey(opt: SortOption): string {
-  return `${opt.sortBy}-${opt.sortOrder}`;
-}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -102,6 +92,19 @@ function clearAo3FilterValues(f: ReadableFilters): ReadableFilters {
 
 function kindSpecificSort(sortBy: ReadableFilters['sortBy']): boolean {
   return sortBy === 'wordCount' || sortBy === 'totalUnits';
+}
+
+function sortDirectionLabel(sortBy: SortCriterion['sortBy'], sortOrder: 'asc' | 'desc'): string {
+  switch (sortBy) {
+    case 'dateAdded':
+    case 'dateUpdated':
+      return sortOrder === 'desc' ? 'Newest first' : 'Oldest first';
+    case 'title':
+      return sortOrder === 'asc' ? 'A → Z' : 'Z → A';
+    case 'wordCount':
+    case 'totalUnits':
+      return sortOrder === 'desc' ? 'Longest first' : 'Shortest first';
+  }
 }
 
 interface ChipColors {
@@ -147,6 +150,7 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
   const [draft, setDraft] = useState<ReadableFilters>(filters);
   const [fandomInput, setFandomInput] = useState('');
   const [tagInput, setTagInput] = useState('');
+  const [tagsExpanded, setTagsExpanded] = useState(false);
 
   // Re-seed draft each time modal opens
   useEffect(() => {
@@ -154,6 +158,7 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
       setDraft(filters);
       setFandomInput('');
       setTagInput('');
+      setTagsExpanded(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -289,8 +294,13 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
     setTagInput('');
   }
 
-  function setSort(opt: SortOption) {
-    setDraft((prev) => ({ ...prev, sortBy: opt.sortBy, sortOrder: opt.sortOrder }));
+  function selectSortCriterion(criterion: SortCriterion) {
+    setDraft((prev) => {
+      if (prev.sortBy === criterion.sortBy) {
+        return { ...prev, sortOrder: prev.sortOrder === 'desc' ? 'asc' : 'desc' };
+      }
+      return { ...prev, sortBy: criterion.sortBy, sortOrder: criterion.defaultOrder };
+    });
   }
 
   function handleClearAll() {
@@ -329,12 +339,10 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
 
   const hasTaggedReadables = tagVocabulary.length > 0;
 
-  const currentSortKey = `${draft.sortBy ?? 'dateAdded'}-${draft.sortOrder ?? 'desc'}`;
-
-  const sortOptions: SortOption[] = [
-    ...SORT_OPTIONS_ALWAYS,
-    ...(draft.kind === 'fanfic' ? SORT_OPTIONS_FANFIC : []),
-    ...(draft.kind === 'book' ? SORT_OPTIONS_BOOK : []),
+  const sortCriteria: SortCriterion[] = [
+    ...SORT_CRITERIA_ALWAYS,
+    ...(draft.kind === 'fanfic' ? SORT_CRITERIA_FANFIC : []),
+    ...(draft.kind === 'book' ? SORT_CRITERIA_BOOK : []),
   ];
 
   // ── Local chip renderer ───────────────────────────────────────────────────
@@ -391,12 +399,14 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
-      <Pressable
-        style={styles.overlay}
-        onPress={onDismiss}
-        accessibilityLabel="Close filter modal"
-      >
+      <View style={styles.overlay}>
+        {/* Backdrop — absolutely positioned behind the sheet so it never wraps the ScrollView */}
         <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onDismiss}
+          accessibilityLabel="Close filter modal"
+        />
+        <View
           style={[
             styles.sheet,
             {
@@ -404,7 +414,6 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
               paddingBottom: insets.bottom,
             },
           ]}
-          onPress={() => undefined}
         >
 
           {/* ── Header ── */}
@@ -439,8 +448,8 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
           >
 
             {/* ── Section: Kind ── */}
-            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>KIND</Text>
-            <View style={styles.chipRow}>
+            <View style={styles.inlineSection}>
+              <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>KIND</Text>
               {renderChip({
                 label: 'Books',
                 active: draft.kind === 'book',
@@ -458,8 +467,8 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
             <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
             {/* ── Section: Status ── */}
-            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>STATUS</Text>
-            <View style={styles.chipRow}>
+            <View style={styles.inlineSection}>
+              <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>STATUS</Text>
               {READABLE_STATUSES.map((status) =>
                 renderChip({
                   label: STATUS_LABELS_FULL[status],
@@ -471,9 +480,9 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
 
             <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
-            {/* ── Section: General Filters ── */}
-            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>GENERAL</Text>
-            <View style={styles.chipRow}>
+            {/* ── Section: General ── */}
+            <View style={styles.inlineSection}>
+              <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>GENERAL</Text>
               {renderChip({
                 label: 'In a series',
                 active: draft.seriesOnly === true,
@@ -602,52 +611,66 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
             {/* ── Section: Tags ── */}
             {hasTaggedReadables && (
               <>
-                <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>TAGS</Text>
+                {/* Header row: label + inline search + chevron */}
+                <View style={styles.tagsHeader}>
+                  <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>TAGS</Text>
+                  <TextInput
+                    placeholder="Search tags…"
+                    value={tagInput}
+                    onChangeText={setTagInput}
+                    style={[
+                      styles.tagsSearchInline,
+                      {
+                        backgroundColor: theme.colors.backgroundCard,
+                        borderColor: theme.colors.backgroundBorder,
+                        color: theme.colors.textPrimary,
+                      },
+                    ]}
+                    placeholderTextColor={theme.colors.textHint}
+                    accessibilityLabel="Search tag vocabulary"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setTagsExpanded((v) => !v)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={tagsExpanded ? 'Collapse tags' : 'Expand tags'}
+                    accessibilityState={{ expanded: tagsExpanded }}
+                  >
+                    <Text style={[styles.collapseChevron, { color: theme.colors.textMeta }]}>
+                      {tagsExpanded ? '▲' : '▼'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
-                {/* Active tag chips with toggle cycle */}
-                {activeTags.length > 0 && (
-                  <View style={styles.chipRow}>
-                    {activeTags.map(({ tag, mode }) =>
-                      renderChip({
-                        label: mode === 'exclude' ? `not ${tag}` : tag,
-                        active: true,
-                        activeVariant: mode === 'exclude' ? 'exclude' : 'include',
-                        onPress: () => cycleTag(tag),
-                        onRemove: () => removeTag(tag),
-                        accessibilityLabel: `${mode === 'include' ? 'Include' : 'Exclude'} tag: ${tag}. Tap to cycle.`,
-                      })
+                {/* Expanded: active tags + vocabulary chips */}
+                {tagsExpanded && (
+                  <>
+                    {activeTags.length > 0 && (
+                      <View style={styles.chipRow}>
+                        {activeTags.map(({ tag, mode }) =>
+                          renderChip({
+                            label: mode === 'exclude' ? `not ${tag}` : tag,
+                            active: true,
+                            activeVariant: mode === 'exclude' ? 'exclude' : 'include',
+                            onPress: () => cycleTag(tag),
+                            onRemove: () => removeTag(tag),
+                            accessibilityLabel: `${mode === 'include' ? 'Include' : 'Exclude'} tag: ${tag}. Tap to cycle.`,
+                          })
+                        )}
+                      </View>
                     )}
-                  </View>
-                )}
-
-                {/* Tag search input */}
-                <TextInput
-                  placeholder="Search tags…"
-                  value={tagInput}
-                  onChangeText={setTagInput}
-                  style={[
-                    styles.searchInput,
-                    {
-                      backgroundColor: theme.colors.backgroundCard,
-                      borderColor: theme.colors.backgroundBorder,
-                      color: theme.colors.textPrimary,
-                    },
-                  ]}
-                  placeholderTextColor={theme.colors.textHint}
-                  accessibilityLabel="Search tag vocabulary"
-                />
-
-                {/* Tag vocabulary chips */}
-                {filteredTagVocab.length > 0 && (
-                  <View style={styles.chipRow}>
-                    {filteredTagVocab.slice(0, 30).map((tag) =>
-                      renderChip({
-                        label: tag,
-                        active: false,
-                        onPress: () => addIncludeTag(tag),
-                      })
+                    {filteredTagVocab.length > 0 && (
+                      <View style={styles.chipRow}>
+                        {filteredTagVocab.slice(0, 30).map((tag) =>
+                          renderChip({
+                            label: tag,
+                            active: false,
+                            onPress: () => addIncludeTag(tag),
+                          })
+                        )}
+                      </View>
                     )}
-                  </View>
+                  </>
                 )}
 
                 <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
@@ -655,30 +678,23 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
             )}
 
             {/* ── Section: Sort ── */}
-            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>SORT</Text>
-            {sortOptions.map((opt) => {
-              const key = sortOptionKey(opt);
-              const isSelected = currentSortKey === key;
-              return (
-                <TouchableOpacity
-                  key={key}
-                  style={styles.radioRow}
-                  onPress={() => setSort(opt)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: isSelected }}
-                  accessibilityLabel={opt.label}
-                >
-                  <View style={[styles.radioOuter, { borderColor: isSelected ? theme.colors.kindBook : theme.colors.backgroundBorder }]}>
-                    {isSelected && (
-                      <View style={[styles.radioInner, { backgroundColor: theme.colors.kindBook }]} />
-                    )}
-                  </View>
-                  <Text style={[styles.radioLabel, { color: theme.colors.textPrimary }]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            <View style={styles.inlineSection}>
+              <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>SORT</Text>
+              {sortCriteria.map((criterion) => {
+                const isSelected = draft.sortBy === criterion.sortBy;
+                const order = isSelected ? (draft.sortOrder ?? criterion.defaultOrder) : criterion.defaultOrder;
+                const dirLabel = sortDirectionLabel(criterion.sortBy, order);
+                const label = `${criterion.label} · ${dirLabel}`;
+                return renderChip({
+                  label,
+                  active: isSelected,
+                  onPress: () => selectSortCriterion(criterion),
+                  accessibilityLabel: isSelected
+                    ? `${criterion.label}, ${dirLabel}, tap to flip direction`
+                    : `Sort by ${criterion.label}, ${dirLabel}`,
+                });
+              })}
+            </View>
 
           </ScrollView>
 
@@ -714,8 +730,8 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
             </View>
           </View>
 
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -793,6 +809,37 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 6,
   },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  inlineSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  tagsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  tagsSearchInline: {
+    flex: 1,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1.5,
+    paddingHorizontal: 14,
+    fontSize: 14,
+  },
+  collapseChevron: {
+    fontSize: 9,
+  },
   subLabel: {
     fontSize: 12,
     fontWeight: '500',
@@ -818,30 +865,6 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     marginVertical: 12,
-  },
-  radioRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Platform.OS === 'ios' ? 7 : 5,
-    minHeight: 44,
-    gap: 12,
-  },
-  radioOuter: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioInner: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  radioLabel: {
-    flex: 1,
-    fontSize: 14,
   },
   footer: {
     paddingHorizontal: 16,
