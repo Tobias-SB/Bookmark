@@ -3,7 +3,14 @@
 // All inter-feature imports must go through this file — never from internal paths.
 
 // ── Domain types ──────────────────────────────────────────────────────────────
-export type { WipUpdate, WipUpdateStatus, CreateWipUpdateInput } from './domain/wipUpdate';
+export type {
+  WipUpdate,
+  WipUpdateStatus,
+  CreateWipUpdateInput,
+  CheckProgressEvent,
+  OnCheckProgress,
+  CheckWipScope,
+} from './domain/wipUpdate';
 export { wipUpdateKeys } from './domain/queryKeys';
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -11,6 +18,8 @@ export type { UseWipUpdatesResult } from './hooks/useWipUpdates';
 export { useWipUpdates } from './hooks/useWipUpdates';
 
 export { useUnreadWipUpdateCount } from './hooks/useUnreadWipUpdateCount';
+
+export type { CheckWipUpdatesResult } from './services/wipUpdateChecker';
 
 export type { UseCheckWipUpdatesResult } from './hooks/useCheckWipUpdates';
 export { useCheckWipUpdates } from './hooks/useCheckWipUpdates';

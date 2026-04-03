@@ -22,6 +22,7 @@ import { ao3RateLimitDelay } from '../../../shared/utils/ao3RateLimit';
 import { refreshReadableMetadata } from '../../readables';
 import { fetchAo3Metadata } from '../../metadata';
 import { createWipUpdate } from '../data/wipUpdateRepository';
+import type { OnCheckProgress } from '../domain/wipUpdate';
 
 // ── Result type ───────────────────────────────────────────────────────────────
 
@@ -32,6 +33,13 @@ export interface CheckWipUpdatesResult {
   updated: number;
   /** Number of works that failed due to a network or parse error. */
   failed: number;
+  /** Number of works that could not be fetched due to AO3 login restrictions. */
+  restricted: number;
+  /**
+   * Human-readable reason when checked === 0, explaining why no works were checked.
+   * Only set in the early-return path (no service call was made).
+   */
+  emptyReason?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -45,21 +53,30 @@ function isEligible(readable: Readable): boolean {
   );
 }
 
+function isRestrictedError(errors: string[]): boolean {
+  return errors.some(e => e.includes('status 403') || e.includes('status 401'));
+}
+
 // ── Service ───────────────────────────────────────────────────────────────────
 
 /**
  * Checks each eligible readable against AO3 sequentially with rate limiting.
  * Eligible readables should already be filtered by the caller (hook layer);
  * this function re-guards as defense in depth.
+ *
+ * The optional onProgress callback fires immediately after each work resolves,
+ * before the rate-limit delay for the next work.
  */
 export async function checkWipUpdates(
   db: SQLiteDatabase,
   eligibleReadables: Readable[],
+  onProgress?: OnCheckProgress,
 ): Promise<CheckWipUpdatesResult> {
   const eligible = eligibleReadables.filter(isEligible);
   const checked = eligible.length;
   let updated = 0;
   let failed = 0;
+  let restricted = 0;
 
   for (let i = 0; i < eligible.length; i++) {
     // Rate-limit: pause before every fetch except the first
@@ -72,14 +89,21 @@ export async function checkWipUpdates(
       const result = await fetchAo3Metadata(readable.sourceUrl as string);
       const fetched = result.data;
 
-      // Network failure guard: if errors and no meaningful content, count as failed
+      // Network failure guard: if errors and no meaningful content, count as failed/restricted
       if (result.errors.length > 0 && !fetched.title && !fetched.ao3UpdatedAt) {
-        failed++;
+        if (isRestrictedError(result.errors)) {
+          restricted++;
+          onProgress?.({ current: i + 1, total: eligible.length, title: readable.title, outcome: 'restricted' });
+        } else {
+          failed++;
+          onProgress?.({ current: i + 1, total: eligible.length, title: readable.title, outcome: 'failed' });
+        }
         continue;
       }
 
       // ao3UpdatedAt gate: absent or unchanged → skip (no noise in the inbox)
       if (!fetched.ao3UpdatedAt || fetched.ao3UpdatedAt === readable.ao3UpdatedAt) {
+        onProgress?.({ current: i + 1, total: eligible.length, title: readable.title, outcome: 'unchanged' });
         continue;
       }
 
@@ -128,11 +152,13 @@ export async function checkWipUpdates(
       });
 
       updated++;
+      onProgress?.({ current: i + 1, total: eligible.length, title: readable.title, outcome: 'updated' });
     } catch {
       // Per-work error: continue the batch
       failed++;
+      onProgress?.({ current: i + 1, total: eligible.length, title: readable.title, outcome: 'failed' });
     }
   }
 
-  return { checked, updated, failed };
+  return { checked, updated, failed, restricted };
 }

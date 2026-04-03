@@ -1,26 +1,32 @@
 // src/features/wipUpdates/ui/UpdatesScreen.tsx
-// UI Phase 6 — UpdatesScreen redesign.
+// UI Phase 6 — UpdatesScreen redesign (V3: progress and scope).
 // Notification inbox for WIP update records.
 //
 // Layout:
-//   - Header right: "Check for Updates" styled button (ActivityIndicator while pending)
+//   - Scope section above FlatList (hidden during check): status chips, abandoned
+//     toggle, check button
+//   - Progress card replaces scope section during an active check
 //   - FlatList with bulk action row as ListHeaderComponent
 //   - Each card: floating card with left accent strip; unread vs read styling
 //   - ConfirmDialog for "Clear all"
 //   - Snackbar for check results and errors
 
-import React, { useCallback, useLayoutEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
-  Portal,
-  Snackbar,
-} from 'react-native-paper';
+  FlatList,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Portal, Snackbar } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 
 import { useAppTheme } from '../../../app/theme';
 import type { TabParamList } from '../../../app/navigation/types';
+import type { ReadableStatus } from '../../readables';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 
@@ -36,6 +42,37 @@ import { summarizeWipUpdate } from '../services/summarizeWipUpdate';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Props = BottomTabScreenProps<TabParamList, 'Updates'>;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const SCOPE_STATUSES: ReadableStatus[] = ['reading', 'want_to_read', 'dnf'];
+
+const STATUS_LABELS: Record<ReadableStatus, string> = {
+  reading: 'Reading',
+  want_to_read: 'Want to Read',
+  dnf: 'DNF',
+  completed: 'Completed',
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function checkButtonLabel(statuses: ReadableStatus[]): string {
+  if (statuses.length === 1 && statuses[0] === 'reading') return 'Check reading WIPs';
+  if (statuses.length === SCOPE_STATUSES.length) return 'Check all WIPs';
+  return 'Check selected WIPs';
+}
+
+function roundEstimate(seconds: number): number {
+  if (seconds < 60) return Math.max(5, Math.round(seconds / 5) * 5);
+  return Math.round(seconds / 30) * 30;
+}
+
+function formatEstimate(seconds: number): string {
+  const rounded = roundEstimate(seconds);
+  if (rounded < 60) return `About ${rounded} seconds remaining`;
+  const mins = Math.round(rounded / 60);
+  return `About ${Math.max(1, mins)} minute${mins !== 1 ? 's' : ''} remaining`;
+}
 
 // ── Diff row sub-component ────────────────────────────────────────────────────
 
@@ -242,18 +279,22 @@ function ExpandedDiff({ update }: { update: WipUpdate }) {
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-export function UpdatesScreen({ navigation }: Props) {
+export function UpdatesScreen(_props: Props) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { snackbarMessage, showSnackbar, hideSnackbar } = useSnackbar();
 
-  // Local state
+  // Local UI state
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [clearConfirmMode, setClearConfirmMode] = useState<ClearMode | null>(null);
 
+  // Scope state
+  const [selectedStatuses, setSelectedStatuses] = useState<ReadableStatus[]>(['reading']);
+  const [includeAbandoned, setIncludeAbandoned] = useState(false);
+
   // Hooks
   const { updates, isLoading } = useWipUpdates();
-  const { checkAsync, isPending: isChecking } = useCheckWipUpdates();
+  const { checkAsync, isPending: isChecking, progress, estimatedRemaining } = useCheckWipUpdates();
   const { markRead } = useMarkWipUpdateRead();
   const { markAllRead, isPending: isMarkingAllRead } = useMarkAllWipUpdatesRead();
   const { remove } = useDeleteWipUpdate();
@@ -263,13 +304,32 @@ export function UpdatesScreen({ navigation }: Props) {
   const hasUnread = updates.some(u => u.status === 'unread');
   const hasRead = updates.some(u => u.status === 'read');
 
+  // Show the abandoned toggle when any non-Reading status is selected
+  const showAbandonedToggle = selectedStatuses.some(s => s !== 'reading');
+
+  // ── Status chip toggle ──────────────────────────────────────────────────────
+
+  const handleStatusToggle = useCallback((status: ReadableStatus) => {
+    setSelectedStatuses(prev => {
+      if (prev.includes(status)) {
+        // Prevent deselecting the last chip
+        if (prev.length === 1) return prev;
+        const next = prev.filter(s => s !== status);
+        // Reset abandoned toggle if no non-Reading statuses remain
+        if (!next.some(s => s !== 'reading')) setIncludeAbandoned(false);
+        return next;
+      }
+      return [...prev, status];
+    });
+  }, []);
+
   // ── Check for updates ───────────────────────────────────────────────────────
 
   const handleCheckPress = useCallback(async () => {
     try {
-      const result = await checkAsync();
+      const result = await checkAsync({ statuses: selectedStatuses, includeAbandoned });
       if (result.checked === 0) {
-        showSnackbar('No eligible works to check');
+        showSnackbar(result.emptyReason ?? 'No eligible works to check');
       } else if (result.updated === 0) {
         const w = result.checked === 1 ? 'work' : 'works';
         showSnackbar(`Checked ${result.checked} ${w} — no updates`);
@@ -280,39 +340,7 @@ export function UpdatesScreen({ navigation }: Props) {
     } catch {
       showSnackbar('Could not check for updates — check your connection and try again');
     }
-  }, [checkAsync, showSnackbar]);
-
-  // ── Header right ─────────────────────────────────────────────────────────────
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () =>
-        isChecking ? (
-          <ActivityIndicator
-            size="small"
-            color={theme.colors.kindBook}
-            style={styles.headerSpinner}
-          />
-        ) : (
-          <TouchableOpacity
-            onPress={handleCheckPress}
-            style={[
-              styles.checkButton,
-              {
-                backgroundColor: theme.colors.kindBookSubtle,
-                borderColor: theme.colors.kindBookBorder,
-              },
-            ]}
-            accessibilityLabel="Check for updates"
-            accessibilityRole="button"
-          >
-            <Text style={[styles.checkButtonText, { color: theme.colors.kindBook }]}>
-              Check now
-            </Text>
-          </TouchableOpacity>
-        ),
-    });
-  }, [navigation, isChecking, handleCheckPress, theme]);
+  }, [checkAsync, selectedStatuses, includeAbandoned, showSnackbar]);
 
   // ── Card press ───────────────────────────────────────────────────────────────
 
@@ -331,6 +359,159 @@ export function UpdatesScreen({ navigation }: Props) {
       onSettled: () => setClearConfirmMode(null),
     });
   }, [clear, clearConfirmMode]);
+
+  // ── Scope section (shown when not checking) ───────────────────────────────
+
+  const renderScopeSection = () => (
+    <View style={[styles.scopeSection, { borderBottomColor: theme.colors.backgroundBorder }]}>
+      {/* Status chips */}
+      <View style={styles.scopeChips}>
+        {SCOPE_STATUSES.map(status => {
+          const isSelected = selectedStatuses.includes(status);
+          const isReading = status === 'reading';
+          return (
+            <TouchableOpacity
+              key={status}
+              onPress={() => handleStatusToggle(status)}
+              style={[
+                styles.scopeChip,
+                {
+                  backgroundColor: isSelected
+                    ? (isReading ? theme.colors.statusReadingBg : theme.colors.backgroundBorder)
+                    : theme.colors.backgroundInput,
+                  borderColor: isSelected
+                    ? (isReading ? theme.colors.statusReadingBorder : theme.colors.outline)
+                    : theme.colors.backgroundBorder,
+                },
+              ]}
+              accessibilityLabel={`${STATUS_LABELS[status]} status${isSelected ? ', selected' : ''}`}
+              accessibilityRole="checkbox"
+            >
+              <Text
+                style={[
+                  styles.scopeChipText,
+                  {
+                    color: isSelected
+                      ? (isReading ? theme.colors.statusReadingText : theme.colors.textPrimary)
+                      : theme.colors.textBody,
+                    fontWeight: isSelected ? '600' : '400',
+                  },
+                ]}
+              >
+                {STATUS_LABELS[status]}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Include abandoned toggle — only when non-Reading status selected */}
+      {showAbandonedToggle ? (
+        <View style={styles.abandonedRow}>
+          <Text style={[styles.abandonedLabel, { color: theme.colors.textBody }]}>
+            Include abandoned
+          </Text>
+          <Switch
+            value={includeAbandoned}
+            onValueChange={setIncludeAbandoned}
+            trackColor={{
+              false: theme.colors.backgroundBorder,
+              true: theme.colors.kindBookBorder,
+            }}
+            thumbColor={includeAbandoned ? theme.colors.kindBook : theme.colors.textMeta}
+            accessibilityLabel="Include abandoned fanfics"
+          />
+        </View>
+      ) : null}
+
+      {/* Check button */}
+      <TouchableOpacity
+        onPress={handleCheckPress}
+        style={[
+          styles.checkButton,
+          {
+            backgroundColor: theme.colors.kindBookSubtle,
+            borderColor: theme.colors.kindBookBorder,
+          },
+        ]}
+        accessibilityLabel={checkButtonLabel(selectedStatuses)}
+        accessibilityRole="button"
+      >
+        <Text style={[styles.checkButtonText, { color: theme.colors.kindBook }]}>
+          {checkButtonLabel(selectedStatuses)}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  // ── Progress card (shown during check) ───────────────────────────────────────
+
+  const renderProgressCard = () => {
+    if (!progress) {
+      return (
+        <View style={[styles.progressCard, { borderBottomColor: theme.colors.backgroundBorder }]}>
+          <Text style={[styles.progressCountText, { color: theme.colors.textBody }]}>
+            Starting check…
+          </Text>
+        </View>
+      );
+    }
+
+    const fillPercent = `${(progress.current / progress.total) * 100}%`;
+
+    let outcomeEl: React.ReactElement | null = null;
+    if (progress.outcome === 'updated') {
+      outcomeEl = (
+        <Text style={[styles.outcomeLabel, { color: theme.colors.kindBook }]}>Updated</Text>
+      );
+    } else if (progress.outcome === 'unchanged') {
+      outcomeEl = (
+        <Text style={[styles.outcomeLabel, { color: theme.colors.textMeta }]}>✓</Text>
+      );
+    } else {
+      outcomeEl = (
+        <Text style={[styles.outcomeLabel, { color: theme.colors.textMeta }]}>Skipped</Text>
+      );
+    }
+
+    return (
+      <View style={[styles.progressCard, { borderBottomColor: theme.colors.backgroundBorder }]}>
+        {/* Progress bar */}
+        <View style={[styles.progressBarTrack, { backgroundColor: theme.colors.backgroundBorder }]}>
+          <View
+            style={[
+              styles.progressBarFill,
+              { backgroundColor: theme.colors.kindBook, width: fillPercent },
+            ]}
+          />
+        </View>
+
+        {/* Count */}
+        <Text style={[styles.progressCountText, { color: theme.colors.textBody }]}>
+          {`Checking ${progress.current} of ${progress.total}`}
+        </Text>
+
+        {/* Current title + outcome */}
+        <View style={styles.progressTitleRow}>
+          <Text
+            style={[styles.progressTitleText, { color: theme.colors.textBody }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {progress.title}
+          </Text>
+          {outcomeEl}
+        </View>
+
+        {/* Time estimate */}
+        {estimatedRemaining !== null ? (
+          <Text style={[styles.progressEstimate, { color: theme.colors.textMeta }]}>
+            {formatEstimate(estimatedRemaining)}
+          </Text>
+        ) : null}
+      </View>
+    );
+  };
 
   // ── Render card ───────────────────────────────────────────────────────────────
 
@@ -419,15 +600,9 @@ export function UpdatesScreen({ navigation }: Props) {
 
             {/* Card footer */}
             <View style={[styles.cardFooter, { borderTopColor: theme.colors.backgroundBorder }]}>
-              {isUnread ? (
-                <Text style={[styles.expandHint, { color: theme.colors.textMeta }]}>
-                  {isExpanded ? 'Tap to collapse' : 'Tap to expand'}
-                </Text>
-              ) : (
-                <Text style={[styles.expandHint, { color: theme.colors.textMeta }]}>
-                  {isExpanded ? 'Tap to collapse' : 'Tap to expand'}
-                </Text>
-              )}
+              <Text style={[styles.expandHint, { color: theme.colors.textMeta }]}>
+                {isExpanded ? 'Tap to collapse' : 'Tap to expand'}
+              </Text>
               <View style={styles.cardFooterActions}>
                 {isUnread ? (
                   <TouchableOpacity
@@ -534,20 +709,14 @@ export function UpdatesScreen({ navigation }: Props) {
   // ── Empty state ───────────────────────────────────────────────────────────────
 
   const renderEmpty = useCallback(() => {
-    if (isLoading) {
-      return (
-        <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={theme.colors.kindBook} />
-        </View>
-      );
-    }
+    if (isLoading) return null;
     return (
       <View style={styles.emptyContainer}>
         <Text style={[styles.emptyTitle, { color: theme.colors.textBody }]}>
           No updates yet
         </Text>
         <Text style={[styles.emptyBody, { color: theme.colors.textMeta }]}>
-          Tap "Check now" to check your WIP fanfics for updates
+          Tap the check button above to check your WIP fanfics for updates
         </Text>
       </View>
     );
@@ -557,6 +726,9 @@ export function UpdatesScreen({ navigation }: Props) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.backgroundPage }]}>
+      {/* Scope section / progress card — fixed above the list */}
+      {isChecking ? renderProgressCard() : renderScopeSection()}
+
       <FlatList
         data={updates}
         keyExtractor={item => item.id}
@@ -600,6 +772,92 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+
+  // ── Scope section ───────────────────────────────────────────────────────────
+  scopeSection: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    gap: 10,
+  },
+  scopeChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  scopeChip: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scopeChipText: {
+    fontSize: 13,
+  },
+  abandonedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  abandonedLabel: {
+    fontSize: 14,
+  },
+  checkButton: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // ── Progress card ───────────────────────────────────────────────────────────
+  progressCard: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  progressBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  progressCountText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  progressTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  progressTitleText: {
+    flex: 1,
+    fontSize: 13,
+  },
+  outcomeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  progressEstimate: {
+    fontSize: 12,
+  },
+
+  // ── List ────────────────────────────────────────────────────────────────────
   listContent: {
     paddingHorizontal: 14,
     paddingTop: 10,
@@ -607,6 +865,8 @@ const styles = StyleSheet.create({
   listContentEmpty: {
     flexGrow: 1,
   },
+
+  // ── Bulk row ────────────────────────────────────────────────────────────────
   bulkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -629,6 +889,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
+
+  // ── Card ────────────────────────────────────────────────────────────────────
   card: {
     borderRadius: 18,
     overflow: 'hidden',
@@ -711,6 +973,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
+
+  // ── Expanded diff ───────────────────────────────────────────────────────────
   expandedDiff: {
     marginTop: 10,
     paddingTop: 10,
@@ -745,6 +1009,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
+
+  // ── Empty state ─────────────────────────────────────────────────────────────
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
@@ -761,19 +1027,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
-  },
-  headerSpinner: {
-    marginRight: 16,
-  },
-  checkButton: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    marginRight: 8,
-  },
-  checkButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
   },
 });

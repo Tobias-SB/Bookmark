@@ -4,6 +4,8 @@
 // captured at the time of a bulk check. Records are informational only —
 // changes are applied to the readable immediately; these records are the inbox.
 
+import type { ReadableStatus } from '../../readables';
+
 // ── Status ────────────────────────────────────────────────────────────────────
 
 export type WipUpdateStatus = 'unread' | 'read';
@@ -60,3 +62,30 @@ export interface WipUpdate {
 // status defaults to 'unread'.
 
 export type CreateWipUpdateInput = Omit<WipUpdate, 'id' | 'status'>;
+
+// ── Progress callback types ───────────────────────────────────────────────────
+
+export interface CheckProgressEvent {
+  /** 1-indexed position in the queue. */
+  current: number;
+  /** Total works in the queue. */
+  total: number;
+  /** Title of the work just processed. */
+  title: string;
+  /** What happened to this work. */
+  outcome: 'updated' | 'unchanged' | 'failed' | 'restricted';
+}
+
+export type OnCheckProgress = (event: CheckProgressEvent) => void;
+
+// ── Scope type ────────────────────────────────────────────────────────────────
+
+export interface CheckWipScope {
+  /** Which reading statuses to include. Default: ['reading']. */
+  statuses: ReadableStatus[];
+  /**
+   * Include works marked abandoned. Only meaningful when statuses includes
+   * statuses other than 'reading'. Default: false.
+   */
+  includeAbandoned: boolean;
+}
