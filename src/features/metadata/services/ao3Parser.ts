@@ -18,18 +18,11 @@
 
 import type { AO3Rating, AuthorType } from '../../readables/index';
 import type { MetadataResult } from './types';
-
-const AO3_BASE_URL = 'https://archiveofourown.org/works/';
-const AO3_WORKS_PATTERN = /archiveofourown\.org\/works\/(\d+)/;
+import { processAo3Url } from '../../../shared/utils/ao3Url';
 
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-/** Extract numeric AO3 work ID from a works URL. */
-function extractWorkId(url: string): string | null {
-  return url.match(AO3_WORKS_PATTERN)?.[1] ?? null;
-}
 
 /**
  * Strip all HTML tags from a fragment and decode common HTML entities.
@@ -270,12 +263,12 @@ function parseSeries(html: string): {
  * Never throws.
  */
 export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
-  const workId = extractWorkId(url);
-  if (!workId) {
+  const parsed = processAo3Url(url);
+  if (!parsed) {
     return { data: {}, errors: ['URL does not appear to be a valid AO3 work URL.'] };
   }
 
-  const canonicalUrl = `${AO3_BASE_URL}${workId}`;
+  const { workId, canonicalUrl } = parsed;
   const fetchUrl = `${canonicalUrl}?view_adult=true`;
 
   let html: string;
