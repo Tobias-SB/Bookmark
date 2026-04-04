@@ -63,6 +63,8 @@ export interface MetadataResult {
   data: Partial<ImportedMetadata>;
   /** Human-readable error messages. Empty array on full success. */
   errors: string[];
+  /** True when the work requires AO3 login. data is {} and errors contains the reason. */
+  isRestricted?: boolean;
 }
 
 /** A single edition returned by a multi-result book search. */

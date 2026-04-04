@@ -335,7 +335,11 @@ export function UpdatesScreen(_props: Props) {
         showSnackbar(`Checked ${result.checked} ${w} — no updates`);
       } else {
         const w = result.checked === 1 ? 'work' : 'works';
-        showSnackbar(`Checked ${result.checked} ${w} — ${result.updated} updated`);
+        const parts = [`${result.updated} updated`];
+        if (result.restricted > 0) {
+          parts.push(`${result.restricted} require AO3 login`);
+        }
+        showSnackbar(`Checked ${result.checked} ${w} — ${parts.join(', ')}`);
       }
     } catch {
       showSnackbar('Could not check for updates — check your connection and try again');

@@ -4,7 +4,7 @@
 // UI components do not inspect `code` for presentational logic unless the
 // distinction meaningfully changes the display.
 
-export type AppErrorCode = 'db' | 'network' | 'parse' | 'validation' | 'not_found';
+export type AppErrorCode = 'db' | 'network' | 'parse' | 'validation' | 'not_found' | 'ao3_restricted';
 
 export interface AppError {
   code: AppErrorCode;

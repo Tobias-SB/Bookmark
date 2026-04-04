@@ -567,3 +567,45 @@ describe('series extraction', () => {
     expect(result.data.seriesTotal).toBeNull();
   });
 });
+
+// ── Restricted work detection ─────────────────────────────────────────────────
+
+function respondWithUrl(html: string, finalUrl: string, status = 200) {
+  mockFetch.mockResolvedValueOnce({
+    ok: status >= 200 && status < 300,
+    status,
+    url: finalUrl,
+    text: () => Promise.resolve(html),
+  });
+}
+
+describe('restricted work detection', () => {
+  it('returns isRestricted:true when response URL contains /users/login', async () => {
+    respondWithUrl(
+      '<html><body><form action="/users/login">...</form></body></html>',
+      'https://archiveofourown.org/users/login',
+    );
+    const result = await fetchAo3Metadata(VALID_WORK_URL);
+    expect(result.isRestricted).toBe(true);
+    expect(result.data).toEqual({});
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('returns isRestricted:true when body has login form and no title heading', async () => {
+    respondWithUrl(
+      '<html><body><form action="/submit">Please login to continue</form></body></html>',
+      'https://archiveofourown.org/works/12345?view_adult=true',
+    );
+    const result = await fetchAo3Metadata(VALID_WORK_URL);
+    expect(result.isRestricted).toBe(true);
+    expect(result.data).toEqual({});
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('does not set isRestricted for a normal work page', async () => {
+    respondWithUrl(makeHtml(), 'https://archiveofourown.org/works/12345?view_adult=true');
+    const result = await fetchAo3Metadata(VALID_WORK_URL);
+    expect(result.isRestricted).toBeUndefined();
+    expect(result.data.title).toBe('My Test Work');
+  });
+});

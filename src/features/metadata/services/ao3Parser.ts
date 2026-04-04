@@ -287,6 +287,19 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
       return { data: {}, errors: [`AO3 request failed with status ${response.status}.`] };
     }
     html = await response.text();
+
+    // Restricted detection: AO3 follows the login redirect transparently; the final
+    // response URL reveals it. Secondary: login form present with no work title heading.
+    if (response.url?.includes('/users/login')) {
+      return { data: {}, errors: ['This work is restricted to logged-in AO3 users.'], isRestricted: true };
+    }
+    if (
+      html.includes('<form') &&
+      html.includes('login') &&
+      !html.includes('<h2 class="title heading">')
+    ) {
+      return { data: {}, errors: ['This work is restricted to logged-in AO3 users.'], isRestricted: true };
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return { data: {}, errors: [`Failed to fetch AO3 page: ${message}`] };

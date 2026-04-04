@@ -53,9 +53,6 @@ function isEligible(readable: Readable): boolean {
   );
 }
 
-function isRestrictedError(errors: string[]): boolean {
-  return errors.some(e => e.includes('status 403') || e.includes('status 401'));
-}
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
@@ -91,7 +88,7 @@ export async function checkWipUpdates(
 
       // Network failure guard: if errors and no meaningful content, count as failed/restricted
       if (result.errors.length > 0 && !fetched.title && !fetched.ao3UpdatedAt) {
-        if (isRestrictedError(result.errors)) {
+        if (result.isRestricted === true) {
           restricted++;
           onProgress?.({ current: i + 1, total: eligible.length, title: readable.title, outcome: 'restricted' });
         } else {

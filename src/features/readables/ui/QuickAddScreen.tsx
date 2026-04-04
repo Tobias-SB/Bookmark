@@ -140,6 +140,13 @@ export function QuickAddScreen({ navigation }: Props) {
     setAo3Error(null);
     const result = await importMetadata('fanfic', ao3Url.trim());
 
+    if (result.isRestricted) {
+      setAo3Error(
+        "This work is restricted — it's only visible to logged-in AO3 users. You can still add it manually.",
+      );
+      return;
+    }
+
     if (Object.keys(result.data).length === 0) {
       setAo3Error(
         "Couldn't fetch this work — it may require an AO3 login. Check the URL and try again.",
