@@ -57,6 +57,7 @@ import { useUpdateNotes } from '../hooks/useUpdateNotes';
 import { useRefreshReadableMetadata } from '../hooks/useRefreshReadableMetadata';
 import { ProgressEditor } from './ProgressEditor';
 import { NotesEditor } from './NotesEditor';
+import { CoverPickerModal } from './CoverPickerModal';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -218,6 +219,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
   const [progressEditorError, setProgressEditorError] = useState<string | null>(null);
   const [notesEditorVisible, setNotesEditorVisible] = useState(false);
   const [orphanedDialogVisible, setOrphanedDialogVisible] = useState(false);
+  const [coverPickerVisible, setCoverPickerVisible] = useState(false);
 
   // ── Collapse state ─────────────────────────────────────────────────────────
   const [tagsExpanded, setTagsExpanded] = useState(false);
@@ -589,16 +591,35 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           { paddingBottom: insets.bottom + 24 },
         ]}
       >
-        {/* ── Cover image (books with coverUrl only) ─────────────────────── */}
-        {readable.coverUrl !== null && (
-          <View style={styles.coverContainer}>
-            <Image
-              source={{ uri: readable.coverUrl }}
-              style={[styles.cover, { backgroundColor: theme.colors.surfaceVariant }]}
-              resizeMode="contain"
-            />
-          </View>
-        )}
+        {/* ── Cover image — always shown; tappable to open CoverPickerModal ── */}
+        <View style={styles.coverContainer}>
+          <TouchableOpacity
+            onPress={() => setCoverPickerVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={readable.coverUrl ? 'Change cover image' : 'Set cover image'}
+          >
+            {readable.coverUrl !== null ? (
+              <Image
+                source={{ uri: readable.coverUrl }}
+                style={[styles.cover, { backgroundColor: theme.colors.surfaceVariant }]}
+                resizeMode="contain"
+              />
+            ) : (
+              <View
+                style={[
+                  styles.cover,
+                  styles.coverPlaceholder,
+                  { backgroundColor: kindSubtleColor },
+                ]}
+              >
+                <Text style={styles.coverPlaceholderIcon}>🖼</Text>
+                <Text style={[styles.coverPlaceholderLabel, { color: theme.colors.textMeta }]}>
+                  Set cover
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* ── Progress card ──────────────────────────────────────────────────── */}
         <View
@@ -1076,6 +1097,15 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
         </Dialog>
       </Portal>
 
+      {/* ── Cover picker modal ──────────────────────────────────────────────── */}
+      <CoverPickerModal
+        visible={coverPickerVisible}
+        onDismiss={() => setCoverPickerVisible(false)}
+        readableId={readable.id}
+        hasCover={readable.coverUrl !== null}
+        onError={showSnackbar}
+      />
+
       {/* ── Snackbar ────────────────────────────────────────────────────────── */}
       <Portal>
         <Snackbar
@@ -1163,6 +1193,13 @@ const styles = StyleSheet.create({
   // Cover image
   coverContainer: { alignItems: 'center', marginBottom: 12, marginHorizontal: 14 },
   cover: { width: 120, height: 160, borderRadius: 6 },
+  coverPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  coverPlaceholderIcon: { fontSize: 28, opacity: 0.5 },
+  coverPlaceholderLabel: { fontSize: 12, fontWeight: '500' },
 
   // Progress card
   progressCard: {

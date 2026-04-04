@@ -1,5 +1,14 @@
 export default ({ config }) => ({
   ...config,
+  plugins: [
+    [
+      'expo-image-picker',
+      {
+        photosPermission:
+          'Allow Bookmark to access your photo library to set cover images.',
+      },
+    ],
+  ],
   extra: {
     googleBooksApiKeyAndroid: process.env.GOOGLE_BOOKS_API_KEY_ANDROID ?? '',
     googleBooksApiKeyIos: process.env.GOOGLE_BOOKS_API_KEY_IOS ?? '',

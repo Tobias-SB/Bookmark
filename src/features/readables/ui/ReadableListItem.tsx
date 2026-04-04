@@ -7,11 +7,13 @@
 import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { Text, TouchableRipple } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { useAppTheme } from '../../../app/theme';
 import type { AppTheme } from '../../../app/theme';
 import type { Readable, ReadableStatus } from '../domain/readable';
 import { STATUS_LABELS_FULL, formatProgressString } from '../domain/readable';
+import { lighten, darken } from '../../../shared/utils/colorUtils';
 
 // ── Status pill helper ────────────────────────────────────────────────────────
 
@@ -102,9 +104,14 @@ export const ReadableListItem = React.memo(function ReadableListItem({
 
   const showProgressBar = pct > 0 || item.status === 'reading';
 
-  // Kind accent colour
+  // Kind accent colour + gradient stops for spine
   const accentColor = item.kind === 'book' ? colors.kindBook : colors.kindFanfic;
   const subtleColor = item.kind === 'book' ? colors.kindBookSubtle : colors.kindFanficSubtle;
+  const spineGradient: [string, string, string] = [
+    lighten(accentColor, 0.12),
+    accentColor,
+    darken(accentColor, 0.12),
+  ];
 
   // Status pill
   const pillStyle = getPillStyle(item.status, colors);
@@ -125,8 +132,13 @@ export const ReadableListItem = React.memo(function ReadableListItem({
       style={[styles.card, theme.shadows.card, { borderRadius: theme.radii.card, backgroundColor: colors.backgroundCard }]}
     >
       <View style={styles.row}>
-        {/* Kind accent strip */}
-        <View style={[styles.accentStrip, { backgroundColor: accentColor }]} />
+        {/* Kind accent strip — gradient spine */}
+        <LinearGradient
+          colors={spineGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.accentStrip}
+        />
 
         {/* Content row */}
         <View style={styles.content}>
@@ -244,7 +256,8 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     flexDirection: 'row',
-    paddingVertical: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
     paddingLeft: 12,
     paddingRight: 13,
     gap: 11,

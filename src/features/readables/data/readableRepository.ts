@@ -7,7 +7,8 @@
 //   - sourceId is never overwritten by updateReadable.
 //   - dateUpdated is always new Date().toISOString() on every write.
 //   - id is generated via Crypto.randomUUID() in createReadable.
-//   - isbn, coverUrl: set at creation from import; not overwritten by user edits.
+//   - isbn: set at creation from import; not overwritten by user edits.
+//   - coverUrl: editable via UpdateReadableInput (set by useUpdateCover hook).
 //   - authorType, publishedAt: import-only; not in UpdateReadableInput.
 //   - ao3UpdatedAt: set by import and refreshReadableMetadata; not in UpdateReadableInput.
 //   - notesUpdatedAt: repo-managed; not in UpdateReadableInput.
@@ -94,6 +95,8 @@ export interface UpdateReadableInput {
   seriesName?: string | null;
   seriesPart?: number | null;
   seriesTotal?: number | null;
+  /** Remote or local cover image URL. Set to null to remove the cover. */
+  coverUrl?: string | null;
   // Fanfic-only (enforced null/[]/false for books):
   availableChapters?: number | null;
   wordCount?: number | null;
@@ -105,7 +108,7 @@ export interface UpdateReadableInput {
   ao3UpdatedAt?: string | null;
   // Intentionally omitted — these must not appear in UpdateReadableInput:
   //   kind, progressUnit, sourceType, sourceId, id, dateCreated,
-  //   isbn, coverUrl, authorType, publishedAt, notesUpdatedAt
+  //   isbn, authorType, publishedAt, notesUpdatedAt
 }
 
 // ── Refresh input type ────────────────────────────────────────────────────────
@@ -339,9 +342,9 @@ export async function updateReadable(
   const seriesPart = 'seriesPart' in input ? (input.seriesPart ?? null) : existing.seriesPart;
   const seriesTotal = 'seriesTotal' in input ? (input.seriesTotal ?? null) : existing.seriesTotal;
 
-  // Preserve import-only fields
+  // Preserve import-only fields (coverUrl is now user-editable via useUpdateCover)
   const isbn = existing.isbn;
-  const coverUrl = existing.coverUrl;
+  const coverUrl = 'coverUrl' in input ? (input.coverUrl ?? null) : existing.coverUrl;
   const authorType = existing.authorType;
   const publishedAt = existing.publishedAt;
 

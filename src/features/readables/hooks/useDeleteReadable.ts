@@ -2,6 +2,9 @@
 // §12, §13 — Mutation hook for hard-deleting a readable.
 // Invalidates readableKeys.all on success so list and detail queries refresh.
 //
+// §3.4 — Before deleting, fetches the readable and calls deleteCoverFile so
+// locally stored cover images are not orphaned in the covers directory.
+//
 // The caller is responsible for:
 //   - Requiring explicit user confirmation before calling remove().
 //   - Navigating away from the detail screen on success via onSuccess callback:
@@ -13,7 +16,8 @@ import type { UseMutateFunction, UseMutateAsyncFunction } from '@tanstack/react-
 import { useDatabase } from '../../../app/database/DatabaseProvider';
 import type { AppError } from '../../../shared/types/errors';
 import { readableKeys } from '../domain/queryKeys';
-import { deleteReadable } from '../data/readableRepository';
+import { getReadableById, deleteReadable } from '../data/readableRepository';
+import { deleteCoverFile } from '../services/coverService';
 
 // ── Variables type ────────────────────────────────────────────────────────────
 
@@ -47,7 +51,14 @@ export function useDeleteReadable(): UseDeleteReadableResult {
     AppError,
     DeleteReadableVariables
   >({
-    mutationFn: ({ id }) => deleteReadable(db, id),
+    mutationFn: async ({ id }) => {
+      // §3.4 — Clean up local cover file before deleting the record.
+      const readable = await getReadableById(db, id);
+      if (readable?.coverUrl) {
+        await deleteCoverFile(readable.coverUrl);
+      }
+      await deleteReadable(db, id);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: readableKeys.all });
     },

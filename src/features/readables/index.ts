@@ -59,6 +59,9 @@ export { useRefreshReadableMetadata } from './hooks/useRefreshReadableMetadata';
 export type { UseUpdateNotesResult } from './hooks/useUpdateNotes';
 export { useUpdateNotes } from './hooks/useUpdateNotes';
 
+export type { UseUpdateCoverResult, UpdateCoverInput } from './hooks/useUpdateCover';
+export { useUpdateCover } from './hooks/useUpdateCover';
+
 // ── Screens ───────────────────────────────────────────────────────────────────
 export { LibraryScreen } from './ui/LibraryScreen';
 export { ReadableDetailScreen } from './ui/ReadableDetailScreen';
