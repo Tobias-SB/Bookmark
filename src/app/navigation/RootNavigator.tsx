@@ -18,6 +18,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { RootStackParamList } from './types';
 import { TabNavigator } from './TabNavigator';
 import { ReadableDetailScreen, AddEditScreen, QuickAddScreen } from '../../features/readables';
+import { Ao3LoginScreen } from '../../features/ao3Auth';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -43,6 +44,11 @@ export function RootNavigator() {
         name="AddEditReadable"
         component={AddEditScreen}
         options={{ presentation: 'modal', headerShown: false }}
+      />
+      <Stack.Screen
+        name="Ao3Login"
+        component={Ao3LoginScreen}
+        options={{ presentation: 'modal', title: 'Log in to AO3' }}
       />
     </Stack.Navigator>
   );

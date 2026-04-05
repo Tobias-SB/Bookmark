@@ -105,6 +105,7 @@ export function useCheckWipUpdates(): UseCheckWipUpdatesResult {
           updated: 0,
           failed: 0,
           restricted: 0,
+          staleSession: false,
           emptyReason: buildEmptyReason(0, effectiveScope.statuses),
         };
       }
@@ -120,6 +121,7 @@ export function useCheckWipUpdates(): UseCheckWipUpdatesResult {
           updated: 0,
           failed: 0,
           restricted: 0,
+          staleSession: false,
           emptyReason: buildEmptyReason(allEligible.length, effectiveScope.statuses),
         };
       }

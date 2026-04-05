@@ -4,10 +4,12 @@
 
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppTheme, useThemeContext } from '../../../app/theme';
 import type { ColorMode } from '../../../app/theme';
+import { useAo3Session, useAo3Login, useAo3Logout } from '../../ao3Auth';
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -76,6 +78,10 @@ export function SettingsScreen() {
   const { colorMode, setColorMode } = useThemeContext();
   const insets = useSafeAreaInsets();
 
+  const { isLoggedIn } = useAo3Session();
+  const { navigateToLogin } = useAo3Login();
+  const { logout, isLoggingOut } = useAo3Logout();
+
   return (
     <ScrollView
       style={[styles.scroll, { backgroundColor: theme.colors.backgroundPage }]}
@@ -126,6 +132,66 @@ export function SettingsScreen() {
               );
             })}
           </View>
+        </View>
+      </SectionCard>
+
+      {/* ── AO3 Account ─────────────────────────────────────────────────────── */}
+      <SectionCard>
+        <SectionHeader title="AO3 Account" />
+        <View style={styles.cardBody}>
+          {isLoggedIn ? (
+            <View
+              style={[
+                styles.accountRow,
+                { borderBottomColor: theme.colors.backgroundInput },
+              ]}
+            >
+              <Text style={[styles.accountLabel, { color: theme.colors.textBody }]}>
+                Logged in to AO3
+              </Text>
+              <TouchableOpacity
+                onPress={() => void logout()}
+                disabled={isLoggingOut}
+                style={[
+                  styles.logoutButton,
+                  {
+                    backgroundColor: theme.colors.backgroundInput,
+                    borderColor: theme.colors.backgroundBorder,
+                  },
+                ]}
+                accessibilityLabel="Log out of AO3"
+                accessibilityRole="button"
+              >
+                {isLoggingOut ? (
+                  <ActivityIndicator size={14} color={theme.colors.textMeta} />
+                ) : (
+                  <Text style={[styles.logoutButtonText, { color: theme.colors.textBody }]}>
+                    Log out
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={navigateToLogin}
+              style={[
+                styles.accountRow,
+                { borderBottomColor: theme.colors.backgroundInput },
+              ]}
+              accessibilityLabel="Log in to AO3"
+              accessibilityRole="button"
+            >
+              <Text style={[styles.accountLabel, { color: theme.colors.textBody }]}>
+                Log in to AO3
+              </Text>
+              <Text style={[styles.accountChevron, { color: theme.colors.textMeta }]}>
+                ›
+              </Text>
+            </TouchableOpacity>
+          )}
+          <Text style={[styles.accountHint, { color: theme.colors.textHint }]}>
+            Log in to import and refresh restricted AO3 works.
+          </Text>
         </View>
       </SectionCard>
 
@@ -183,6 +249,38 @@ const styles = StyleSheet.create({
   },
   modeButtonText: {
     fontSize: 13,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 44,
+    borderBottomWidth: 1,
+  },
+  accountLabel: {
+    fontSize: 14,
+  },
+  accountChevron: {
+    fontSize: 20,
+    lineHeight: 22,
+  },
+  accountHint: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  logoutButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 32,
+  },
+  logoutButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   comingSoonRow: {
     flexDirection: 'row',

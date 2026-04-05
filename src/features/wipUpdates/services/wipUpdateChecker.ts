@@ -23,6 +23,7 @@ import { refreshReadableMetadata } from '../../readables';
 import { fetchAo3Metadata } from '../../metadata';
 import { createWipUpdate } from '../data/wipUpdateRepository';
 import type { OnCheckProgress } from '../domain/wipUpdate';
+import { getAo3Session } from '../../ao3Auth/services/ao3CookieService';
 
 // ── Result type ───────────────────────────────────────────────────────────────
 
@@ -35,6 +36,11 @@ export interface CheckWipUpdatesResult {
   failed: number;
   /** Number of works that could not be fetched due to AO3 login restrictions. */
   restricted: number;
+  /**
+   * True when a previously active AO3 session was cleared during the batch,
+   * meaning the cookie expired mid-check. The user should re-login.
+   */
+  staleSession: boolean;
   /**
    * Human-readable reason when checked === 0, explaining why no works were checked.
    * Only set in the early-return path (no service call was made).
@@ -74,6 +80,9 @@ export async function checkWipUpdates(
   let updated = 0;
   let failed = 0;
   let restricted = 0;
+
+  // Snapshot session state before the batch so we can detect mid-batch expiry.
+  const sessionActiveAtStart = (await getAo3Session()) !== null;
 
   for (let i = 0; i < eligible.length; i++) {
     // Rate-limit: pause before every fetch except the first
@@ -157,5 +166,10 @@ export async function checkWipUpdates(
     }
   }
 
-  return { checked, updated, failed, restricted };
+  // Stale session: a session was active at start, restricted works were encountered,
+  // and the session was cleared by ao3Fetch mid-batch (expired cookie detected).
+  const staleSession =
+    sessionActiveAtStart && restricted > 0 && !(await getAo3Session());
+
+  return { checked, updated, failed, restricted, staleSession };
 }

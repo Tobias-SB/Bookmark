@@ -19,6 +19,7 @@
 import type { AO3Rating, AuthorType } from '../../readables/index';
 import type { MetadataResult } from './types';
 import { processAo3Url } from '../../../shared/utils/ao3Url';
+import { ao3Fetch } from '../../ao3Auth';
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -273,7 +274,7 @@ export async function fetchAo3Metadata(url: string): Promise<MetadataResult> {
 
   let html: string;
   try {
-    const response = await fetch(fetchUrl, {
+    const response = await ao3Fetch(fetchUrl, {
       headers: { 'User-Agent': 'Bookmark/1.0 (personal reading tracker)' },
     });
     if (!response.ok) {

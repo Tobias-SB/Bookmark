@@ -62,4 +62,6 @@ export type RootStackParamList = {
    * or a manual skip from QuickAddReadable). In edit mode, id is provided and prefill is absent.
    */
   AddEditReadable: { id?: string; prefill?: AddEditPrefill };
+  /** AO3 login modal — WebView pointing to archiveofourown.org/users/login. */
+  Ao3Login: undefined;
 };

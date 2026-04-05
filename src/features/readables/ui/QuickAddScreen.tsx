@@ -35,12 +35,14 @@ import {
 import { ActivityIndicator } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { useFocusEffect } from '@react-navigation/native';
 
 import type { AddEditPrefill, RootStackParamList } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
 import type { BookSearchResult, MetadataResult } from '../../metadata';
 import { useImportMetadata } from '../../metadata';
 import { useFindAo3Duplicate } from '../hooks/useFindAo3Duplicate';
+import { useAo3Session, useAo3Login } from '../../ao3Auth';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'QuickAddReadable'>;
 
@@ -84,11 +86,29 @@ export function QuickAddScreen({ navigation }: Props) {
   // ── Fanfic state ───────────────────────────────────────────────────────────
   const [ao3Url, setAo3Url] = useState('');
   const [ao3Error, setAo3Error] = useState<string | null>(null);
+  // True when the last import attempt failed due to the work being restricted.
+  // Used to show a login CTA alongside the error message.
+  const [ao3Restricted, setAo3Restricted] = useState(false);
 
   const { searchBooks, importMetadata, isImporting } = useImportMetadata();
   const { findAo3Duplicate } = useFindAo3Duplicate();
+  const { isLoggedIn } = useAo3Session();
+  const { navigateToLogin } = useAo3Login();
 
   const bookQueryRef = useRef<RNTextInput>(null);
+  // Set to true when we navigate away to login so we can retry on focus return.
+  const pendingRetryRef = useRef(false);
+
+  // Re-trigger the import automatically when the user returns from logging in.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (pendingRetryRef.current && isLoggedIn) {
+        pendingRetryRef.current = false;
+        void handleAo3Import();
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isLoggedIn]),
+  );
 
   // ── Kind change clears all per-kind state ──────────────────────────────────
 
@@ -101,6 +121,7 @@ export function QuickAddScreen({ navigation }: Props) {
     setNoResultsMessage(null);
     setAo3Url('');
     setAo3Error(null);
+    setAo3Restricted(false);
   }
 
   // ── Book search ────────────────────────────────────────────────────────────
@@ -138,12 +159,23 @@ export function QuickAddScreen({ navigation }: Props) {
 
   async function handleAo3Import() {
     setAo3Error(null);
+    setAo3Restricted(false);
     const result = await importMetadata('fanfic', ao3Url.trim());
 
     if (result.isRestricted) {
-      setAo3Error(
-        "This work is restricted — it's only visible to logged-in AO3 users. You can still add it manually.",
-      );
+      if (!isLoggedIn) {
+        // Prompt the user to log in — the login CTA is rendered alongside the error.
+        setAo3Error(
+          "This work is restricted — it's only visible to logged-in AO3 users.",
+        );
+        setAo3Restricted(true);
+        pendingRetryRef.current = true;
+      } else {
+        // Already logged in but still restricted — nothing more we can do.
+        setAo3Error(
+          "This work is restricted — it's only visible to logged-in AO3 users. You can still add it manually.",
+        );
+      }
       return;
     }
 
@@ -475,6 +507,7 @@ export function QuickAddScreen({ navigation }: Props) {
               onChangeText={(t) => {
                 setAo3Url(t);
                 if (ao3Error) setAo3Error(null);
+                if (ao3Restricted) setAo3Restricted(false);
               }}
               onFocus={() => setUrlFocused(true)}
               onBlur={() => setUrlFocused(false)}
@@ -497,9 +530,31 @@ export function QuickAddScreen({ navigation }: Props) {
             />
 
             {ao3Error !== null && (
-              <Text style={[styles.errorText, { color: theme.colors.danger }]}>
-                {ao3Error}
-              </Text>
+              <View>
+                <Text style={[styles.errorText, { color: theme.colors.danger }]}>
+                  {ao3Error}
+                </Text>
+                {ao3Restricted && !isLoggedIn && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      navigateToLogin();
+                    }}
+                    style={[
+                      styles.loginCtaButton,
+                      {
+                        backgroundColor: theme.colors.kindFanficSubtle,
+                        borderColor: theme.colors.kindFanficBorder,
+                      },
+                    ]}
+                    accessibilityLabel="Log in to AO3 to import this work"
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.loginCtaText, { color: theme.colors.kindFanfic }]}>
+                      Log in to AO3 to import it
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
 
             {isImporting ? (
@@ -638,6 +693,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
     marginBottom: 4,
+  },
+  loginCtaButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginTop: 8,
+  },
+  loginCtaText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 
   resultItem: {

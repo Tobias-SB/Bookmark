@@ -339,7 +339,11 @@ export function UpdatesScreen(_props: Props) {
         if (result.restricted > 0) {
           parts.push(`${result.restricted} require AO3 login`);
         }
-        showSnackbar(`Checked ${result.checked} ${w} — ${parts.join(', ')}`);
+        let message = `Checked ${result.checked} ${w} — ${parts.join(', ')}`;
+        if (result.staleSession) {
+          message += ' — AO3 session expired, log in again via Settings';
+        }
+        showSnackbar(message);
       }
     } catch {
       showSnackbar('Could not check for updates — check your connection and try again');
