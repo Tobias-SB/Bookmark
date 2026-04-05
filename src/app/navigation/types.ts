@@ -3,6 +3,7 @@
 
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { AO3Rating, AuthorType, ReadableFilters } from '../../features/readables/domain/readable';
+import type { ProcessedAo3Url } from '../../shared/utils/ao3Url';
 
 export type TabParamList = {
   // Library accepts initialFilters so tappable tags on the detail screen
@@ -64,4 +65,9 @@ export type RootStackParamList = {
   AddEditReadable: { id?: string; prefill?: AddEditPrefill };
   /** AO3 login modal — WebView pointing to archiveofourown.org/users/login. */
   Ao3Login: undefined;
+  /**
+   * Share handler — transparent-modal bottom sheet shown when the user shares
+   * an AO3 URL from another app. Fetches metadata, detects duplicates, saves with one tap.
+   */
+  ShareHandler: { processedUrl: ProcessedAo3Url };
 };

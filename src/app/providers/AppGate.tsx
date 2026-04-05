@@ -8,14 +8,20 @@
 // so that React Navigation's header and tab bar chrome (background, text, borders)
 // updates correctly whenever the user switches between light and dark.
 //
+// Feature 6: ShareIntentProvider wraps NavigationContainer so that
+// useShareIntentContext() is available inside the navigation tree. The provider
+// only wraps the ready branch — the loading/error states are unaffected.
+//
 // Provider tree position (outermost → innermost):
 //   SafeAreaProvider → DatabaseProvider → AppThemeProvider
-//   → ErrorBoundary → QueryClientProvider → AppGate → NavigationContainer
+//   → ErrorBoundary → QueryClientProvider → AppGate
+//   → ShareIntentProvider → NavigationContainer
 
 import React, { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
+import { ShareIntentProvider } from 'expo-share-intent';
 
 import { useDatabaseContext } from '../database/DatabaseProvider';
 import { useThemeContext, useAppTheme } from '../theme';
@@ -63,9 +69,11 @@ export function AppGate() {
   }
 
   return (
-    <NavigationContainer theme={navigationTheme}>
-      <RootNavigator />
-    </NavigationContainer>
+    <ShareIntentProvider>
+      <NavigationContainer theme={navigationTheme}>
+        <RootNavigator />
+      </NavigationContainer>
+    </ShareIntentProvider>
   );
 }
 

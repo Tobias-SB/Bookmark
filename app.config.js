@@ -9,6 +9,20 @@ export default ({ config }) => ({
       },
     ],
     'expo-secure-store',
+    // Feature 6: Share Extension — handles AO3 URLs shared from other apps.
+    // iOS: activates for web URLs and web pages shared from Safari/Chrome.
+    // Android: accepts text/plain intents (Chrome and other browsers send URLs as plain text).
+    // Requires an EAS development build — not available in Expo Go.
+    [
+      'expo-share-intent',
+      {
+        iosActivationRules: {
+          NSExtensionActivationSupportsWebURLWithMaxCount: 1,
+          NSExtensionActivationSupportsWebPageWithMaxCount: 1,
+        },
+        androidIntentFilters: ['text/plain'],
+      },
+    ],
   ],
   extra: {
     googleBooksApiKeyAndroid: process.env.GOOGLE_BOOKS_API_KEY_ANDROID ?? '',

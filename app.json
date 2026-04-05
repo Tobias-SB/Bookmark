@@ -30,6 +30,14 @@
     },
     "plugins": [
       "expo-sqlite"
-    ]
+    ],
+    "extra": {
+      "googleBooksApiKeyAndroid": "",
+      "googleBooksApiKeyIos": "",
+      "googleBooksAndroidCert": "",
+      "eas": {
+        "projectId": "cb4bf8c3-c5f9-468a-ae2a-afb862ecd41f"
+      }
+    }
   }
 }
