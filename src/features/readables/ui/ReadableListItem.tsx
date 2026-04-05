@@ -35,17 +35,17 @@ function getPillStyle(status: ReadableStatus, colors: AppTheme['colors']) {
       };
     case 'dnf':
       return {
-        backgroundColor: colors.backgroundInput,
-        color: colors.textBody,
+        backgroundColor: colors.statusDnfBg,
+        color: colors.statusDnfText,
         borderWidth: 1,
-        borderColor: colors.backgroundBorder,
+        borderColor: colors.statusDnfBorder,
       };
     case 'want_to_read':
       return {
-        backgroundColor: colors.backgroundInput,
-        color: colors.textMeta,
+        backgroundColor: colors.statusWantBg,
+        color: colors.statusWantText,
         borderWidth: 1,
-        borderColor: colors.backgroundBorder,
+        borderColor: colors.statusWantBorder,
       };
   }
 }

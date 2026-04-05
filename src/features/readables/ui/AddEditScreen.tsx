@@ -196,10 +196,10 @@ function getStatusTokens(
     case 'completed':
       return { bg: theme.colors.statusCompletedBg, text: theme.colors.statusCompletedText, border: theme.colors.statusCompletedBorder };
     case 'dnf':
-      return { bg: theme.colors.backgroundInput, text: theme.colors.textBody, border: theme.colors.backgroundBorder };
+      return { bg: theme.colors.statusDnfBg, text: theme.colors.statusDnfText, border: theme.colors.statusDnfBorder };
     case 'want_to_read':
     default:
-      return { bg: theme.colors.backgroundInput, text: theme.colors.textMeta, border: theme.colors.backgroundBorder };
+      return { bg: theme.colors.statusWantBg, text: theme.colors.statusWantText, border: theme.colors.statusWantBorder };
   }
 }
 

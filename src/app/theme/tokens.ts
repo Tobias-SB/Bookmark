@@ -3,6 +3,9 @@
 // UI components must consume AppTheme tokens exclusively — no raw Paper colors,
 // no ad hoc theme objects, no hardcoded color values anywhere in the codebase.
 // Only this file translates Paper values into app-level tokens.
+//
+// Base palette: Scholar's Library (leather brown, royal blue, antiquarian gold).
+// Future theme variants override specific tokens via APP_THEME_OVERRIDES in AppThemeProvider.
 
 import type { MD3Theme } from 'react-native-paper';
 
@@ -55,59 +58,60 @@ export interface AppTheme {
     inverseOnSurface: string;
 
     // ── Surface palette ─────────────────────────────────────────────────────────
-    /** Page / screen background. #F9F8F5 light, #121212 dark. */
+    /** Page / screen background. */
     backgroundPage: string;
-    /** Floating card background. #FFFFFF light, #1E1E1E dark. */
+    /** Floating card background. */
     backgroundCard: string;
-    /** Input, chip, and secondary surface. #F1EDE7 light, #2A2A2A dark. */
+    /** Input, chip, and secondary surface. */
     backgroundInput: string;
-    /** Dividers and input borders. #E6DED4 light, #3A3A3A dark. */
+    /** Dividers and input borders. */
     backgroundBorder: string;
 
     // ── Text hierarchy (solid hex, contrast-verified) ────────────────────────────
-    // textPrimary from TIER 1 remains valid for headings and primary content.
-    /** Secondary body copy — author names, card body. #4A3F35 light → 7.8:1 on white ✓ */
+    /** Body copy — author names, card body. */
     textBody: string;
-    /** Section labels, timestamps, metadata. #6B6058 light → 5.2:1 on white ✓ */
+    /** Section labels, timestamps, metadata. */
     textMeta: string;
     /**
-     * Input placeholder text ONLY. #9A9088 light.
+     * Input placeholder text ONLY.
      * Exempt from 4.5:1 under WCAG 1.4.3. Never use for visible content.
      */
     textHint: string;
 
     // ── Kind accent ──────────────────────────────────────────────────────────────
     // Two independently themeable accent colours — the app's core personality tokens.
-    // Each custom theme only needs to supply these six values.
-    kindBook: string;         // default #6750A4 (MD3 primary)
-    kindBookSubtle: string;   // default #EDE8F7 — chip/badge backgrounds
-    kindBookBorder: string;   // default #C4B8E8 — chip/badge borders, focused input borders
-    kindFanfic: string;       // default #00616E (nudged from #00696F for 4.6:1 safety margin)
-    kindFanficSubtle: string; // default #E0F3F2
-    kindFanficBorder: string; // default #9DD4D1
+    kindBook: string;         // leather brown (light) / amber candlelight (dark)
+    kindBookSubtle: string;   // chip/badge backgrounds
+    kindBookBorder: string;   // chip/badge borders, focused input borders
+    kindFanfic: string;       // royal blue (light) / moonlit sapphire (dark)
+    kindFanficSubtle: string;
+    kindFanficBorder: string;
 
-    // ── Status semantic tokens — reading and completed only ──────────────────────
-    // DNF and Want to read use neutral surfaces that already exist in this token set:
-    //   DNF:           backgroundColor:backgroundInput, color:textBody, borderColor:backgroundBorder
-    //   Want to read:  backgroundColor:backgroundInput, color:textMeta, borderColor:backgroundBorder
-    // No dedicated tokens are needed for those two states.
-    statusReadingText: string;     // #6750A4 → 6.7:1 on statusReadingBg ✓
-    statusReadingBg: string;       // #EDE8F7
-    statusReadingBorder: string;   // #C4B8E8
-    statusCompletedText: string;   // #1A6E3F → 4.7:1 on statusCompletedBg ✓
-    statusCompletedBg: string;     // #E3F4EB
-    statusCompletedBorder: string; // #A3D9B8
+    // ── Status semantic tokens ───────────────────────────────────────────────────
+    // All four status families have dedicated tokens.
+    statusWantText: string;      // warm gray (light) / muted warm (dark)
+    statusWantBg: string;
+    statusWantBorder: string;
+    statusReadingText: string;   // library green
+    statusReadingBg: string;
+    statusReadingBorder: string;
+    statusCompletedText: string; // antiquarian gold
+    statusCompletedBg: string;
+    statusCompletedBorder: string;
+    statusDnfText: string;       // dusty mauve
+    statusDnfBg: string;
+    statusDnfBorder: string;
 
     // ── Danger / warning ─────────────────────────────────────────────────────────
-    /** Delete buttons, archive warning chips, error states. #B91C1C → 5.4:1 on white ✓ */
+    /** Delete buttons, archive warning chips, error states. */
     danger: string;
-    /** Archive warning chip backgrounds, error snackbars. #FEF2F2 */
+    /** Chip backgrounds, error snackbars. */
     dangerSubtle: string;
-    /** Archive warning chip borders. #FECACA */
+    /** Chip borders. */
     dangerBorder: string;
 
     // ── Decorative gradients ──────────────────────────────────────────────────────
-    /** Tab bar gradient end stop — subtle purple tint. rgba(103,80,164,0.13) light. */
+    /** Tab bar gradient end stop. */
     tabBarGradientEnd: string;
   };
   shadows: {
@@ -124,8 +128,10 @@ export interface AppTheme {
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────
+// Base palette: Scholar's Library (leather brown, royal blue, antiquarian gold).
+// Light mode = parchment and ink. Dark mode = aged oak and candlelight.
 // Called once per theme change by useAppTheme(). Not memoized here —
-// the hook is responsible for memoisation if needed.
+// the hook is responsible for memoisation.
 
 export function makeTokens(theme: MD3Theme): AppTheme {
   const c = theme.colors;
@@ -158,64 +164,104 @@ export function makeTokens(theme: MD3Theme): AppTheme {
       inverseSurface: c.inverseSurface,
       inverseOnSurface: c.inverseOnSurface,
 
-      // Surface palette
-      backgroundPage:   isDark ? '#121212' : '#F9F8F5',
-      backgroundCard:   isDark ? '#1E1E1E' : '#FFFFFF',
-      backgroundInput:  isDark ? '#2A2A2A' : '#F1EDE7',
-      backgroundBorder: isDark ? '#3A3A3A' : '#E6DED4',
+      // ── Surface palette — Scholar's Library ──────────────────────────────────
+      backgroundPage:   isDark ? '#1A1410' : '#F8F4EE',
+      backgroundCard:   isDark ? '#221C16' : '#FDFAF6',
+      backgroundInput:  isDark ? '#2E2520' : '#F0EAE0',
+      backgroundBorder: isDark ? '#4A3E34' : '#DDD4C5',
 
-      // Text hierarchy
-      textBody: isDark ? '#C4BBB2' : '#4A3F35',
-      textMeta: isDark ? '#9A918A' : '#6B6058',
-      textHint: isDark ? '#6A6360' : '#9A9088',
+      // ── Text hierarchy — Scholar's Library ───────────────────────────────────
+      textBody: isDark ? '#F0E8DC' : '#1A120A',
+      textMeta: isDark ? '#C8B8A4' : '#4A3122',
+      textHint: isDark ? '#8A7A6A' : '#6B4E33',
 
-      // Kind accent
-      kindBook:         isDark ? '#CFBCFF' : '#6750A4',
-      kindBookSubtle:   isDark ? '#2A2340' : '#EDE8F7',
-      kindBookBorder:   isDark ? '#6750A4' : '#C4B8E8',
-      kindFanfic:       isDark ? '#4DD0E1' : '#00616E',
-      kindFanficSubtle: isDark ? '#00363A' : '#E0F3F2',
-      kindFanficBorder: isDark ? '#00616E' : '#9DD4D1',
+      // ── Kind accent — Scholar's Library ──────────────────────────────────────
+      // Books → leather brown (light) / amber candlelight (dark)
+      kindBook:         isDark ? '#E8924A' : '#7C3910',
+      kindBookSubtle:   isDark ? '#2C1A0A' : '#FDF0E4',
+      kindBookBorder:   isDark ? '#C06A28' : '#A35828',
+      // Fanfic → royal blue (light) / moonlit sapphire (dark)
+      kindFanfic:       isDark ? '#8AADEE' : '#1A3370',
+      kindFanficSubtle: isDark ? '#0E1A2E' : '#E8F0FA',
+      kindFanficBorder: isDark ? '#4A72C4' : '#4A72C4',
 
-      // Status tokens
-      statusReadingText:     isDark ? '#CFBCFF' : '#6750A4',
-      statusReadingBg:       isDark ? '#2A2340' : '#EDE8F7',
-      statusReadingBorder:   isDark ? '#4A3D7A' : '#C4B8E8',
-      statusCompletedText:   isDark ? '#6FCFA0' : '#1A6E3F',
-      statusCompletedBg:     isDark ? '#0A2A1A' : '#E3F4EB',
-      statusCompletedBorder: isDark ? '#1A5030' : '#A3D9B8',
+      // ── Status tokens — Scholar's Library ────────────────────────────────────
+      // Want to read: warm neutral gray — inert, nothing happening yet
+      statusWantText:   isDark ? '#C8C4BE' : '#3C3830',
+      statusWantBg:     isDark ? '#2A2822' : '#EDEBE8',
+      statusWantBorder: isDark ? '#5A5650' : '#AEAAA4',
+      // Reading: library green — the banker's lamp, the act of reading
+      statusReadingText:   isDark ? '#72C48A' : '#1A5530',
+      statusReadingBg:     isDark ? '#0E2018' : '#E8F5EC',
+      statusReadingBorder: isDark ? '#2A6040' : '#4A9B65',
+      // Completed: antiquarian gold — achievement, gilded, precious
+      statusCompletedText:   isDark ? '#E8B84A' : '#7A4A08',
+      statusCompletedBg:     isDark ? '#221A06' : '#FEF6E0',
+      statusCompletedBorder: isDark ? '#8A5C10' : '#C47830',
+      // DNF: dusty mauve — gently set aside, not penalised
+      statusDnfText:   isDark ? '#C090C8' : '#5A2E5E',
+      statusDnfBg:     isDark ? '#1E1220' : '#F5EDF8',
+      statusDnfBorder: isDark ? '#6A3E72' : '#B080BE',
 
-      // Danger
-      danger:       isDark ? '#F87171' : '#B91C1C',
-      dangerSubtle: isDark ? '#2D0A0A' : '#FEF2F2',
-      dangerBorder: isDark ? '#7F1D1D' : '#FECACA',
+      // ── Danger — Scholar's Library ────────────────────────────────────────────
+      // Warm crimson (light) / deep rose-crimson (dark)
+      danger:       isDark ? '#E86060' : '#9A1C1C',
+      dangerSubtle: isDark ? '#2A1010' : '#FDF0F0',
+      dangerBorder: isDark ? '#7A2828' : '#E09090',
 
-      // Decorative gradients
-      tabBarGradientEnd: isDark ? 'rgba(207,188,255,0.12)' : 'rgba(103,80,164,0.13)',
+      // ── Decorative gradients ──────────────────────────────────────────────────
+      // Leather-brown tint (light) / amber tint (dark)
+      tabBarGradientEnd: isDark ? 'rgba(232,146,74,0.12)' : 'rgba(124,57,16,0.12)',
     },
-    shadows: {
-      card: {
-        shadowColor:   isDark ? '#000000' : '#1C140A',
-        shadowOffset:  { width: 0, height: 2 },
-        shadowOpacity: isDark ? 0.30 : 0.08,
-        shadowRadius:  8,
-        elevation:     isDark ? 4 : 3,
-      },
-      small: {
-        shadowColor:   isDark ? '#000000' : '#1C140A',
-        shadowOffset:  { width: 0, height: 1 },
-        shadowOpacity: isDark ? 0.20 : 0.05,
-        shadowRadius:  4,
-        elevation:     isDark ? 2 : 1,
-      },
-      button: {
-        shadowColor:   '#6750A4',
-        shadowOffset:  { width: 0, height: 4 },
-        shadowOpacity: isDark ? 0.50 : 0.32,
-        shadowRadius:  12,
-        elevation:     8,
-      },
-    },
+    shadows: isDark
+      ? {
+          // Dark mode: pure near-black with warmth bias, higher opacity
+          card: {
+            shadowColor:   '#0A0806',
+            shadowOffset:  { width: 0, height: 3 },
+            shadowOpacity: 0.40,
+            shadowRadius:  10,
+            elevation:     5,
+          },
+          small: {
+            shadowColor:   '#0A0806',
+            shadowOffset:  { width: 0, height: 1 },
+            shadowOpacity: 0.30,
+            shadowRadius:  5,
+            elevation:     3,
+          },
+          button: {
+            shadowColor:   '#0A0806',
+            shadowOffset:  { width: 0, height: 2 },
+            shadowOpacity: 0.35,
+            shadowRadius:  4,
+            elevation:     3,
+          },
+        }
+      : {
+          // Light mode: leather-brown tint, warm depth against parchment
+          card: {
+            shadowColor:   '#5C3010',
+            shadowOffset:  { width: 0, height: 2 },
+            shadowOpacity: 0.10,
+            shadowRadius:  8,
+            elevation:     3,
+          },
+          small: {
+            shadowColor:   '#5C3010',
+            shadowOffset:  { width: 0, height: 1 },
+            shadowOpacity: 0.07,
+            shadowRadius:  4,
+            elevation:     2,
+          },
+          button: {
+            shadowColor:   '#5C3010',
+            shadowOffset:  { width: 0, height: 1 },
+            shadowOpacity: 0.12,
+            shadowRadius:  3,
+            elevation:     2,
+          },
+        },
     radii: {
       card: 18,
       pill: 22,
@@ -225,26 +271,17 @@ export function makeTokens(theme: MD3Theme): AppTheme {
   };
 }
 
-// ── Custom theme overrides ────────────────────────────────────────────────────
-// Allows custom themes to supply only the kind accent and surface tokens.
-// Pass to applyCustomOverrides() to produce a modified AppTheme.
+// ── Override system types ─────────────────────────────────────────────────────
+// Used by APP_THEME_OVERRIDES in AppThemeProvider to define per-theme token deltas.
+// Future themes supply only the tokens that differ from the Scholar's Library base.
 
-export type CustomThemeOverrides = Partial<{
-  kindBook: string;
-  kindBookSubtle: string;
-  kindBookBorder: string;
-  kindFanfic: string;
-  kindFanficSubtle: string;
-  kindFanficBorder: string;
-  backgroundPage: string;
-  backgroundCard: string;
-  backgroundInput: string;
-  backgroundBorder: string;
-}>;
+export type AppColors = AppTheme['colors'];
 
-export function applyCustomOverrides(
-  base: AppTheme,
-  overrides: CustomThemeOverrides,
-): AppTheme {
-  return { ...base, colors: { ...base.colors, ...overrides } };
-}
+export type AppShadowOverrides = {
+  shadowCard?: RNShadow;
+  shadowSmall?: RNShadow;
+  shadowButton?: RNShadow;
+};
+
+/** Flat override object: color deltas + optional shadow replacements. */
+export type AppThemeOverrideSet = Partial<AppColors> & AppShadowOverrides;

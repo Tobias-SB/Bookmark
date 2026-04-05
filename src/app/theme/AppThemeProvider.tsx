@@ -2,8 +2,8 @@
 // NOTE: This establishes the AppThemeProvider pattern in src/app/theme/.
 // Manages colour mode (light/dark/system) separately from the colour palette.
 //
-// ThemeName — the colour palette. Currently only 'default'; extend THEME_REGISTRY
-//   when additional palettes are added.
+// ThemeName — the colour palette. Currently only 'default' (Scholar's Library base);
+//   extend THEME_REGISTRY and APP_THEME_OVERRIDES when additional palettes are added.
 // ColorMode — how light/dark is resolved ('light' | 'dark' | 'system').
 //   'system' follows the device colour scheme via useColorScheme().
 //
@@ -29,11 +29,16 @@ import type { MD3Theme } from 'react-native-paper';
 
 import { useDatabaseContext } from '../database/DatabaseProvider';
 import { getSetting, setSetting, SETTINGS_KEYS } from '../database/settingsRepository';
+import type { AppThemeOverrideSet } from './tokens';
 
 // ── Theme registry ─────────────────────────────────────────────────────────────
 // Add new palettes here. Each entry must supply both light and dark MD3 variants.
+// Scholar's Library uses the MD3 default themes — only semantic tokens differ.
 
 export type ThemeName = 'default';
+// To add a theme: extend the union → 'default' | 'ocean_modern'
+// Then add an entry to THEME_REGISTRY and APP_THEME_OVERRIDES below.
+
 export type ColorMode = 'light' | 'dark' | 'system';
 
 type ThemeVariants = { light: MD3Theme; dark: MD3Theme };
@@ -52,6 +57,24 @@ function isThemeName(value: string): value is ThemeName {
 function isColorMode(value: string): value is ColorMode {
   return value === 'light' || value === 'dark' || value === 'system';
 }
+
+// ── Override registry ──────────────────────────────────────────────────────────
+// Each theme entry provides light and dark delta objects. Only tokens that differ
+// from the Scholar's Library base (makeTokens) need to be supplied. The default
+// theme has no overrides — Scholar's Library values come from makeTokens itself.
+//
+// To add a theme:
+//   1. Extend ThemeName union above.
+//   2. Add THEME_REGISTRY entry (MD3 base themes).
+//   3. Add APP_THEME_OVERRIDES entry with token deltas.
+//   4. Add a chip to SettingsScreen theme selector.
+
+export const APP_THEME_OVERRIDES: Record<
+  ThemeName,
+  { light: AppThemeOverrideSet; dark: AppThemeOverrideSet }
+> = {
+  default: { light: {}, dark: {} },
+};
 
 // ── Context ────────────────────────────────────────────────────────────────────
 
