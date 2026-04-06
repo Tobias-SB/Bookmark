@@ -465,7 +465,7 @@ export function UpdatesScreen(_props: Props) {
       );
     }
 
-    const fillPercent = `${(progress.current / progress.total) * 100}%`;
+    const fillPercent = `${(progress.current / progress.total) * 100}%` as `${number}%`;
 
     let outcomeEl: React.ReactElement | null = null;
     if (progress.outcome === 'updated') {
