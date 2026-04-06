@@ -118,6 +118,10 @@ export function applyUpdateConsistency(
   // Revert rule: If the readable is already completed (status inherited, not just set or
   // auto-completed) and the user explicitly enters a progress value below the threshold,
   // revert status to reading so they are not locked at 100%.
+  //
+  // Note: !statusExplicitlySet guards the case where the user explicitly picks "completed"
+  // via the status pills while also sending a low progressCurrent. In that case we do NOT
+  // revert — Rule 3 above will pin progressCurrent to the threshold, preserving their intent.
   const userLoweringBelowThreshold =
     progressCurrentInInput &&
     resolvedProgressCurrent !== null &&

@@ -16,6 +16,12 @@ interface Migration {
 }
 
 // Add new migration objects here in ascending version order.
+//
+// IMPORTANT — all migration SQL must be idempotent (use CREATE TABLE IF NOT EXISTS,
+// DROP INDEX IF EXISTS, etc.). SQLite does not allow PRAGMA user_version to be set
+// inside a transaction, so the version stamp is written after the transaction commits.
+// If the app crashes in that window, the migration re-runs on next launch. DDL that
+// is not idempotent will fail or corrupt data on re-application.
 const ALL_MIGRATIONS: Migration[] = [migration001, migration002];
 
 export async function runMigrations(db: SQLiteDatabase): Promise<void> {

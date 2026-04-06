@@ -56,9 +56,12 @@ export interface ReadableRow {
 // ── Tag serialisation ─────────────────────────────────────────────────────────
 
 // Safe tag deserialisation. Never throws — returns [] on any failure.
+// Array.isArray guard handles the edge case where the column stores the JSON
+// literal "null" (or an object/number), which JSON.parse accepts but is invalid.
 export function parseTags(raw: string | null): string[] {
   try {
-    return JSON.parse(raw ?? '[]') ?? [];
+    const parsed = JSON.parse(raw ?? '[]');
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -67,7 +70,8 @@ export function parseTags(raw: string | null): string[] {
 // Safe JSON array deserialisation for any string[] column. Same pattern as parseTags.
 export function parseJsonArray(raw: string | null): string[] {
   try {
-    return JSON.parse(raw ?? '[]') ?? [];
+    const parsed = JSON.parse(raw ?? '[]');
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -86,19 +90,57 @@ export function booleanToSQLite(value: boolean | null): number | null {
   return value ? 1 : 0;
 }
 
+// ── Enum validation ───────────────────────────────────────────────────────────
+
+// Throws if a string value read from SQLite is not a member of the expected union.
+// Prevents silently propagating invalid values (e.g. from manual DB edits or future
+// migration bugs) into the domain model where they would cause undefined behaviour.
+function assertEnum<T extends string>(
+  value: string,
+  allowed: readonly T[],
+  field: string,
+): T {
+  if (!(allowed as string[]).includes(value)) {
+    throw new Error(`Invalid ${field} value in database: "${value}"`);
+  }
+  return value as T;
+}
+
+// For nullable enum columns: returns null if the value is absent or unrecognised
+// (rather than throwing) since these fields are optional/import-only.
+function parseNullableEnum<T extends string>(
+  value: string | null,
+  allowed: readonly T[],
+): T | null {
+  if (value === null) return null;
+  return (allowed as string[]).includes(value) ? (value as T) : null;
+}
+
 // ── Row → domain ──────────────────────────────────────────────────────────────
 
 export function rowToReadable(row: ReadableRow): Readable {
   return {
     id: row.id,
-    kind: row.kind as ReadableKind,
+    kind: assertEnum<ReadableKind>(row.kind, ['book', 'fanfic'] as const, 'kind'),
     title: row.title,
     author: row.author,
-    status: row.status as ReadableStatus,
+    status: assertEnum<ReadableStatus>(
+      row.status,
+      ['want_to_read', 'reading', 'completed', 'dnf'] as const,
+      'status',
+    ),
     progressCurrent: row.progress_current,
     totalUnits: row.total_units,
-    progressUnit: row.progress_unit as ProgressUnit,
-    sourceType: row.source_type as SourceType,
+    progressUnit: assertEnum<ProgressUnit>(
+      row.progress_unit,
+      ['pages', 'chapters'] as const,
+      'progressUnit',
+    ),
+    sourceType: assertEnum<SourceType>(
+      row.source_type,
+      ['manual', 'ao3', 'book_provider'] as const,
+      'sourceType',
+    ),
     sourceUrl: row.source_url,
     sourceId: row.source_id,
     summary: row.summary,
@@ -110,7 +152,10 @@ export function rowToReadable(row: ReadableRow): Readable {
     wordCount: row.word_count,
     fandom: parseJsonArray(row.fandom),
     relationships: parseJsonArray(row.relationships),
-    rating: row.rating as AO3Rating | null,
+    rating: parseNullableEnum<AO3Rating>(
+      row.rating,
+      ['general', 'teen', 'mature', 'explicit', 'not_rated'] as const,
+    ),
     archiveWarnings: parseJsonArray(row.archive_warnings),
     seriesName: row.series_name,
     seriesPart: row.series_part,
@@ -120,7 +165,10 @@ export function rowToReadable(row: ReadableRow): Readable {
     publishedAt: row.published_at,
     ao3UpdatedAt: row.ao3_updated_at,
     isAbandoned: row.is_abandoned !== 0,
-    authorType: row.author_type as AuthorType | null,
+    authorType: parseNullableEnum<AuthorType>(
+      row.author_type,
+      ['known', 'anonymous', 'orphaned'] as const,
+    ),
     dateAdded: row.date_added,
     dateCreated: row.date_created,
     dateUpdated: row.date_updated,

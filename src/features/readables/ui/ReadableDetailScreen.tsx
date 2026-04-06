@@ -12,6 +12,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
+  type DimensionValue,
   Image,
   Platform,
   ScrollView,
@@ -650,7 +651,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
               <View
                 style={[
                   styles.progressBarFill,
-                  { backgroundColor: kindAccentColor, width: `${progressPct}%` as any },
+                  { backgroundColor: kindAccentColor, width: `${progressPct}%` as DimensionValue },
                 ]}
               />
             )}

@@ -19,7 +19,11 @@
 import type { AO3Rating, AuthorType } from '../../readables/index';
 import type { MetadataResult } from './types';
 import { processAo3Url } from '../../../shared/utils/ao3Url';
-import { ao3Fetch } from '../../ao3Auth';
+// Direct service import — intentionally bypasses the ao3Auth barrel (index.ts) because
+// the barrel re-exports Ao3LoginScreen (a UI component), which would drag react-native-webview
+// and the full provider tree into this pure parsing service. Service-to-service direct imports
+// are permitted as an exception to the barrel rule when the barrel bundles UI.
+import { ao3Fetch } from '../../ao3Auth/services/ao3Fetch';
 
 // ---------------------------------------------------------------------------
 // Private helpers
