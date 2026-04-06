@@ -448,60 +448,67 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
           >
 
             {/* ── Section: Kind ── */}
-            <View style={styles.inlineSection}>
+            <View style={styles.section}>
               <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>KIND</Text>
-              {renderChip({
-                label: 'Books',
-                active: draft.kind === 'book',
-                activeVariant: 'book',
-                onPress: () => setKind(draft.kind === 'book' ? undefined : 'book'),
-              })}
-              {renderChip({
-                label: 'Fanfic',
-                active: draft.kind === 'fanfic',
-                activeVariant: 'fanfic',
-                onPress: () => setKind(draft.kind === 'fanfic' ? undefined : 'fanfic'),
-              })}
+              <View style={styles.chipRow}>
+                {renderChip({
+                  label: 'Books',
+                  active: draft.kind === 'book',
+                  activeVariant: 'book',
+                  onPress: () => setKind(draft.kind === 'book' ? undefined : 'book'),
+                })}
+                {renderChip({
+                  label: 'Fanfic',
+                  active: draft.kind === 'fanfic',
+                  activeVariant: 'fanfic',
+                  onPress: () => setKind(draft.kind === 'fanfic' ? undefined : 'fanfic'),
+                })}
+              </View>
             </View>
 
             <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
             {/* ── Section: Status ── */}
-            <View style={styles.inlineSection}>
+            <View style={styles.section}>
               <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>STATUS</Text>
-              {READABLE_STATUSES.map((status) =>
-                renderChip({
-                  label: STATUS_LABELS_FULL[status],
-                  active: draft.status?.includes(status) ?? false,
-                  onPress: () => toggleStatus(status),
-                })
-              )}
+              <View style={styles.chipRow}>
+                {READABLE_STATUSES.map((status) =>
+                  renderChip({
+                    label: STATUS_LABELS_FULL[status],
+                    active: draft.status?.includes(status) ?? false,
+                    onPress: () => toggleStatus(status),
+                  })
+                )}
+              </View>
             </View>
 
             <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
             {/* ── Section: General ── */}
-            <View style={styles.inlineSection}>
+            <View style={styles.section}>
               <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>GENERAL</Text>
-              {renderChip({
-                label: 'In a series',
-                active: draft.seriesOnly === true,
-                onPress: () =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    seriesOnly: prev.seriesOnly === true ? undefined : true,
-                  })),
-              })}
+              <View style={styles.chipRow}>
+                {renderChip({
+                  label: 'In a series',
+                  active: draft.seriesOnly === true,
+                  onPress: () =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      seriesOnly: prev.seriesOnly === true ? undefined : true,
+                    })),
+                })}
+              </View>
             </View>
 
             <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
-            {/* ── Section: AO3 Filters ── */}
-            <Text style={[styles.sectionTitle, { color: theme.colors.textMeta }]}>AO3 FILTERS</Text>
+            {/* ── Section: AO3 ── */}
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>AO3</Text>
 
             {draft.kind === 'fanfic' ? (
               <>
-                {/* WIP / Complete */}
+                {/* Completion */}
                 <View style={styles.chipRow}>
                   {renderChip({
                     label: 'WIP',
@@ -605,6 +612,7 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
                 Select Fanfic to filter by AO3 fields.
               </Text>
             )}
+            </View>
 
             <View style={[styles.divider, { backgroundColor: theme.colors.backgroundBorder }]} />
 
@@ -678,22 +686,24 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
             )}
 
             {/* ── Section: Sort ── */}
-            <View style={styles.inlineSection}>
+            <View style={styles.section}>
               <Text style={[styles.sectionLabel, { color: theme.colors.textMeta }]}>SORT</Text>
-              {sortCriteria.map((criterion) => {
-                const isSelected = draft.sortBy === criterion.sortBy;
-                const order = isSelected ? (draft.sortOrder ?? criterion.defaultOrder) : criterion.defaultOrder;
-                const dirLabel = sortDirectionLabel(criterion.sortBy, order);
-                const label = `${criterion.label} · ${dirLabel}`;
-                return renderChip({
-                  label,
-                  active: isSelected,
-                  onPress: () => selectSortCriterion(criterion),
-                  accessibilityLabel: isSelected
-                    ? `${criterion.label}, ${dirLabel}, tap to flip direction`
-                    : `Sort by ${criterion.label}, ${dirLabel}`,
-                });
-              })}
+              <View style={styles.chipRow}>
+                {sortCriteria.map((criterion) => {
+                  const isSelected = draft.sortBy === criterion.sortBy;
+                  const order = isSelected ? (draft.sortOrder ?? criterion.defaultOrder) : criterion.defaultOrder;
+                  const dirLabel = sortDirectionLabel(criterion.sortBy, order);
+                  const label = `${criterion.label} · ${dirLabel}`;
+                  return renderChip({
+                    label,
+                    active: isSelected,
+                    onPress: () => selectSortCriterion(criterion),
+                    accessibilityLabel: isSelected
+                      ? `${criterion.label}, ${dirLabel}, tap to flip direction`
+                      : `Sort by ${criterion.label}, ${dirLabel}`,
+                  });
+                })}
+              </View>
             </View>
 
           </ScrollView>
@@ -705,7 +715,10 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
               { backgroundColor: theme.colors.backgroundInput },
             ]}
           >
-            <Text style={[styles.liveCount, { color: theme.colors.textMeta }]}>
+            <Text
+              style={[styles.liveCount, { color: theme.colors.textMeta }]}
+              accessibilityLiveRegion="polite"
+            >
               {liveCount === 1 ? '1 readable matches' : `${liveCount} readables match`}
             </Text>
             <View style={styles.footerActions}>
@@ -802,25 +815,13 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingBottom: 8,
   },
-  sectionTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    marginTop: 4,
-    marginBottom: 6,
-  },
   sectionLabel: {
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,
   },
-  inlineSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
+  section: {
     gap: 8,
-    marginTop: 2,
-    marginBottom: 2,
   },
   tagsHeader: {
     flexDirection: 'row',

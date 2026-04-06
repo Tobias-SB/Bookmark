@@ -124,6 +124,32 @@ export interface AppTheme {
     pill: number;   // 22
     chip: number;   // 12
   };
+  /**
+   * Named font-size scale. Use these instead of ad-hoc numeric values so
+   * that all text sizes across the app remain aligned and easy to audit.
+   *
+   * Scale overview:
+   *   badge    9   — notification badges, tiny metadata
+   *   labelXs  11  — fandom tags, list pills, status chips
+   *   labelSm  12  — section headers, auxiliary labels
+   *   labelMd  13  — author names, meta rows, timestamps
+   *   bodyMd   14  — body copy, form fields, buttons
+   *   bodyLg   16  — readable body text (WCAG minimum for body)
+   *   titleSm  17  — modal titles, card headings
+   *   titleMd  20  — screen sub-headers
+   *   titleLg  26  — primary screen title (Library, Detail hero)
+   */
+  typography: {
+    badge: number;
+    labelXs: number;
+    labelSm: number;
+    labelMd: number;
+    bodyMd: number;
+    bodyLg: number;
+    titleSm: number;
+    titleMd: number;
+    titleLg: number;
+  };
   dark: boolean;
 }
 
@@ -195,7 +221,7 @@ export function makeTokens(theme: MD3Theme): AppTheme {
       statusReadingBg:     isDark ? '#0E2018' : '#E8F5EC',
       statusReadingBorder: isDark ? '#2A6040' : '#4A9B65',
       // Completed: antiquarian gold — achievement, gilded, precious
-      statusCompletedText:   isDark ? '#E8B84A' : '#7A4A08',
+      statusCompletedText:   isDark ? '#E8B84A' : '#e7a03c',
       statusCompletedBg:     isDark ? '#221A06' : '#FEF6E0',
       statusCompletedBorder: isDark ? '#8A5C10' : '#C47830',
       // DNF: dusty mauve — gently set aside, not penalised
@@ -266,6 +292,17 @@ export function makeTokens(theme: MD3Theme): AppTheme {
       card: 18,
       pill: 22,
       chip: 12,
+    },
+    typography: {
+      badge:   9,
+      labelXs: 11,
+      labelSm: 12,
+      labelMd: 13,
+      bodyMd:  14,
+      bodyLg:  16,
+      titleSm: 17,
+      titleMd: 20,
+      titleLg: 26,
     },
     dark: theme.dark,
   };

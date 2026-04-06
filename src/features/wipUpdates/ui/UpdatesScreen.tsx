@@ -45,13 +45,13 @@ type Props = BottomTabScreenProps<TabParamList, 'Updates'>;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const SCOPE_STATUSES: ReadableStatus[] = ['reading', 'want_to_read', 'dnf'];
+const SCOPE_STATUSES: ReadableStatus[] = ['reading', 'want_to_read'];
 
 const STATUS_LABELS: Record<ReadableStatus, string> = {
   reading: 'Reading',
   want_to_read: 'Want to Read',
-  dnf: 'DNF',
   completed: 'Completed',
+  dnf: 'DNF',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

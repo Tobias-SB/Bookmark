@@ -21,7 +21,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -38,6 +37,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import type { RootStackParamList, TabParamList } from '../../../app/navigation/types';
 import { useAppTheme } from '../../../app/theme';
+import { AppSearchBar } from '../../../shared/components/AppSearchBar';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import type { AO3Rating, ReadableFilters, ReadableStatus } from '../domain/readable';
 import { AO3_RATING_LABELS, STATUS_LABELS_SHORT } from '../domain/readable';
@@ -313,16 +313,22 @@ export function LibraryScreen() {
   //   largeTitleOpacity  — fades the large title+count out as you scroll
   //   compactTranslateY  — slides the compact header down from above
   //   compactOpacity     — fades the compact header in simultaneously
-  // Fixed thresholds (based on stable title section height) prevent the
-  // inputRange from ever shifting mid-scroll.
+  //
+  // Thresholds are driven by onLayout measurements so they remain correct
+  // when font scaling (Dynamic Type / Font Scaling) changes text sizes.
   const scrollY = useRef(new Animated.Value(0)).current;
   const compactHeaderHeight = insets.top + 62;
 
+  // Measured height of the large title row inside the full header.
+  // Seeded with a reasonable estimate so the animation works before layout fires.
+  const titleRowHeightRef = useRef(insets.top + 80);
+  const [titleRowHeight, setTitleRowHeight] = useState(insets.top + 80);
+
   const fadeStart = insets.top;
-  const fadeEnd = insets.top + 80; // paddingTop(16)+title(~32)+marginTop(2)+count(~18)+paddingBottom(12)
+  const fadeEnd = titleRowHeight;
 
   const largeTitleOpacity = scrollY.interpolate({
-    inputRange: [0, fadeStart + 40],
+    inputRange: [0, fadeStart + Math.max(20, fadeEnd - fadeStart) * 0.5],
     outputRange: [1, 0],
     extrapolate: 'clamp',
   });
@@ -343,6 +349,14 @@ export function LibraryScreen() {
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
     { useNativeDriver: true },
   );
+
+  function onTitleRowLayout(e: { nativeEvent: { layout: { height: number } } }) {
+    const measured = insets.top + e.nativeEvent.layout.height;
+    if (Math.abs(measured - titleRowHeightRef.current) > 2) {
+      titleRowHeightRef.current = measured;
+      setTitleRowHeight(measured);
+    }
+  }
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -387,6 +401,7 @@ export function LibraryScreen() {
               paddingTop: 2,
               paddingBottom: 6,
             }}
+            accessibilityLiveRegion="polite"
           >
             {readables.length === 1 ? '1 result' : `${readables.length} results`}
           </Text>
@@ -425,9 +440,11 @@ export function LibraryScreen() {
       >
         {activeChips.map((chip) => {
           const isExclude = chip.tagMode === 'exclude';
+          const chipColor = isExclude ? theme.colors.danger : theme.colors.kindBook;
           return (
-            <View
+            <TouchableOpacity
               key={chip.key}
+              onPress={() => setFilters((prev) => chip.onRemove(prev))}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -443,35 +460,30 @@ export function LibraryScreen() {
                 borderColor: isExclude
                   ? theme.colors.dangerBorder
                   : theme.colors.kindBookBorder,
-                minHeight: 34,
+                minHeight: 36,
               }}
               accessibilityRole="button"
-              accessibilityLabel={`Active filter: ${chip.label}. Tap × to remove.`}
+              accessibilityLabel={`Remove ${chip.label} filter`}
             >
               <Text
                 style={{
                   fontSize: 12,
                   fontWeight: '500',
-                  color: isExclude ? theme.colors.danger : theme.colors.kindBook,
+                  color: chipColor,
                 }}
               >
                 {chip.label}
               </Text>
-              <TouchableOpacity
-                onPress={() => setFilters((prev) => chip.onRemove(prev))}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: chipColor,
+                  opacity: 0.6,
+                }}
               >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: isExclude ? theme.colors.danger : theme.colors.kindBook,
-                    opacity: 0.6,
-                  }}
-                >
-                  ×
-                </Text>
-              </TouchableOpacity>
-            </View>
+                ×
+              </Text>
+            </TouchableOpacity>
           );
         })}
       </ScrollView>
@@ -492,6 +504,7 @@ export function LibraryScreen() {
       >
         {/* Title row — fades out as you scroll (native thread opacity) */}
         <Animated.View
+          onLayout={onTitleRowLayout}
           style={{
             flexDirection: 'row',
             justifyContent: 'space-between',
@@ -528,30 +541,14 @@ export function LibraryScreen() {
         </Animated.View>
 
         {/* Search bar — scrolls naturally, no fade */}
-        <View
-          style={{
-            height: 46,
-            borderRadius: 23,
-            backgroundColor: theme.colors.backgroundCard,
-            borderWidth: 1,
-            borderColor: theme.colors.backgroundBorder,
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 16,
-            gap: 10,
-            marginBottom: 8,
-            ...theme.shadows.small,
-          }}
-        >
-          <TextInput
+        <View style={{ marginBottom: 8 }}>
+          <AppSearchBar
             value={search}
             onChangeText={setSearch}
             placeholder="Search by title or author"
-            placeholderTextColor={theme.colors.textHint}
-            style={{ flex: 1, fontSize: 14, color: theme.colors.textPrimary }}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
             accessibilityLabel="Search by title or author"
+            height={46}
+            shadow
           />
         </View>
 
@@ -583,29 +580,14 @@ export function LibraryScreen() {
         >
           Library
         </Text>
-        <View
-          style={{
-            flex: 1,
-            height: 38,
-            borderRadius: 19,
-            backgroundColor: theme.colors.backgroundCard,
-            borderWidth: 1,
-            borderColor: theme.colors.backgroundBorder,
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 14,
-            marginHorizontal: 8,
-          }}
-        >
-          <TextInput
+        <View style={{ flex: 1, marginHorizontal: 8 }}>
+          <AppSearchBar
             value={search}
             onChangeText={setSearch}
             placeholder="Search by title or author"
-            placeholderTextColor={theme.colors.textHint}
-            style={{ flex: 1, fontSize: 14, color: theme.colors.textPrimary }}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
             accessibilityLabel="Search by title or author"
+            height={38}
+            shadow={false}
           />
         </View>
         <FilterButton

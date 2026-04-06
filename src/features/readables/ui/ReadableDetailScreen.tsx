@@ -47,7 +47,7 @@ import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import type { ReadableStatus } from '../domain/readable';
 import {
   READABLE_STATUSES,
-  STATUS_LABELS_SHORT,
+  STATUS_LABELS_FULL,
   KIND_LABELS,
   AO3_RATING_LABELS,
 } from '../domain/readable';
@@ -488,12 +488,15 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
             <ChevronLeftIcon color={theme.colors.textMeta} />
             <Text style={[styles.heroBackText, { color: theme.colors.textMeta }]}>Library</Text>
           </TouchableOpacity>
-          <Text
-            style={[styles.heroTitle, { color: theme.colors.textPrimary }]}
-            numberOfLines={2}
-          >
-            {readable.title}
-          </Text>
+          {/* Pointer-events none so this overlay never absorbs touches meant for the back button */}
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.heroTitleContainer]}>
+            <Text
+              style={[styles.heroTitle, { color: theme.colors.textPrimary }]}
+              numberOfLines={2}
+            >
+              {readable.title}
+            </Text>
+          </View>
         </View>
 
         {/* Meta row: author · kind · source */}
@@ -564,7 +567,8 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
                 ]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}
-                accessibilityLabel={STATUS_LABELS_SHORT[s]}
+                accessibilityLabel={STATUS_LABELS_FULL[s]}
+                accessibilityHint="Changes your reading status for this work"
               >
                 <Text
                   style={[
@@ -575,7 +579,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
                     },
                   ]}
                 >
-                  {STATUS_LABELS_SHORT[s]}
+                  {STATUS_LABELS_FULL[s]}
                 </Text>
               </TouchableOpacity>
             );
@@ -598,6 +602,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
             onPress={() => setCoverPickerVisible(true)}
             accessibilityRole="button"
             accessibilityLabel={readable.coverUrl ? 'Change cover image' : 'Set cover image'}
+            accessibilityHint="Opens options to choose from device, paste a URL, or remove"
           >
             {readable.coverUrl !== null ? (
               <Image
@@ -1151,11 +1156,11 @@ const styles = StyleSheet.create({
   },
   kindBadgeText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.1 },
 
-  // Title — absolutely centered in heroTitleRow, paddingHorizontal keeps it clear of back button
+  // Title — absolutely centered in heroTitleRow, paddingHorizontal keeps it clear of back button.
+  // heroTitleContainer fills the row (via absoluteFillObject) and is pointerEvents=none so it
+  // never intercepts touches intended for the back button beneath it.
+  heroTitleContainer: { justifyContent: 'center' },
   heroTitle: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
     textAlign: 'center',
     fontSize: 20,
     fontWeight: '600',

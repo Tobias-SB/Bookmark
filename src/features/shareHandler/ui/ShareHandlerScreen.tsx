@@ -146,6 +146,7 @@ export function ShareHandlerScreen({ navigation, route }: Props) {
         onPress={() => navigation.goBack()}
         accessibilityLabel="Dismiss"
         accessibilityRole="button"
+        accessibilityHint="Closes this sheet without saving"
       />
 
       {/* Sheet */}
