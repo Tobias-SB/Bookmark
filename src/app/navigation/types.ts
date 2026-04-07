@@ -70,4 +70,9 @@ export type RootStackParamList = {
    * an AO3 URL from another app. Fetches metadata, detects duplicates, saves with one tap.
    */
   ShareHandler: { processedUrl: ProcessedAo3Url };
+  /**
+   * CSV import — full stack screen (not modal). Allows bulk import of AO3 reading
+   * history from a bookmark or history export CSV/TSV file.
+   */
+  ImportCsv: undefined;
 };

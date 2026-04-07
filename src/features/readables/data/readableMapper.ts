@@ -100,7 +100,7 @@ function assertEnum<T extends string>(
   allowed: readonly T[],
   field: string,
 ): T {
-  if (!(allowed as string[]).includes(value)) {
+  if (!(allowed as readonly string[]).includes(value)) {
     throw new Error(`Invalid ${field} value in database: "${value}"`);
   }
   return value as T;
@@ -113,7 +113,7 @@ function parseNullableEnum<T extends string>(
   allowed: readonly T[],
 ): T | null {
   if (value === null) return null;
-  return (allowed as string[]).includes(value) ? (value as T) : null;
+  return (allowed as readonly string[]).includes(value) ? (value as T) : null;
 }
 
 // ── Row → domain ──────────────────────────────────────────────────────────────

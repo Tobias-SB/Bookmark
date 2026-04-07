@@ -6,10 +6,13 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAppTheme, useThemeContext } from '../../../app/theme';
 import type { ColorMode } from '../../../app/theme';
 import { useAo3Session, useAo3Login, useAo3Logout } from '../../ao3Auth';
+import type { RootStackParamList } from '../../../app/navigation/types';
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -77,6 +80,7 @@ export function SettingsScreen() {
   const theme = useAppTheme();
   const { colorMode, setColorMode } = useThemeContext();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const { isLoggedIn } = useAo3Session();
   const { navigateToLogin } = useAo3Login();
@@ -195,10 +199,26 @@ export function SettingsScreen() {
         </View>
       </SectionCard>
 
-      {/* ── Coming soon ─────────────────────────────────────────────────────── */}
+      {/* ── Library ─────────────────────────────────────────────────────────── */}
       <SectionCard>
         <SectionHeader title="Library" />
         <View style={styles.cardBody}>
+          {/* Import from CSV — tappable navigation row */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('ImportCsv')}
+            style={[styles.navRow, { borderBottomColor: theme.colors.backgroundInput }]}
+            accessibilityLabel="Import from CSV"
+            accessibilityRole="button"
+          >
+            <Text style={[styles.navRowLabel, { color: theme.colors.textBody }]}>
+              Import from CSV
+            </Text>
+            <Text style={[styles.navRowChevron, { color: theme.colors.textMeta }]}>
+              ›
+            </Text>
+          </TouchableOpacity>
+
+          {/* Coming-soon rows */}
           {(['Backup & restore', 'Export to CSV'] as const).map((label) => (
             <View key={label} style={[styles.comingSoonRow, { borderBottomColor: theme.colors.backgroundInput }]}>
               <Text style={[styles.comingSoonLabel, { color: theme.colors.textBody }]}>
@@ -281,6 +301,21 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    minHeight: 44,
+  },
+  navRowLabel: {
+    fontSize: 14,
+  },
+  navRowChevron: {
+    fontSize: 20,
+    lineHeight: 22,
   },
   comingSoonRow: {
     flexDirection: 'row',

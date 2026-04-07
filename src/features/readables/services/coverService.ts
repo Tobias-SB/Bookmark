@@ -2,29 +2,26 @@
 // Cover image file management for the readables feature.
 // First file in src/features/readables/services/ — establishes this pattern.
 //
-// Pure async functions, no React hooks. Handles copying picker URIs, downloading
-// remote URLs, and deleting local cover files from the app's covers directory.
+// Uses the expo-file-system v2 class-based API (File, Directory, Paths).
+// Most operations are synchronous native calls via JSI; only downloadFileAsync
+// is truly async. Functions retain async signatures for backward compatibility
+// with callers that await them.
 //
-// Storage directory: ${FileSystem.documentDirectory}covers/
-// Filenames: ${Crypto.randomUUID()}.{ext}
+// Storage directory: ${Paths.document}/covers/
+// Filenames: ${Crypto.randomUUID()}{ext}
 
 import * as Crypto from 'expo-crypto';
-import * as FileSystem from 'expo-file-system';
+import { File, Directory, Paths } from 'expo-file-system';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function coversDir(): string {
-  return `${FileSystem.documentDirectory}covers/`;
+function coversDir(): Directory {
+  return new Directory(Paths.document, 'covers');
 }
 
 function isLocalCoverUri(uri: string | null): boolean {
   if (!uri) return false;
-  return uri.startsWith(coversDir());
-}
-
-function extFromUri(uri: string): string {
-  const match = uri.split('?')[0].match(/\.([a-zA-Z0-9]+)$/);
-  return match ? match[1].toLowerCase() : 'jpg';
+  return uri.startsWith(coversDir().uri);
 }
 
 // ── ensureCoversDir ───────────────────────────────────────────────────────────
@@ -32,9 +29,8 @@ function extFromUri(uri: string): string {
 /** Creates the covers directory if it does not already exist. */
 export async function ensureCoversDir(): Promise<void> {
   const dir = coversDir();
-  const info = await FileSystem.getInfoAsync(dir);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  if (!dir.exists) {
+    dir.create({ intermediates: true });
   }
 }
 
@@ -42,15 +38,17 @@ export async function ensureCoversDir(): Promise<void> {
 
 /**
  * Copies an image picker URI to the persistent covers directory.
- * Returns the new persistent URI.
+ * Returns the new persistent local URI.
  */
 export async function saveLocalCover(sourceUri: string): Promise<string> {
   await ensureCoversDir();
-  const ext = extFromUri(sourceUri);
-  const filename = `${Crypto.randomUUID()}.${ext}`;
-  const destUri = `${coversDir()}${filename}`;
-  await FileSystem.copyAsync({ from: sourceUri, to: destUri });
-  return destUri;
+  const source = new File(sourceUri);
+  // file.extension includes the leading dot (e.g. '.jpg'); fall back for
+  // content:// URIs on Android where the extension may not be in the path.
+  const ext = source.extension || '.jpg';
+  const dest = new File(coversDir(), `${Crypto.randomUUID()}${ext}`);
+  source.copy(dest);
+  return dest.uri;
 }
 
 // ── downloadCover ─────────────────────────────────────────────────────────────
@@ -58,20 +56,16 @@ export async function saveLocalCover(sourceUri: string): Promise<string> {
 /**
  * Downloads a remote image URL to the covers directory.
  * Returns the local URI on success, or null on failure.
+ * File.downloadFileAsync throws on non-2xx responses — no manual status check needed.
  */
 export async function downloadCover(remoteUrl: string): Promise<string | null> {
   try {
     await ensureCoversDir();
-    const ext = extFromUri(remoteUrl);
-    const filename = `${Crypto.randomUUID()}.${ext}`;
-    const destUri = `${coversDir()}${filename}`;
-    const result = await FileSystem.downloadAsync(remoteUrl, destUri);
-    if (result.status >= 200 && result.status < 300) {
-      return result.uri;
-    }
-    // Download succeeded but non-2xx — clean up the empty file if created
-    await FileSystem.deleteAsync(result.uri, { idempotent: true });
-    return null;
+    // Use a UUID filename so multiple downloads never collide.
+    // .jpg is a safe fallback — Google Books thumbnails are always JPEG.
+    const dest = new File(coversDir(), `${Crypto.randomUUID()}.jpg`);
+    const result = await File.downloadFileAsync(remoteUrl, dest);
+    return result.uri;
   } catch {
     return null;
   }
@@ -83,9 +77,12 @@ export async function downloadCover(remoteUrl: string): Promise<string | null> {
  * Deletes a local cover file. Safe to call with any URI:
  * - Remote URLs (e.g. Google Books import URLs) are silently ignored.
  * - null is silently ignored.
- * - Non-existent files are silently ignored (idempotent).
+ * - Non-existent files are silently ignored (guarded by .exists check).
  */
 export async function deleteCoverFile(coverUri: string | null): Promise<void> {
   if (!isLocalCoverUri(coverUri)) return;
-  await FileSystem.deleteAsync(coverUri as string, { idempotent: true });
+  const file = new File(coverUri as string);
+  if (file.exists) {
+    file.delete();
+  }
 }

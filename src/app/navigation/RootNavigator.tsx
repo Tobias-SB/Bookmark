@@ -25,6 +25,7 @@ import { TabNavigator } from './TabNavigator';
 import { ReadableDetailScreen, AddEditScreen, QuickAddScreen } from '../../features/readables';
 import { Ao3LoginScreen } from '../../features/ao3Auth';
 import { ShareHandlerScreen, ShareIntentHandler } from '../../features/shareHandler';
+import { ImportScreen } from '../../features/import';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -61,6 +62,11 @@ export function RootNavigator() {
           name="ShareHandler"
           component={ShareHandlerScreen}
           options={{ presentation: 'transparentModal', headerShown: false }}
+        />
+        <Stack.Screen
+          name="ImportCsv"
+          component={ImportScreen}
+          options={{ title: 'Import from CSV' }}
         />
       </Stack.Navigator>
       {/* Headless intent handler — listens for share intents and navigates to ShareHandler. */}
