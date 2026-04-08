@@ -44,6 +44,7 @@ import { AO3_RATING_LABELS, STATUS_LABELS_SHORT } from '../domain/readable';
 import { useReadables } from '../hooks/useReadables';
 import { FilterModal } from './FilterModal';
 import { ReadableListItem } from './ReadableListItem';
+import { ShelvesSection } from '../../shelves/ui/ShelvesSection';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -392,6 +393,7 @@ export function LibraryScreen() {
   function renderListHeader() {
     return (
       <>
+        <ShelvesSection allReadables={readables} />
         {hasActiveFilters && !isLoading && !isError && (
           <Text
             style={{

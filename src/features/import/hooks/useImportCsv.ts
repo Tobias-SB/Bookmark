@@ -34,6 +34,11 @@ export interface UseImportCsvResult {
   /** Final counts once the import is complete. */
   finalResult: ImportProgress | null;
   /**
+   * Non-null when the file could not be read or parsed.
+   * Cleared by reset() or a successful subsequent parse.
+   */
+  parseError: string | null;
+  /**
    * With no argument: opens the document picker, then parses the selected file.
    * With columnOverride: re-parses the already-picked file using the given column
    * name — does not reopen the picker. Used when the user selects a column manually.
@@ -55,6 +60,7 @@ export function useImportCsv(): UseImportCsvResult {
   const [parseResult, setParseResult] = useState<CsvParseResult | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [finalResult, setFinalResult] = useState<ImportProgress | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
 
   // Stable ref: preserves the picked URI so column overrides re-parse without
   // reopening the document picker.
@@ -70,6 +76,7 @@ export function useImportCsv(): UseImportCsvResult {
       } else {
         // Open document picker
         setPhase('picking');
+        setParseError(null);
         const picked = await DocumentPicker.getDocumentAsync({
           // Cast to any[] to satisfy the union type — expo-document-picker accepts
           // standard MIME types; '*/*' is the fallback for file managers that don't
@@ -88,9 +95,13 @@ export function useImportCsv(): UseImportCsvResult {
       try {
         const result = await parseCsvFile(uri, columnOverride);
         setParseResult(result);
+        setParseError(null);
         setPhase('confirming');
-      } catch {
-        // File read or parse error — return to idle so the user can retry
+      } catch (err) {
+        // File read or parse error — return to idle and surface the message
+        const message =
+          err instanceof Error ? err.message : 'Could not read the file. Please try again.';
+        setParseError(message);
         setPhase('idle');
       }
     },
@@ -130,7 +141,8 @@ export function useImportCsv(): UseImportCsvResult {
     setParseResult(null);
     setProgress(null);
     setFinalResult(null);
+    setParseError(null);
   }, []);
 
-  return { phase, parseResult, progress, finalResult, pickAndParse, startImport, reset };
+  return { phase, parseResult, progress, finalResult, parseError, pickAndParse, startImport, reset };
 }

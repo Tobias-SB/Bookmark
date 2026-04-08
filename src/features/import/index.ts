@@ -5,5 +5,7 @@
 export { ImportScreen } from './ui/ImportScreen';
 export { useImportCsv } from './hooks/useImportCsv';
 export type { UseImportCsvResult, ImportPhase } from './hooks/useImportCsv';
+export { useExportCsv } from './hooks/useExportCsv';
+export type { UseExportCsvResult } from './hooks/useExportCsv';
 export type { CsvParseResult } from './services/csvParser';
 export type { ImportProgress } from './services/importPipeline';

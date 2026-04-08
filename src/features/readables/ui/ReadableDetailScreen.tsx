@@ -19,6 +19,7 @@ import {
   StatusBar as RNStatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -59,6 +60,13 @@ import { useRefreshReadableMetadata } from '../hooks/useRefreshReadableMetadata'
 import { ProgressEditor } from './ProgressEditor';
 import { NotesEditor } from './NotesEditor';
 import { CoverPickerModal } from './CoverPickerModal';
+import { AppModal, AppModalButton } from '../../../shared/components/AppModal';
+import { useShelves } from '../../shelves/hooks/useShelves';
+import { useShelfReadables } from '../../shelves/hooks/useShelfReadables';
+import { useCreateShelf } from '../../shelves/hooks/useCreateShelf';
+import { useAddToShelf } from '../../shelves/hooks/useAddToShelf';
+import { useRemoveFromShelf } from '../../shelves/hooks/useRemoveFromShelf';
+import type { Shelf } from '../../shelves/domain/shelf';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -187,6 +195,65 @@ function SectionCard({ label, children, theme, headerRight }: SectionCardProps) 
   );
 }
 
+// ── ShelfPickerRow ────────────────────────────────────────────────────────────
+// Per-shelf row inside the shelf picker modal. Calls useShelfReadables so each
+// shelf's membership is a separate, independently cached query.
+
+interface ShelfPickerRowProps {
+  shelf: Shelf;
+  readableId: string;
+  onToggle: (shelf: Shelf, isMember: boolean) => void;
+}
+
+function ShelfPickerRow({ shelf, readableId, onToggle }: ShelfPickerRowProps) {
+  const theme = useAppTheme();
+  const { items } = useShelfReadables(shelf.id);
+  const isMember = items.some((i) => i.readableId === readableId);
+
+  return (
+    <TouchableOpacity
+      onPress={() => onToggle(shelf, isMember)}
+      accessibilityRole="checkbox"
+      accessibilityLabel={shelf.name}
+      accessibilityState={{ checked: isMember }}
+      style={[
+        shelfPickerRowStyles.row,
+        { borderBottomColor: theme.colors.backgroundBorder },
+      ]}
+    >
+      <Text style={[shelfPickerRowStyles.name, { color: theme.colors.textBody }]}>
+        {shelf.name}
+      </Text>
+      {isMember && (
+        <Text style={[shelfPickerRowStyles.check, { color: theme.colors.kindBook }]}>
+          ✓
+        </Text>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+const shelfPickerRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    minHeight: 44,
+  },
+  name: {
+    fontSize: 16,
+    flex: 1,
+  },
+  check: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+});
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ReadableDetailScreen({ route, navigation }: Props) {
@@ -200,6 +267,12 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
   const { remove, isPending: isDeleting } = useDeleteReadable();
   const { updateNotesAsync, isPending: isSavingNotes } = useUpdateNotes(id);
   const { refreshAsync, isPending: isRefreshing } = useRefreshReadableMetadata();
+
+  // ── Shelf hooks ───────────────────────────────────────────────────────────
+  const { shelves } = useShelves();
+  const { add: addToShelf, isPending: isAddingToShelf } = useAddToShelf();
+  const { removeItem: removeFromShelf } = useRemoveFromShelf();
+  const { create: createShelf, isPending: isCreatingShelf } = useCreateShelf();
 
   const { snackbarMessage, showSnackbar, hideSnackbar } = useSnackbar();
 
@@ -221,6 +294,9 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
   const [notesEditorVisible, setNotesEditorVisible] = useState(false);
   const [orphanedDialogVisible, setOrphanedDialogVisible] = useState(false);
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
+  const [shelfPickerVisible, setShelfPickerVisible] = useState(false);
+  const [newShelfName, setNewShelfName] = useState('');
+  const [createShelfVisible, setCreateShelfVisible] = useState(false);
 
   // ── Collapse state ─────────────────────────────────────────────────────────
   const [tagsExpanded, setTagsExpanded] = useState(false);
@@ -326,6 +402,38 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           setConfirmDeleteVisible(false);
           showSnackbar(err.message);
         },
+      },
+    );
+  }
+
+  // ── Shelf picker handlers ─────────────────────────────────────────────────
+
+  function handleToggleShelf(shelf: Shelf, isMember: boolean) {
+    if (!readable) return;
+    if (isMember) {
+      removeFromShelf(
+        { shelfId: shelf.id, readableId: readable.id },
+        { onError: (err) => showSnackbar(err.message) },
+      );
+    } else {
+      addToShelf(
+        { shelfId: shelf.id, readableId: readable.id },
+        { onError: (err) => showSnackbar(err.message) },
+      );
+    }
+  }
+
+  function handleConfirmCreateShelf() {
+    if (!readable || !newShelfName.trim()) return;
+    createShelf(
+      { name: newShelfName.trim() },
+      {
+        onSuccess: (newShelf) => {
+          addToShelf({ shelfId: newShelf.id, readableId: readable.id });
+          setCreateShelfVisible(false);
+          setNewShelfName('');
+        },
+        onError: (err) => showSnackbar(err.message),
       },
     );
   }
@@ -985,6 +1093,25 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
             <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>Edit</Text>
           </TouchableOpacity>
 
+          {/* Add to shelf */}
+          <TouchableOpacity
+            onPress={() => setShelfPickerVisible(true)}
+            style={[
+              styles.actionButton,
+              {
+                backgroundColor: theme.colors.backgroundCard,
+                borderColor: theme.colors.backgroundBorder,
+                ...theme.shadows.small,
+              },
+            ]}
+            accessibilityLabel="Add to shelf"
+            accessibilityRole="button"
+          >
+            <Text style={[styles.actionButtonText, { color: theme.colors.textBody }]}>
+              Shelves
+            </Text>
+          </TouchableOpacity>
+
           {/* View on AO3 */}
           {isAo3FanficWithUrl && (
             <TouchableOpacity
@@ -1111,6 +1238,88 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
         hasCover={readable.coverUrl !== null}
         onError={showSnackbar}
       />
+
+      {/* ── Shelf picker modal ─────────────────────────────────────────────── */}
+      <AppModal
+        visible={shelfPickerVisible}
+        onDismiss={() => setShelfPickerVisible(false)}
+        title="Add to Shelf"
+      >
+        <View style={styles.shelfPickerContent}>
+          {shelves.length === 0 ? (
+            <Text style={[styles.shelfPickerEmpty, { color: theme.colors.textMeta }]}>
+              No shelves yet. Create one below.
+            </Text>
+          ) : (
+            shelves.map((shelf) => (
+              <ShelfPickerRow
+                key={shelf.id}
+                shelf={shelf}
+                readableId={readable.id}
+                onToggle={handleToggleShelf}
+              />
+            ))
+          )}
+          <TouchableOpacity
+            onPress={() => {
+              setShelfPickerVisible(false);
+              setNewShelfName('');
+              setCreateShelfVisible(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Create new shelf"
+            style={[
+              styles.shelfPickerNewRow,
+              { borderTopColor: theme.colors.backgroundBorder },
+            ]}
+          >
+            <Text style={[styles.shelfPickerNewText, { color: theme.colors.kindBook }]}>
+              + New Shelf…
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <AppModal.Actions>
+          <AppModalButton
+            label="Done"
+            variant="primary"
+            onPress={() => setShelfPickerVisible(false)}
+          />
+        </AppModal.Actions>
+      </AppModal>
+
+      {/* ── Create shelf from detail dialog ────────────────────────────────── */}
+      <AppModal
+        visible={createShelfVisible}
+        onDismiss={() => setCreateShelfVisible(false)}
+        title="New Shelf"
+      >
+        <TextInput
+          value={newShelfName}
+          onChangeText={setNewShelfName}
+          placeholder="Shelf name"
+          placeholderTextColor={theme.colors.textHint}
+          autoFocus
+          onSubmitEditing={handleConfirmCreateShelf}
+          style={[
+            styles.shelfNameInput,
+            {
+              color: theme.colors.textBody,
+              borderColor: theme.colors.backgroundBorder,
+              backgroundColor: theme.colors.backgroundInput,
+            },
+          ]}
+        />
+        <AppModal.Actions>
+          <AppModalButton label="Cancel" onPress={() => setCreateShelfVisible(false)} />
+          <AppModalButton
+            label="Create"
+            variant="primary"
+            loading={isCreatingShelf || isAddingToShelf}
+            onPress={handleConfirmCreateShelf}
+            disabled={!newShelfName.trim()}
+          />
+        </AppModal.Actions>
+      </AppModal>
 
       {/* ── Snackbar ────────────────────────────────────────────────────────── */}
       <Portal>
@@ -1299,4 +1508,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   actionButtonText: { fontSize: 13, fontWeight: '500' },
+
+  // Shelf picker modal
+  shelfPickerContent: { paddingBottom: 4 },
+  shelfPickerEmpty: { fontSize: 14, textAlign: 'center', paddingVertical: 20, paddingHorizontal: 20 },
+  shelfPickerNewRow: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  shelfPickerNewText: { fontSize: 14, fontWeight: '600' },
+  shelfNameInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+  },
 });

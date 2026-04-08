@@ -71,5 +71,26 @@ export const migration001 = {
 
     CREATE INDEX IF NOT EXISTS idx_wip_updates_readable_id ON wip_updates(readable_id);
     CREATE INDEX IF NOT EXISTS idx_wip_updates_status ON wip_updates(status);
+
+    CREATE TABLE IF NOT EXISTS shelves (
+      id           TEXT    PRIMARY KEY NOT NULL,
+      name         TEXT    NOT NULL,
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      date_created TEXT    NOT NULL,
+      date_updated TEXT    NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS shelf_readables (
+      shelf_id    TEXT    NOT NULL,
+      readable_id TEXT    NOT NULL,
+      position    INTEGER NOT NULL DEFAULT 0,
+      date_added  TEXT    NOT NULL,
+      PRIMARY KEY (shelf_id, readable_id),
+      FOREIGN KEY (shelf_id)    REFERENCES shelves(id)   ON DELETE CASCADE,
+      FOREIGN KEY (readable_id) REFERENCES readables(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_shelf_readables_readable
+      ON shelf_readables(readable_id);
   `,
 } as const;

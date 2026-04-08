@@ -41,9 +41,11 @@ function plural(count: number, singular: string, pl?: string): string {
 /** State 1: Pick file */
 function PickState({
   isPicking,
+  parseError,
   onPick,
 }: {
   isPicking: boolean;
+  parseError: string | null;
   onPick: () => void;
 }) {
   const theme = useAppTheme();
@@ -69,6 +71,17 @@ function PickState({
       <Text style={[pickStyles.hint, { color: theme.colors.textHint }]}>
         AO3 bookmark and history exports are supported.
       </Text>
+
+      {/* Parse error feedback */}
+      {parseError !== null && (
+        <Text
+          style={[pickStyles.errorText, { color: theme.colors.error }]}
+          accessibilityLiveRegion="polite"
+        >
+          {parseError}
+        </Text>
+      )}
+
       <TouchableOpacity
         onPress={onPick}
         disabled={isPicking}
@@ -81,6 +94,7 @@ function PickState({
         ]}
         accessibilityLabel="Select a CSV or TSV file"
         accessibilityRole="button"
+        accessibilityState={{ disabled: isPicking }}
       >
         {isPicking ? (
           <ActivityIndicator size={18} color={theme.colors.backgroundPage} />
@@ -125,6 +139,11 @@ const pickStyles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  errorText: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   button: {
     marginTop: 8,
@@ -248,6 +267,7 @@ function ConfirmState({
           ]}
           accessibilityLabel={`Start import of ${urls.length} works`}
           accessibilityRole="button"
+          accessibilityState={{ disabled: urls.length === 0 }}
         >
           <Text style={[confirmStyles.startButtonText, { color: theme.colors.backgroundPage }]}>
             Start import
@@ -291,9 +311,13 @@ const confirmStyles = StyleSheet.create({
   },
   chip: {
     paddingHorizontal: 14,
+    // paddingVertical provides layout padding; minHeight satisfies the 44pt touch target.
     paddingVertical: 8,
+    minHeight: 44,
     borderRadius: 20,
     borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipText: {
     fontSize: 13,
@@ -324,6 +348,8 @@ const confirmStyles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
   },
   startButtonText: {
     fontSize: 15,
@@ -331,7 +357,9 @@ const confirmStyles = StyleSheet.create({
   },
   secondaryButton: {
     alignItems: 'center',
-    paddingVertical: 8,
+    // Meets the 44pt minimum touch target while keeping a lean visual weight.
+    minHeight: 44,
+    justifyContent: 'center',
   },
   secondaryButtonText: {
     fontSize: 14,
@@ -346,7 +374,10 @@ function ProgressState({ progress }: { progress: ImportProgress }) {
 
   return (
     <View style={progressStyles.container}>
-      <Text style={[progressStyles.heading, { color: theme.colors.textBody }]}>
+      <Text
+        style={[progressStyles.heading, { color: theme.colors.textBody }]}
+        accessibilityLiveRegion="polite"
+      >
         Importing — {progress.completed} / {progress.total}
       </Text>
 
@@ -517,6 +548,8 @@ const summaryStyles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
   },
   doneButtonText: {
     fontSize: 15,
@@ -530,7 +563,7 @@ export function ImportScreen({ navigation }: Props) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
 
-  const { phase, parseResult, progress, finalResult, pickAndParse, startImport, reset } =
+  const { phase, parseResult, progress, finalResult, parseError, pickAndParse, startImport, reset } =
     useImportCsv();
 
   const handleChooseDifferentFile = () => {
@@ -545,7 +578,11 @@ export function ImportScreen({ navigation }: Props) {
       keyboardShouldPersistTaps="handled"
     >
       {(phase === 'idle' || phase === 'picking') && (
-        <PickState isPicking={phase === 'picking'} onPick={() => void pickAndParse()} />
+        <PickState
+          isPicking={phase === 'picking'}
+          parseError={parseError}
+          onPick={() => void pickAndParse()}
+        />
       )}
 
       {phase === 'confirming' && parseResult !== null && (
