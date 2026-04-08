@@ -1,15 +1,13 @@
 // src/shared/components/ConfirmDialog.tsx
 // §9, §12 — Reusable confirmation dialog for destructive actions (e.g. delete).
-// Backed by React Native Paper's Dialog + Portal.
-// The confirm button uses the theme error color to signal the destructive nature.
-//
-// NOTE: This establishes a second component in src/shared/components/ alongside
-// EmptyState. Future reusable dialog primitives should follow this as a template.
+// Migrated from Paper Dialog/Portal to AppModal for full Scholar's Library
+// theme control and to avoid MD3 elevation surface tinting.
 
 import React from 'react';
-import { Button, Dialog, Portal, Text } from 'react-native-paper';
+import { Text } from 'react-native';
 
 import { useAppTheme } from '../../app/theme';
+import { AppModal, AppModalButton } from './AppModal';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,28 +37,30 @@ export function ConfirmDialog({
   const theme = useAppTheme();
 
   return (
-    <Portal>
-      <Dialog visible={visible} onDismiss={onCancel}>
-        <Dialog.Title>{title}</Dialog.Title>
-        <Dialog.Content>
-          <Text variant="bodyMedium" style={{ color: theme.colors.textPrimary }}>
-            {message}
-          </Text>
-        </Dialog.Content>
-        <Dialog.Actions>
-          <Button onPress={onCancel} disabled={loading}>
-            Cancel
-          </Button>
-          <Button
-            onPress={onConfirm}
-            disabled={loading}
-            loading={loading}
-            textColor={theme.colors.error}
-          >
-            {confirmLabel}
-          </Button>
-        </Dialog.Actions>
-      </Dialog>
-    </Portal>
+    <AppModal
+      visible={visible}
+      onDismiss={onCancel}
+      title={title}
+      dismissable={!loading}
+    >
+      <Text style={{ color: theme.colors.textBody, fontSize: 15, lineHeight: 22 }}>
+        {message}
+      </Text>
+
+      <AppModal.Actions>
+        <AppModalButton
+          label="Cancel"
+          onPress={onCancel}
+          disabled={loading}
+        />
+        <AppModalButton
+          label={confirmLabel}
+          onPress={onConfirm}
+          disabled={loading}
+          loading={loading}
+          variant="destructive"
+        />
+      </AppModal.Actions>
+    </AppModal>
   );
 }

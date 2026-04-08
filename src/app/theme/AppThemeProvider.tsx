@@ -31,9 +31,82 @@ import { useDatabaseContext } from '../database/DatabaseProvider';
 import { getSetting, setSetting, SETTINGS_KEYS } from '../database/settingsRepository';
 import type { AppThemeOverrideSet } from './tokens';
 
+// ── Scholar's Library MD3 themes ──────────────────────────────────────────────
+// Custom MD3 colour roles derived from Scholar's Library semantic tokens.
+// Setting primary/secondary/error here fixes all Paper component colours:
+// TextInput focus rings, button fills, dialog actions, switches, etc.
+//
+// primary   = leather brown (kindBook)   — brand identity, form focus
+// secondary = royal blue (kindFanfic)    — secondary actions, chips
+// tertiary  = antiquarian gold           — achievement accent
+// error     = warm crimson (danger)      — consistent with Scholar's Library danger tokens
+
+const scholarsLibraryMD3Light: MD3Theme = {
+  ...MD3LightTheme,
+  colors: {
+    ...MD3LightTheme.colors,
+    // Primary — leather brown
+    primary:            '#7C3910',
+    onPrimary:          '#FFFFFF',
+    primaryContainer:   '#FDF0E4',
+    onPrimaryContainer: '#7C3910',
+    // Secondary — royal blue
+    secondary:            '#1A3370',
+    onSecondary:          '#FFFFFF',
+    secondaryContainer:   '#E8F0FA',
+    onSecondaryContainer: '#1A3370',
+    // Tertiary — antiquarian gold
+    tertiary:            '#7A4A08',
+    onTertiary:          '#FFFFFF',
+    tertiaryContainer:   '#FEF6E0',
+    onTertiaryContainer: '#7A4A08',
+    // Error — warm crimson
+    error:            '#9A1C1C',
+    onError:          '#FFFFFF',
+    errorContainer:   '#FDF0F0',
+    onErrorContainer: '#9A1C1C',
+    // Surfaces
+    surface:     '#FDFAF6',
+    background:  '#F8F4EE',
+    outline:     '#DDD4C5',
+    outlineVariant: '#DDD4C5',
+  },
+};
+
+const scholarsLibraryMD3Dark: MD3Theme = {
+  ...MD3DarkTheme,
+  colors: {
+    ...MD3DarkTheme.colors,
+    // Primary — amber candlelight
+    primary:            '#E8924A',
+    onPrimary:          '#1A0A00',
+    primaryContainer:   '#2C1A0A',
+    onPrimaryContainer: '#E8924A',
+    // Secondary — moonlit sapphire
+    secondary:            '#8AADEE',
+    onSecondary:          '#0E1A2E',
+    secondaryContainer:   '#0E1A2E',
+    onSecondaryContainer: '#8AADEE',
+    // Tertiary — warm amber gold
+    tertiary:            '#E8B84A',
+    onTertiary:          '#221A06',
+    tertiaryContainer:   '#221A06',
+    onTertiaryContainer: '#E8B84A',
+    // Error — deep rose-crimson
+    error:            '#E86060',
+    onError:          '#2A1010',
+    errorContainer:   '#2A1010',
+    onErrorContainer: '#E86060',
+    // Surfaces
+    surface:     '#221C16',
+    background:  '#1A1410',
+    outline:     '#4A3E34',
+    outlineVariant: '#4A3E34',
+  },
+};
+
 // ── Theme registry ─────────────────────────────────────────────────────────────
 // Add new palettes here. Each entry must supply both light and dark MD3 variants.
-// Scholar's Library uses the MD3 default themes — only semantic tokens differ.
 
 export type ThemeName = 'default';
 // To add a theme: extend the union → 'default' | 'ocean_modern'
@@ -44,7 +117,7 @@ export type ColorMode = 'light' | 'dark' | 'system';
 type ThemeVariants = { light: MD3Theme; dark: MD3Theme };
 
 const THEME_REGISTRY: Record<ThemeName, ThemeVariants> = {
-  default: { light: MD3LightTheme, dark: MD3DarkTheme },
+  default: { light: scholarsLibraryMD3Light, dark: scholarsLibraryMD3Dark },
 };
 
 const DEFAULT_THEME_NAME: ThemeName = 'default';

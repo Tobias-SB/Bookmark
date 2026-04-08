@@ -23,15 +23,15 @@ function getPillStyle(status: ReadableStatus, colors: AppTheme['colors']) {
       return {
         backgroundColor: colors.statusReadingBg,
         color: colors.statusReadingText,
-        borderWidth: 0,
-        borderColor: undefined,
+        borderWidth: 1,
+        borderColor: colors.statusReadingBorder,
       };
     case 'completed':
       return {
         backgroundColor: colors.statusCompletedBg,
         color: colors.statusCompletedText,
-        borderWidth: 0,
-        borderColor: undefined,
+        borderWidth: 1,
+        borderColor: colors.statusCompletedBorder,
       };
     case 'dnf':
       return {
@@ -161,7 +161,7 @@ export const ReadableListItem = React.memo(function ReadableListItem({
             <Text
               variant="bodyLarge"
               numberOfLines={2}
-              style={{ color: colors.textPrimary }}
+              style={{ color: colors.textPrimary, fontWeight: '600' }}
             >
               {item.title}
             </Text>
@@ -251,21 +251,18 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   accentStrip: {
-    width: 4,
+    width: 6,
   },
   content: {
     flex: 1,
     flexDirection: 'row',
-    paddingTop: 10,
-    paddingBottom: 12,
-    paddingLeft: 12,
-    paddingRight: 13,
+    padding: 12,
     gap: 11,
   },
   thumbnail: {
-    width: 42,
-    height: 58,
-    borderRadius: 8,
+    width: 52,
+    height: 70,
+    borderRadius: 4,
     overflow: 'hidden',
     flexShrink: 0,
   },
@@ -281,14 +278,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   author: {
-    fontSize: 12,
+    fontSize: 13,
     marginBottom: 8,
     marginTop: 2,
   },
   metaRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 6,
   },
   pill: {

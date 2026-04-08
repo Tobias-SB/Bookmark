@@ -396,7 +396,8 @@ export function LibraryScreen() {
           <Text
             style={{
               fontSize: 12,
-              color: theme.colors.textMeta,
+              fontWeight: '600',
+              color: theme.colors.kindFanfic,
               paddingHorizontal: 18,
               paddingTop: 2,
               paddingBottom: 6,
@@ -411,7 +412,7 @@ export function LibraryScreen() {
             style={{
               fontSize: 11,
               fontWeight: '600',
-              color: theme.colors.textMeta,
+              color: theme.colors.kindFanfic,
               letterSpacing: 0.5,
               textTransform: 'uppercase',
               paddingHorizontal: 18,
@@ -517,8 +518,8 @@ export function LibraryScreen() {
             <Text
               style={{
                 fontSize: 26,
-                fontWeight: '500',
-                color: theme.colors.textPrimary,
+                fontWeight: '700',
+                color: theme.colors.kindFanfic,
                 letterSpacing: -0.5,
               }}
             >
@@ -574,8 +575,8 @@ export function LibraryScreen() {
         <Text
           style={{
             fontSize: 18,
-            fontWeight: '500',
-            color: theme.colors.textPrimary,
+            fontWeight: '700',
+            color: theme.colors.kindFanfic,
           }}
         >
           Library
@@ -670,7 +671,7 @@ export function LibraryScreen() {
         contentContainerStyle={{
           paddingHorizontal: 14,
           paddingBottom: insets.bottom + 88,
-          gap: 9,
+          gap: 11,
         }}
       />
     );
@@ -711,7 +712,7 @@ export function LibraryScreen() {
           position: 'absolute',
           right: 16,
           bottom: insets.bottom + 16,
-          backgroundColor: theme.colors.kindBook,
+          backgroundColor: theme.colors.statusCompletedBorder,
         }}
         onPress={handleAddPress}
         accessibilityLabel="Add readable"

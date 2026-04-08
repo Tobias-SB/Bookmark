@@ -33,7 +33,7 @@ export function TabNavigator() {
         tabBarInactiveTintColor: theme.colors.textMeta,
         tabBarStyle: {
           borderTopWidth: 0.5,
-          borderTopColor: 'rgba(103,80,164,0.13)',
+          borderTopColor: theme.colors.tabBarGradientEnd,
           backgroundColor: 'transparent',
           elevation: 0,
         },

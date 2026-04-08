@@ -19,20 +19,14 @@
 // imports it directly (same feature, same ui/ folder).
 
 import React, { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
-import {
-  Button,
-  Dialog,
-  HelperText,
-  Portal,
-  Text,
-  TextInput,
-} from 'react-native-paper';
+import { StyleSheet, Text } from 'react-native';
+import { HelperText, TextInput } from 'react-native-paper';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { useAppTheme } from '../../../app/theme';
+import { AppModal, AppModalButton } from '../../../shared/components/AppModal';
 import type { Readable } from '../domain/readable';
 import { progressNumberField } from './addEditSchema';
 
@@ -110,73 +104,71 @@ export function ProgressEditor({
   const unit = readable.progressUnit;
 
   return (
-    <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss}>
-        <Dialog.Title>Edit Progress</Dialog.Title>
-        <Dialog.Content style={styles.content}>
-
-          {/* Current */}
-          <Controller
-            control={control}
-            name="current"
-            render={({ field, fieldState }) => (
-              <>
-                <TextInput
-                  label={`Current ${unit}`}
-                  value={field.value}
-                  onChangeText={field.onChange}
-                  onBlur={field.onBlur}
-                  error={!!fieldState.error}
-                  keyboardType="number-pad"
-                  returnKeyType="done"
-                  onSubmitEditing={onSubmit}
-                  mode="outlined"
-                  style={styles.input}
-                  accessibilityLabel={`Current ${unit}`}
-                />
-                {fieldState.error && (
-                  <HelperText type="error" visible>
-                    {fieldState.error.message}
-                  </HelperText>
-                )}
-              </>
+    <AppModal
+      visible={visible}
+      onDismiss={onDismiss}
+      title="Edit Progress"
+      dismissable={!isSaving}
+    >
+      <Controller
+        control={control}
+        name="current"
+        render={({ field, fieldState }) => (
+          <>
+            <TextInput
+              label={`Current ${unit}`}
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              error={!!fieldState.error}
+              keyboardType="number-pad"
+              returnKeyType="done"
+              onSubmitEditing={onSubmit}
+              mode="outlined"
+              style={styles.input}
+              accessibilityLabel={`Current ${unit}`}
+            />
+            {fieldState.error && (
+              <HelperText type="error" visible>
+                {fieldState.error.message}
+              </HelperText>
             )}
-          />
+          </>
+        )}
+      />
 
-          {/* Save error — shown inline so the user can retry without re-opening */}
-          {errorMessage && (
-            <Text
-              variant="bodySmall"
-              style={[styles.saveError, { color: theme.colors.error }]}
-            >
-              {errorMessage}
-            </Text>
-          )}
+      {errorMessage && (
+        <Text style={[styles.saveError, { color: theme.colors.danger }]}>
+          {errorMessage}
+        </Text>
+      )}
 
-        </Dialog.Content>
-        <Dialog.Actions>
-          <Button onPress={onDismiss} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button onPress={onSubmit} disabled={isSaving} loading={isSaving}>
-            Save
-          </Button>
-        </Dialog.Actions>
-      </Dialog>
-    </Portal>
+      <AppModal.Actions>
+        <AppModalButton
+          label="Cancel"
+          onPress={onDismiss}
+          disabled={isSaving}
+        />
+        <AppModalButton
+          label="Save"
+          onPress={onSubmit}
+          disabled={isSaving}
+          loading={isSaving}
+          variant="primary"
+        />
+      </AppModal.Actions>
+    </AppModal>
   );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  content: {
-    gap: 4,
-  },
   input: {
-    // Paper TextInput handles internal padding
+    marginBottom: 4,
   },
   saveError: {
+    fontSize: 13,
     marginTop: 8,
   },
 });
