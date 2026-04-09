@@ -15,6 +15,9 @@ export interface AddToShelfVariables {
   readableId: string;
 }
 
+// Both sync (add) and async (addAsync) variants are exposed.
+// addToShelf is idempotent — safe to call even if the readable is already a member.
+
 export interface UseAddToShelfResult {
   add: UseMutateFunction<void, AppError, AddToShelfVariables>;
   addAsync: UseMutateAsyncFunction<void, AppError, AddToShelfVariables>;

@@ -77,6 +77,10 @@ export function applyCreateConsistency(input: CreateReadableInput): CreateReadab
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
+// Both sync (create) and async (createAsync) variants are exposed.
+// Use create for fire-and-forget form submissions with onSuccess callbacks.
+// Use createAsync when the caller needs to await the new readable's id (e.g. navigating to it).
+
 export interface UseCreateReadableResult {
   /** Fire-and-forget mutation. Pass onSuccess/onError in options for callbacks. */
   create: UseMutateFunction<Readable, AppError, CreateReadableInput>;

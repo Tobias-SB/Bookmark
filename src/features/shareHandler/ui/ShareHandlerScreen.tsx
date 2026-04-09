@@ -34,6 +34,7 @@ import type { Readable, ReadableStatus } from '../../readables/domain/readable';
 import { useFindAo3Duplicate } from '../../readables/hooks/useFindAo3Duplicate';
 import type { ProcessedAo3Url } from '../../../shared/utils/ao3Url';
 import { useShareSave } from '../hooks/useShareSave';
+import { buildChapterSummary } from '../utils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ShareHandler'>;
 
@@ -43,26 +44,6 @@ type SheetPhase =
   | { kind: 'loading' }
   | { kind: 'new'; metadata: MetadataResult['data'] }
   | { kind: 'duplicate'; readable: Readable };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatWordCount(n: number | null | undefined): string | null {
-  if (n == null) return null;
-  return n >= 1000 ? `${Math.round(n / 1000)}K words` : `${n} words`;
-}
-
-function buildChapterSummary(
-  availableChapters: number | null | undefined,
-  wordCount: number | null | undefined,
-): string | null {
-  const parts: string[] = [];
-  if (availableChapters != null) {
-    parts.push(availableChapters === 1 ? '1 chapter' : `${availableChapters} chapters`);
-  }
-  const wc = formatWordCount(wordCount);
-  if (wc) parts.push(wc);
-  return parts.length > 0 ? parts.join(' · ') : null;
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -142,7 +123,7 @@ export function ShareHandlerScreen({ navigation, route }: Props) {
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* Backdrop: tap to dismiss */}
       <Pressable
-        style={[StyleSheet.absoluteFill, styles.backdrop]}
+        style={[StyleSheet.absoluteFill, styles.backdrop, { backgroundColor: theme.colors.overlayBackground }]}
         onPress={() => navigation.goBack()}
         accessibilityLabel="Dismiss"
         accessibilityRole="button"
@@ -234,9 +215,9 @@ function LoadingPhase({
         accessibilityRole="button"
       >
         {isSaving ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
+          <ActivityIndicator size="small" color={theme.colors.colorWhite} />
         ) : (
-          <Text style={styles.saveButtonText}>Save as Want to Read</Text>
+          <Text style={[styles.saveButtonText, { color: theme.colors.colorWhite }]}>Save as Want to Read</Text>
         )}
       </TouchableOpacity>
     </View>
@@ -334,9 +315,9 @@ function NewFicPhase({
         accessibilityRole="button"
       >
         {isSaving ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
+          <ActivityIndicator size="small" color={theme.colors.colorWhite} />
         ) : (
-          <Text style={styles.saveButtonText}>Save</Text>
+          <Text style={[styles.saveButtonText, { color: theme.colors.colorWhite }]}>Save</Text>
         )}
       </TouchableOpacity>
     </View>
@@ -389,7 +370,7 @@ function DuplicatePhase({
         accessibilityLabel="View in Bookmark"
         accessibilityRole="button"
       >
-        <Text style={styles.saveButtonText}>View in Bookmark</Text>
+        <Text style={[styles.saveButtonText, { color: theme.colors.colorWhite }]}>View in Bookmark</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -486,7 +467,7 @@ function getStatusColors(
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    // backgroundColor applied inline via theme.colors.overlayBackground
   },
   sheet: {
     position: 'absolute',
@@ -552,7 +533,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   saveButtonText: {
-    color: '#FFFFFF',
+    // color applied inline via theme.colors.colorWhite
     fontSize: 15,
     fontWeight: '600',
   },

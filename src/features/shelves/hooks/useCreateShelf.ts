@@ -11,6 +11,9 @@ import type { Shelf } from '../domain/shelf';
 import { shelfKeys } from '../domain/queryKeys';
 import { createShelf, type CreateShelfInput } from '../data/shelfRepository';
 
+// Both sync (create) and async (createAsync) variants are exposed.
+// Use createAsync when the caller needs to immediately navigate to the new shelf.
+
 export interface UseCreateShelfResult {
   create: UseMutateFunction<Shelf, AppError, CreateShelfInput>;
   createAsync: UseMutateAsyncFunction<Shelf, AppError, CreateShelfInput>;

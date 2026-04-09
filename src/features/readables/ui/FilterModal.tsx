@@ -399,7 +399,7 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { backgroundColor: theme.colors.overlayBackground }]}>
         {/* Backdrop — absolutely positioned behind the sheet so it never wraps the ScrollView */}
         <Pressable
           style={StyleSheet.absoluteFill}
@@ -777,7 +777,6 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   sheet: {
     maxHeight: '90%',

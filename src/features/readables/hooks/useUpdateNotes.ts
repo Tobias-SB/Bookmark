@@ -14,6 +14,10 @@ import type { AppError } from '../../../shared/types/errors';
 import { readableKeys } from '../domain/queryKeys';
 import { updateReadable } from '../data/readableRepository';
 
+// Both sync (updateNotes) and async (updateNotesAsync) variants are exposed.
+// Use updateNotes for fire-and-forget saves; use updateNotesAsync when the caller
+// needs to sequence actions after the save completes.
+
 export interface UseUpdateNotesResult {
   updateNotes: (notes: string | null) => void;
   updateNotesAsync: (notes: string | null) => Promise<void>;

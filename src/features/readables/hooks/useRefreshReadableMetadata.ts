@@ -21,6 +21,9 @@
 //   updated=true, statusReverted  → "New chapters found — reverted to Reading"
 //   error                         → "Could not refresh — check your connection and try again"
 
+// Only mutateAsync (refreshAsync) is exposed — callers always await the result
+// to display the correct snackbar message (updated/unchanged/statusReverted).
+
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { UseMutateAsyncFunction } from '@tanstack/react-query';
 

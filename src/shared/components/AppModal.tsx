@@ -71,14 +71,14 @@ export function AppModalButton({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={isFilled ? '#FFFFFF' : theme.colors.textMeta}
+          color={isFilled ? theme.colors.colorWhite : theme.colors.textMeta}
         />
       ) : (
         <Text
           style={[
             styles.buttonText,
             isFilled
-              ? { color: '#FFFFFF', fontWeight: '600' }
+              ? { color: theme.colors.colorWhite, fontWeight: '600' }
               : { color: theme.colors.kindBook },
           ]}
         >
@@ -135,7 +135,7 @@ export function AppModal({
     >
       {/* Backdrop — tapping outside dismisses when dismissable */}
       <Pressable
-        style={styles.backdrop}
+        style={[styles.backdrop, { backgroundColor: theme.colors.overlayBackground }]}
         onPress={dismissable ? onDismiss : undefined}
       >
         {/* Card — inner Pressable stops touch propagation to the backdrop */}
@@ -179,7 +179,6 @@ AppModal.Actions = AppModalActions;
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,

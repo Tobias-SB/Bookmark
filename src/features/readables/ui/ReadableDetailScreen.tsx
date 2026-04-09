@@ -51,6 +51,9 @@ import {
   STATUS_LABELS_FULL,
   KIND_LABELS,
   AO3_RATING_LABELS,
+  PREVIEW_TAG_COUNT,
+  PREVIEW_RELATIONSHIP_COUNT,
+  NOTES_COLLAPSE_LINES,
 } from '../domain/readable';
 import { useReadable } from '../hooks/useReadable';
 import { useUpdateReadable } from '../hooks/useUpdateReadable';
@@ -84,10 +87,6 @@ const SOURCE_TYPE_LABELS = {
   ao3: 'AO3',
   book_provider: 'Google Books',
 } as const;
-
-const PREVIEW_TAG_COUNT = 3;
-const PREVIEW_RELATIONSHIP_COUNT = 3;
-const NOTES_COLLAPSE_LINES = 3;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

@@ -202,6 +202,16 @@ export interface ReadableFilters {
   sortOrder?: 'asc' | 'desc';
 }
 
+// ── Detail screen display constants ──────────────────────────────────────────
+// Centralised here so they can be adjusted without hunting through screen files.
+
+/** Number of tags to show before "Show more" collapse in the detail screen. */
+export const PREVIEW_TAG_COUNT = 3;
+/** Number of tags/relationships to show before "Show more" collapse. */
+export const PREVIEW_RELATIONSHIP_COUNT = 3;
+/** Number of lines of notes to show before "Show more" collapse. */
+export const NOTES_COLLAPSE_LINES = 3;
+
 // ── Progress formatting ───────────────────────────────────────────────────────
 
 /**

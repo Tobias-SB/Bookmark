@@ -1,6 +1,8 @@
 // src/features/shelves/hooks/useShelves.ts
 // Fetches all shelves from the repository.
-// Sorting is done in JS (by sort_order ASC) — the repository already orders them.
+// Sorting responsibility: the repository ORDER BY clause (sort_order ASC, date_created ASC)
+// handles ordering. Unlike useReadables, no JS-layer sort is applied here — the data
+// arrives pre-sorted and callers should not re-sort it.
 
 import { useQuery } from '@tanstack/react-query';
 

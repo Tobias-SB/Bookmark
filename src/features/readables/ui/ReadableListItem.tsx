@@ -151,7 +151,7 @@ export const ReadableListItem = React.memo(function ReadableListItem({
                 resizeMode="cover"
               />
             ) : (
-              <View style={styles.thumbnailSpine} />
+              <View style={[styles.thumbnailSpine, { backgroundColor: colors.spineOverlay }]} />
             )}
           </View>
 
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 3,
-    backgroundColor: 'rgba(0,0,0,0.10)',
+    // backgroundColor applied inline via theme.colors.spineOverlay
   },
   textBlock: {
     flex: 1,

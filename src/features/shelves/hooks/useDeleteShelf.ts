@@ -11,6 +11,9 @@ import type { AppError } from '../../../shared/types/errors';
 import { shelfKeys } from '../domain/queryKeys';
 import { deleteShelf } from '../data/shelfRepository';
 
+// Both sync (remove) and async (removeAsync) variants are exposed.
+// Use remove with onSuccess for post-delete navigation; use removeAsync for inline error handling.
+
 export interface UseDeleteShelfResult {
   remove: UseMutateFunction<void, AppError, string>;
   removeAsync: UseMutateAsyncFunction<void, AppError, string>;

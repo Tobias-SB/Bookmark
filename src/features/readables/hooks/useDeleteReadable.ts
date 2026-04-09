@@ -26,6 +26,9 @@ export interface DeleteReadableVariables {
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
+// Both sync (remove) and async (removeAsync) variants are exposed.
+// Use remove with onSuccess for the detail screen's post-delete navigation.
+// Use removeAsync when the caller needs to handle errors inline.
 
 export interface UseDeleteReadableResult {
   /**

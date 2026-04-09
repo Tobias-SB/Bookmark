@@ -163,6 +163,9 @@ export function applyUpdateConsistency(
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
+// Both sync (update) and async (updateAsync) variants are exposed.
+// Use update for immediate status/progress taps; use updateAsync for saves
+// that need to sequence follow-up actions (e.g. navigating after edit).
 
 export interface UseUpdateReadableResult {
   /** Fire-and-forget mutation. Pass onSuccess/onError in options for callbacks. */

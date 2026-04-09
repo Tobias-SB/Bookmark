@@ -15,6 +15,9 @@ export interface RemoveFromShelfVariables {
   readableId: string;
 }
 
+// Both sync (removeItem) and async (removeItemAsync) variants are exposed.
+// Use removeItem for immediate swipe-to-remove actions; use removeItemAsync for confirm-then-remove flows.
+
 export interface UseRemoveFromShelfResult {
   removeItem: UseMutateFunction<void, AppError, RemoveFromShelfVariables>;
   removeItemAsync: UseMutateAsyncFunction<void, AppError, RemoveFromShelfVariables>;

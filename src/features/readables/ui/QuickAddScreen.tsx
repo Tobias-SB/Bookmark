@@ -379,7 +379,7 @@ export function QuickAddScreen({ navigation }: Props) {
                 accessibilityRole="button"
               >
                 {isImporting && allResults.length === 0 ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color={theme.colors.colorWhite} />
                 ) : (
                   <Text style={styles.actionButtonText}>Search</Text>
                 )}

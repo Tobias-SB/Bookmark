@@ -16,6 +16,9 @@ export interface UpdateShelfVariables {
   input: UpdateShelfInput;
 }
 
+// Both sync (update) and async (updateAsync) variants are exposed.
+// Use updateAsync when the caller needs to sequence follow-up actions after rename/reorder.
+
 export interface UseUpdateShelfResult {
   update: UseMutateFunction<Shelf, AppError, UpdateShelfVariables>;
   updateAsync: UseMutateAsyncFunction<Shelf, AppError, UpdateShelfVariables>;

@@ -36,6 +36,9 @@ export interface UpdateCoverInput {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
+// Only mutateAsync (updateCoverAsync) is exposed — cover updates are always awaited
+// so that old file cleanup and cache invalidation happen in the correct sequence.
+
 export interface UseUpdateCoverResult {
   updateCoverAsync: UseMutateAsyncFunction<void, AppError, UpdateCoverInput>;
   isPending: boolean;
@@ -62,16 +65,16 @@ export function useUpdateCover(): UseUpdateCoverResult {
       let newCoverUrl: string | null = null;
 
       if (mode === 'local') {
-        if (!uri) throw { code: 'validation', message: 'No source URI provided.' } as AppError;
+        if (!uri) throw { code: 'validation', message: 'No source URI provided.' } satisfies AppError;
         newCoverUrl = await saveLocalCover(uri);
       } else if (mode === 'url') {
-        if (!uri) throw { code: 'validation', message: 'No URL provided.' } as AppError;
+        if (!uri) throw { code: 'validation', message: 'No URL provided.' } satisfies AppError;
         const downloaded = await downloadCover(uri);
         if (downloaded === null) {
           throw {
             code: 'network',
             message: 'Could not download the image. Check the URL and your connection.',
-          } as AppError;
+          } satisfies AppError;
         }
         newCoverUrl = downloaded;
       }

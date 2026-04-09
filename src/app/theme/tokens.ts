@@ -110,6 +110,14 @@ export interface AppTheme {
     /** Chip borders. */
     dangerBorder: string;
 
+    // ── Overlay / absolute colors ─────────────────────────────────────────────────
+    /** Semi-transparent backdrop behind modals and bottom sheets. */
+    overlayBackground: string;
+    /** Pure white — for text/icons rendered on filled colored backgrounds (buttons, FAB). */
+    colorWhite: string;
+    /** Subtle shadow strip on the left edge of cover thumbnails (book spine effect). */
+    spineOverlay: string;
+
     // ── Decorative gradients ──────────────────────────────────────────────────────
     /** Tab bar gradient end stop. */
     tabBarGradientEnd: string;
@@ -234,6 +242,14 @@ export function makeTokens(theme: MD3Theme): AppTheme {
       danger:       isDark ? '#E86060' : '#9A1C1C',
       dangerSubtle: isDark ? '#2A1010' : '#FDF0F0',
       dangerBorder: isDark ? '#7A2828' : '#E09090',
+
+      // ── Overlay / absolute colors ─────────────────────────────────────────────
+      // overlayBackground: same neutral dark value in both modes — overlays are
+      // always dark-on-content regardless of the app colour scheme.
+      overlayBackground: 'rgba(0,0,0,0.45)',
+      colorWhite: '#FFFFFF',
+      // spineOverlay: black tint on light, white tint on dark (spine strip on thumbnails)
+      spineOverlay: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
 
       // ── Decorative gradients ──────────────────────────────────────────────────
       // Leather-brown tint (light) / amber tint (dark)
