@@ -9,6 +9,8 @@
 
 import type { MD3Theme } from 'react-native-paper';
 
+import { lighten, darken } from '../../shared/utils/colorUtils';
+
 // ── Shadow helper type ────────────────────────────────────────────────────────
 
 export interface RNShadow {
@@ -117,6 +119,16 @@ export interface AppTheme {
     colorWhite: string;
     /** Subtle shadow strip on the left edge of cover thumbnails (book spine effect). */
     spineOverlay: string;
+
+    // ── Spine gradient tokens (pre-computed for ReadableListItem) ─────────────
+    /** Top gradient stop for book-kind spine strip. */
+    kindBookSpineTop: string;
+    /** Bottom gradient stop for book-kind spine strip. */
+    kindBookSpineBot: string;
+    /** Top gradient stop for fanfic-kind spine strip. */
+    kindFanficSpineTop: string;
+    /** Bottom gradient stop for fanfic-kind spine strip. */
+    kindFanficSpineBot: string;
 
     // ── Decorative gradients ──────────────────────────────────────────────────────
     /** Tab bar gradient end stop. */
@@ -260,6 +272,14 @@ export function makeTokens(theme: MD3Theme): AppTheme {
       colorWhite: '#FFFFFF',
       // spineOverlay: black tint on light, white tint on dark (spine strip on thumbnails)
       spineOverlay: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
+
+      // Spine gradient — pre-computed so ReadableListItem does no colour math at render time.
+      // NOTE: if a future theme override changes kindBook or kindFanfic hex values,
+      // the corresponding kindBook/FanficSpine* tokens must also be updated in APP_THEME_OVERRIDES.
+      kindBookSpineTop:   isDark ? lighten('#E8924A', 0.12) : lighten('#7C3910', 0.12),
+      kindBookSpineBot:   isDark ? darken('#E8924A', 0.12)  : darken('#7C3910', 0.12),
+      kindFanficSpineTop: isDark ? lighten('#8AADEE', 0.12) : lighten('#1A3370', 0.12),
+      kindFanficSpineBot: isDark ? darken('#8AADEE', 0.12)  : darken('#1A3370', 0.12),
 
       // ── Decorative gradients ──────────────────────────────────────────────────
       // Leather-brown tint (light) / amber tint (dark)

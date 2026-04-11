@@ -9,6 +9,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { AppError } from '../../shared/types/errors';
 import { migration001 } from './migrations/001_initial';
 import { migration002 } from './migrations/002_settings';
+import { migration003 } from './migrations/003_wip_ao3_updated_at';
 
 interface Migration {
   version: number;
@@ -22,7 +23,7 @@ interface Migration {
 // inside a transaction, so the version stamp is written after the transaction commits.
 // If the app crashes in that window, the migration re-runs on next launch. DDL that
 // is not idempotent will fail or corrupt data on re-application.
-const ALL_MIGRATIONS: Migration[] = [migration001, migration002];
+const ALL_MIGRATIONS: Migration[] = [migration001, migration002, migration003];
 
 export async function runMigrations(db: SQLiteDatabase): Promise<void> {
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');

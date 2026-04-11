@@ -50,6 +50,11 @@ export interface WipUpdate {
   previousSeriesTotal: number | null;
   fetchedSeriesTotal: number | null;
 
+  /** ISO 8601 — the ao3UpdatedAt on the readable at the time of check. */
+  previousAo3UpdatedAt: string | null;
+  /** ISO 8601 — the ao3UpdatedAt returned by AO3 during this check. */
+  fetchedAo3UpdatedAt: string | null;
+
   /**
    * true when the readable's status was reverted from 'completed' back to 'reading'
    * because totalUnits increased (new chapters were added to a previously "complete" count).

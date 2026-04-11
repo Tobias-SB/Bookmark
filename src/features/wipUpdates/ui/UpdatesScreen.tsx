@@ -26,6 +26,7 @@ import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 
 import { useAppTheme } from '../../../app/theme';
 import type { TabParamList } from '../../../app/navigation/types';
+import { formatDisplayDate, formatDisplayDateTime } from '../../../shared/utils/dates';
 import type { ReadableStatus } from '../../readables';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ScreenHeader } from '../../../shared/components/ScreenHeader';
@@ -223,6 +224,22 @@ function ExpandedDiff({ update }: { update: WipUpdate }) {
         label="Series total"
         before={update.previousSeriesTotal?.toString() ?? '—'}
         after={update.fetchedSeriesTotal.toString()}
+      />,
+    );
+  }
+
+  if (
+    update.fetchedAo3UpdatedAt !== null &&
+    update.fetchedAo3UpdatedAt !== update.previousAo3UpdatedAt
+  ) {
+    rows.push(
+      <DiffRow
+        key="ao3updated"
+        label="AO3 last updated"
+        before={update.previousAo3UpdatedAt
+          ? formatDisplayDate(update.previousAo3UpdatedAt)
+          : '—'}
+        after={formatDisplayDate(update.fetchedAo3UpdatedAt)}
       />,
     );
   }
@@ -602,7 +619,7 @@ export function UpdatesScreen(_props: Props) {
             </Text>
 
             <Text style={[styles.cardDate, { color: theme.colors.textMeta }]}>
-              {new Date(item.checkedAt).toLocaleString()}
+              {formatDisplayDateTime(item.checkedAt)}
             </Text>
 
             {isExpanded ? <ExpandedDiff update={item} /> : null}

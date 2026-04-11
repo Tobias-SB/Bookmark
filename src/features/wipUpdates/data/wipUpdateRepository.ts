@@ -63,6 +63,8 @@ interface WipUpdateRow {
   fetched_archive_warnings: string;
   previous_series_total: number | null;
   fetched_series_total: number | null;
+  previous_ao3_updated_at: string | null;
+  fetched_ao3_updated_at: string | null;
   status_reverted: number;
 }
 
@@ -90,6 +92,8 @@ function rowToWipUpdate(row: WipUpdateRow): WipUpdate {
     fetchedArchiveWarnings: parseArr(row.fetched_archive_warnings),
     previousSeriesTotal: row.previous_series_total,
     fetchedSeriesTotal: row.fetched_series_total,
+    previousAo3UpdatedAt: row.previous_ao3_updated_at,
+    fetchedAo3UpdatedAt: row.fetched_ao3_updated_at,
     statusReverted: row.status_reverted !== 0,
   };
 }
@@ -158,10 +162,12 @@ export async function createWipUpdate(
         previous_relationships, fetched_relationships,
         previous_archive_warnings, fetched_archive_warnings,
         previous_series_total, fetched_series_total,
+        previous_ao3_updated_at, fetched_ao3_updated_at,
         status_reverted
       ) VALUES (
         ?, ?, ?, ?,
         ?, 'unread',
+        ?, ?,
         ?, ?,
         ?, ?,
         ?, ?,
@@ -194,6 +200,8 @@ export async function createWipUpdate(
         JSON.stringify(input.fetchedArchiveWarnings),
         input.previousSeriesTotal,
         input.fetchedSeriesTotal,
+        input.previousAo3UpdatedAt,
+        input.fetchedAo3UpdatedAt,
         input.statusReverted ? 1 : 0,
       ],
     );

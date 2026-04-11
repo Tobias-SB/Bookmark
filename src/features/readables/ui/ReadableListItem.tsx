@@ -13,7 +13,6 @@ import { useAppTheme } from '../../../app/theme';
 import { StatusPill } from '../../../shared/components/StatusPill';
 import type { Readable } from '../domain/readable';
 import { STATUS_LABELS_FULL, formatProgressString } from '../domain/readable';
-import { lighten, darken } from '../../../shared/utils/colorUtils';
 
 // ── Progress string ───────────────────────────────────────────────────────────
 
@@ -69,14 +68,12 @@ export const ReadableListItem = React.memo(function ReadableListItem({
 
   const showProgressBar = pct > 0 || item.status === 'reading';
 
-  // Kind accent colour + gradient stops for spine
+  // Kind accent colour + gradient stops for spine (pre-computed in tokens — no runtime colour math)
   const accentColor = item.kind === 'book' ? colors.kindBook : colors.kindFanfic;
   const subtleColor = item.kind === 'book' ? colors.kindBookSubtle : colors.kindFanficSubtle;
-  const spineGradient: [string, string, string] = [
-    lighten(accentColor, 0.12),
-    accentColor,
-    darken(accentColor, 0.12),
-  ];
+  const spineGradient: [string, string, string] = item.kind === 'book'
+    ? [colors.kindBookSpineTop, colors.kindBook, colors.kindBookSpineBot]
+    : [colors.kindFanficSpineTop, colors.kindFanfic, colors.kindFanficSpineBot];
 
   // Accessible card label
   const cardLabel = [
@@ -151,7 +148,14 @@ export const ReadableListItem = React.memo(function ReadableListItem({
             {/* Progress bar */}
             {showProgressBar && (
               <View
-                style={[styles.progressTrack, { backgroundColor: colors.backgroundInput }]}
+                style={[
+                  styles.progressTrack,
+                  {
+                    backgroundColor: colors.backgroundInput,
+                    height: theme.metrics.progressBarHeight,
+                    borderRadius: theme.metrics.progressBarHeight / 2,
+                  },
+                ]}
                 accessibilityRole="progressbar"
                 accessibilityValue={{ min: 0, max: 100, now: pct }}
                 accessibilityLabel={`${pct}% complete`}
@@ -161,6 +165,8 @@ export const ReadableListItem = React.memo(function ReadableListItem({
                     style={[
                       styles.progressFill,
                       {
+                        height: theme.metrics.progressBarHeight,
+                        borderRadius: theme.metrics.progressBarHeight / 2,
                         width: `${pct}%`,
                         backgroundColor:
                           item.status === 'completed'
@@ -241,15 +247,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   progressTrack: {
-    height: 4,
-    borderRadius: 2,
     overflow: 'hidden',
     marginBottom: 4,
   },
-  progressFill: {
-    height: 4,
-    borderRadius: 2,
-  },
+  progressFill: {},
   fandom: {
     fontSize: 11,
     fontWeight: '500',

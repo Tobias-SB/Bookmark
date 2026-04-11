@@ -170,8 +170,7 @@ export function FilterModal({ visible, filters, onApply, onDismiss, allReadables
     const fanficReadables = allReadables.filter((r) => r.kind === 'fanfic');
     const all = fanficReadables.flatMap((r) => r.fandom);
     return [...new Set(all)].sort((a, b) => a.localeCompare(b));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  }, [visible, allReadables]);
 
   const tagVocabulary = useMemo<string[]>(() => {
     if (!visible) return [];

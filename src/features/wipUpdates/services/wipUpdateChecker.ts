@@ -154,6 +154,8 @@ export async function checkWipUpdates(
         fetchedArchiveWarnings: effectiveArchiveWarnings,
         previousSeriesTotal: readable.seriesTotal,
         fetchedSeriesTotal: fetched.seriesTotal ?? null,
+        previousAo3UpdatedAt: readable.ao3UpdatedAt,
+        fetchedAo3UpdatedAt: fetched.ao3UpdatedAt ?? null,
         statusReverted: refreshResult.statusReverted,
       });
 

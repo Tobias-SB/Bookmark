@@ -43,10 +43,9 @@ import type { BookSearchResult, MetadataResult } from '../../metadata';
 import { useImportMetadata } from '../../metadata';
 import { useFindAo3Duplicate } from '../hooks/useFindAo3Duplicate';
 import { useAo3Session, useAo3Login } from '../../ao3Auth';
+import { processAo3Url } from '../../../shared/utils/ao3Url';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'QuickAddReadable'>;
-
-const AO3_WORK_PREFIX = 'https://archiveofourown.org/works/';
 
 function buildPrefillFromMetadataData(
   data: MetadataResult['data'],
@@ -237,7 +236,7 @@ export function QuickAddScreen({ navigation }: Props) {
   // ── Derived state ──────────────────────────────────────────────────────────
 
   const canSearch = !isImporting && bookQuery.trim().length > 0;
-  const canImportAo3 = !isImporting && ao3Url.trim().startsWith(AO3_WORK_PREFIX);
+  const canImportAo3 = !isImporting && processAo3Url(ao3Url.trim()) !== null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 

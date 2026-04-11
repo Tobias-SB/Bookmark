@@ -13,6 +13,8 @@
 import * as Crypto from 'expo-crypto';
 import { File, Directory, Paths } from 'expo-file-system';
 
+import type { AppError } from '../../../shared/types/errors';
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function coversDir(): Directory {
@@ -47,7 +49,14 @@ export async function saveLocalCover(sourceUri: string): Promise<string> {
   // content:// URIs on Android where the extension may not be in the path.
   const ext = source.extension || '.jpg';
   const dest = new File(coversDir(), `${Crypto.randomUUID()}${ext}`);
-  source.copy(dest);
+  try {
+    source.copy(dest);
+  } catch (err) {
+    throw {
+      code: 'db',
+      message: `Failed to copy cover image: ${err instanceof Error ? err.message : String(err)}`,
+    } satisfies AppError;
+  }
   return dest.uri;
 }
 
@@ -81,8 +90,12 @@ export async function downloadCover(remoteUrl: string): Promise<string | null> {
  */
 export async function deleteCoverFile(coverUri: string | null): Promise<void> {
   if (!isLocalCoverUri(coverUri)) return;
-  const file = new File(coverUri as string);
-  if (file.exists) {
-    file.delete();
+  try {
+    const file = new File(coverUri as string);
+    if (file.exists) {
+      file.delete();
+    }
+  } catch {
+    // Non-fatal — file may already be gone.
   }
 }

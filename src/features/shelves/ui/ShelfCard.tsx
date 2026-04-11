@@ -17,7 +17,7 @@
 //
 // Long-press on header → onEdit callback (rename / delete options).
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AccessibilityInfo,
   LayoutAnimation,
@@ -79,14 +79,17 @@ export function ShelfCard({ shelf, readables, onEdit }: Props) {
   const theme = useAppTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [expanded, setExpanded] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+  }, []); // read once on mount; preference does not change mid-session
 
   function handleToggle() {
-    AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
-      if (!reduceMotion) {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      }
-      setExpanded((prev) => !prev);
-    });
+    if (!reduceMotion) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    setExpanded((prev) => !prev);
   }
 
   function handleItemPress(id: string) {

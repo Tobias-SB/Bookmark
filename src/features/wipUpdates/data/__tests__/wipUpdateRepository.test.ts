@@ -4,6 +4,7 @@
 
 import * as Crypto from 'expo-crypto';
 import { migration001 } from '../../../../app/database/migrations/001_initial';
+import { migration003 } from '../../../../app/database/migrations/003_wip_ao3_updated_at';
 import {
   createWipUpdate,
   getWipUpdateById,
@@ -22,7 +23,7 @@ jest.mock('expo-crypto', () => ({
   randomUUID: jest.fn(),
 }));
 
-const schema = migration001.sql;
+const schema = migration001.sql + '\n' + migration003.sql;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,8 @@ function makeInput(overrides: Partial<CreateWipUpdateInput> = {}): CreateWipUpda
     fetchedArchiveWarnings: [],
     previousSeriesTotal: null,
     fetchedSeriesTotal: null,
+    previousAo3UpdatedAt: null,
+    fetchedAo3UpdatedAt: null,
     statusReverted: false,
     ...overrides,
   };

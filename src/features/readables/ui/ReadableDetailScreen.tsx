@@ -10,7 +10,7 @@
 //     Metadata section cards (each section is its own card)
 //     Action buttons row
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   type DimensionValue,
   Image,
@@ -27,6 +27,7 @@ import {
   ActivityIndicator,
   Button,
   Dialog,
+  Icon,
   Portal,
   Snackbar,
 } from 'react-native-paper';
@@ -44,6 +45,7 @@ import type { RootStackParamList, TabParamList } from '../../../app/navigation/t
 import { useAppTheme } from '../../../app/theme';
 import type { AppTheme } from '../../../app/theme/tokens';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
+import { formatDisplayDate } from '../../../shared/utils/dates';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import type { ReadableStatus } from '../domain/readable';
 import {
@@ -90,15 +92,6 @@ const SOURCE_TYPE_LABELS = {
 } as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatDisplayDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-}
 
 function formatWordCount(count: number): string {
   return count.toLocaleString() + ' words';
@@ -220,6 +213,63 @@ const shelfPickerRowStyles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginLeft: 8,
+  },
+});
+
+// ── MetadataRow — file-internal, not exported ─────────────────────────────────
+
+interface MetadataRowProps {
+  label: string;
+  value: string;
+  theme: AppTheme;
+  isLast?: boolean;
+}
+
+function MetadataRow({ label, value, theme, isLast }: MetadataRowProps) {
+  return (
+    <View
+      style={[
+        metaRowStyles.row,
+        !isLast && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.colors.backgroundBorder,
+        },
+      ]}
+    >
+      <Text style={[metaRowStyles.label, { color: theme.colors.textMeta }]}>
+        {label}
+      </Text>
+      <Text
+        style={[metaRowStyles.value, { color: theme.colors.textBody }]}
+        numberOfLines={2}
+        ellipsizeMode="tail"
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+// Module-level — outside ReadableDetailScreen function
+const metaRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 11,
+    gap: 16,
+    minHeight: 44,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    flexShrink: 0,
+  },
+  value: {
+    fontSize: 13,
+    flex: 1,
+    textAlign: 'right',
   },
 });
 
@@ -541,6 +591,25 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
         : 'No progress recorded';
   }
 
+  // ── Metadata rows (F2) ────────────────────────────────────────────────────
+
+  const metadataRows = useMemo(() => {
+    const rows: Array<{ label: string; value: string }> = [];
+    if (seriesDisplay !== null) rows.push({ label: 'Series', value: seriesDisplay });
+    if (readable.kind === 'fanfic' && readable.rating !== null)
+      rows.push({ label: 'Rating', value: AO3_RATING_LABELS[readable.rating] });
+    if (readable.kind === 'fanfic' && readable.fandom.length > 0)
+      rows.push({ label: 'Fandom', value: readable.fandom.join(', ') });
+    if (readable.kind === 'fanfic' && readable.wordCount !== null && readable.wordCount > 0)
+      rows.push({ label: 'Word count', value: formatWordCount(readable.wordCount) });
+    if (readable.kind === 'fanfic' && readable.publishedAt !== null)
+      rows.push({ label: 'Published on AO3', value: formatDisplayDate(readable.publishedAt) });
+    if (readable.kind === 'fanfic' && readable.ao3UpdatedAt !== null)
+      rows.push({ label: 'Last updated on AO3', value: formatDisplayDate(readable.ao3UpdatedAt) });
+    rows.push({ label: 'Date added', value: formatDisplayDate(readable.dateAdded) });
+    return rows;
+  }, [readable, seriesDisplay]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -554,8 +623,9 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
         end={{ x: 0, y: 1 }}
         style={[styles.hero, { paddingTop: insets.top }]}
       >
-        {/* Back row + centered title */}
+        {/* Back row + centered title — three-column flex layout */}
         <View style={styles.heroTitleRow}>
+          {/* Col 1: back button — fixed width */}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.heroBackButton}
@@ -565,15 +635,18 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
             <ChevronLeftIcon color={theme.colors.textMeta} />
             <Text style={[styles.heroBackText, { color: theme.colors.textMeta }]}>Library</Text>
           </TouchableOpacity>
-          {/* Pointer-events none so this overlay never absorbs touches meant for the back button */}
-          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.heroTitleContainer]}>
-            <Text
-              style={[styles.heroTitle, { color: theme.colors.textPrimary }]}
-              numberOfLines={2}
-            >
-              {readable.title}
-            </Text>
-          </View>
+
+          {/* Col 2: title — flex: 1, centred within its space */}
+          <Text
+            style={[styles.heroTitle, { color: theme.colors.textPrimary }]}
+            numberOfLines={2}
+            accessibilityRole="header"
+          >
+            {readable.title}
+          </Text>
+
+          {/* Col 3: invisible spacer mirrors col 1 width for true visual centering */}
+          <View style={styles.heroTitleSpacer} />
         </View>
 
         {/* Meta row: author · kind · source */}
@@ -695,7 +768,11 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
                   { backgroundColor: kindSubtleColor },
                 ]}
               >
-                <Text style={styles.coverPlaceholderIcon}>🖼</Text>
+                <Icon
+                  source="image-plus"
+                  size={32}
+                  color={kindAccentColor}
+                />
                 <Text style={[styles.coverPlaceholderLabel, { color: theme.colors.textMeta }]}>
                   Set cover
                 </Text>
@@ -727,13 +804,25 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
 
           {/* Progress bar */}
           <View
-            style={[styles.progressBarTrack, { backgroundColor: kindSubtleColor }]}
+            style={[
+              styles.progressBarTrack,
+              {
+                backgroundColor: kindSubtleColor,
+                height: theme.metrics.progressBarHeight,
+                borderRadius: theme.metrics.progressBarHeight / 2,
+              },
+            ]}
           >
             {progressPct !== null && (
               <View
                 style={[
                   styles.progressBarFill,
-                  { backgroundColor: kindAccentColor, width: `${progressPct}%` as DimensionValue },
+                  {
+                    height: theme.metrics.progressBarHeight,
+                    borderRadius: theme.metrics.progressBarHeight / 2,
+                    backgroundColor: kindAccentColor,
+                    width: `${progressPct}%` as DimensionValue,
+                  },
                 ]}
               />
             )}
@@ -751,73 +840,59 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
             accessibilityRole="button"
           >
             <Text
-              style={[
-                styles.editProgressText,
-                {
-                  color: kindAccentColor,
-                  textDecorationColor: kindBorderColor,
-                },
-              ]}
+              style={[styles.editProgressText, { color: kindAccentColor }]}
             >
               Edit progress
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* ── STATUS FLAGS ──────────────────────────────────────────────────── */}
-        {readable.kind === 'fanfic' &&
-          (readable.isComplete !== null || readable.isAbandoned) && (
-            <SectionCard label="STATUS FLAGS" theme={theme}>
-              <View style={styles.chipRow}>
-                {readable.isComplete !== null && (
-                  <View
-                    style={[
-                      styles.chip,
-                      readable.isComplete
-                        ? {
-                            backgroundColor: theme.colors.statusCompletedBg,
-                            borderColor: theme.colors.statusCompletedBorder,
-                          }
-                        : {
-                            backgroundColor: theme.colors.backgroundInput,
-                            borderColor: theme.colors.backgroundBorder,
-                          },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        {
-                          color: readable.isComplete
-                            ? theme.colors.statusCompletedText
-                            : theme.colors.textBody,
-                        },
-                      ]}
-                    >
-                      {readable.isComplete ? 'Complete' : 'WIP'}
-                    </Text>
-                  </View>
-                )}
-                {readable.isAbandoned && (
-                  <View
-                    style={[
-                      styles.chip,
-                      {
-                        backgroundColor: theme.colors.dangerSubtle,
-                        borderColor: theme.colors.dangerBorder,
+        {/* ── STATUS FLAGS — bare inline chips, no card ─────────────────────── */}
+        {readable.kind === 'fanfic' && (readable.isComplete !== null || readable.isAbandoned) && (
+          <View style={[styles.statusFlagsRow, { marginHorizontal: 14, marginBottom: 9 }]}>
+            {readable.isComplete !== null && (
+              <View
+                style={[
+                  styles.chip,
+                  readable.isComplete
+                    ? {
+                        backgroundColor: theme.colors.statusCompletedBg,
+                        borderColor: theme.colors.statusCompletedBorder,
+                      }
+                    : {
+                        backgroundColor: theme.colors.backgroundInput,
+                        borderColor: theme.colors.backgroundBorder,
                       },
-                    ]}
-                  >
-                    <Text style={[styles.chipText, { color: theme.colors.danger }]}>
-                      Abandoned
-                    </Text>
-                  </View>
-                )}
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    {
+                      color: readable.isComplete
+                        ? theme.colors.statusCompletedText
+                        : theme.colors.textBody,
+                    },
+                  ]}
+                >
+                  {readable.isComplete ? 'Complete' : 'WIP'}
+                </Text>
               </View>
-            </SectionCard>
-          )}
+            )}
+            {readable.isAbandoned && (
+              <View
+                style={[
+                  styles.chip,
+                  { backgroundColor: theme.colors.dangerSubtle, borderColor: theme.colors.dangerBorder },
+                ]}
+              >
+                <Text style={[styles.chipText, { color: theme.colors.danger }]}>Abandoned</Text>
+              </View>
+            )}
+          </View>
+        )}
 
-        {/* ── ARCHIVE WARNINGS ──────────────────────────────────────────────── */}
+        {/* ── ARCHIVE WARNINGS — SectionCard preserved: safety-significant ────── */}
         {readable.kind === 'fanfic' && readable.archiveWarnings.length > 0 && (
           <SectionCard label="ARCHIVE WARNINGS" theme={theme}>
             <View style={styles.chipRow}>
@@ -856,25 +931,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           </SectionCard>
         )}
 
-        {/* ── RATING ────────────────────────────────────────────────────────── */}
-        {readable.kind === 'fanfic' && readable.rating !== null && (
-          <SectionCard label="RATING" theme={theme}>
-            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
-              {AO3_RATING_LABELS[readable.rating]}
-            </Text>
-          </SectionCard>
-        )}
-
-        {/* ── FANDOM ────────────────────────────────────────────────────────── */}
-        {readable.kind === 'fanfic' && readable.fandom.length > 0 && (
-          <SectionCard label="FANDOM" theme={theme}>
-            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
-              {readable.fandom.join(', ')}
-            </Text>
-          </SectionCard>
-        )}
-
-        {/* ── RELATIONSHIPS ─────────────────────────────────────────────────── */}
+        {/* ── RELATIONSHIPS — SectionCard preserved: collapsible list ──────────── */}
         {readable.kind === 'fanfic' && readable.relationships.length > 0 && (
           <SectionCard label="RELATIONSHIPS" theme={theme}>
             <View style={{ gap: 4 }}>
@@ -901,16 +958,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           </SectionCard>
         )}
 
-        {/* ── SERIES ────────────────────────────────────────────────────────── */}
-        {seriesDisplay !== null && (
-          <SectionCard label="SERIES" theme={theme}>
-            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
-              {seriesDisplay}
-            </Text>
-          </SectionCard>
-        )}
-
-        {/* ── SUMMARY ───────────────────────────────────────────────────────── */}
+        {/* ── SUMMARY — SectionCard preserved: multi-line prose ────────────────── */}
         {readable.summary !== null && (
           <SectionCard label="SUMMARY" theme={theme}>
             <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
@@ -919,7 +967,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           </SectionCard>
         )}
 
-        {/* ── NOTES — always rendered ────────────────────────────────────────── */}
+        {/* ── NOTES — SectionCard preserved: interactive edit button ─────────── */}
         <SectionCard
           label="NOTES"
           theme={theme}
@@ -970,7 +1018,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           )}
         </SectionCard>
 
-        {/* ── TAGS ──────────────────────────────────────────────────────────── */}
+        {/* ── TAGS — SectionCard preserved: tappable chips ─────────────────── */}
         {readable.tags.length > 0 && (
           <SectionCard label="TAGS" theme={theme}>
             <View style={styles.chipRow}>
@@ -1007,143 +1055,119 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
           </SectionCard>
         )}
 
-        {/* ── WORD COUNT ────────────────────────────────────────────────────── */}
-        {readable.kind === 'fanfic' &&
-          readable.wordCount !== null &&
-          readable.wordCount > 0 && (
-            <SectionCard label="WORD COUNT" theme={theme}>
-              <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
-                {formatWordCount(readable.wordCount)}
-              </Text>
-            </SectionCard>
-          )}
-
-        {/* ── PUBLISHED ON AO3 ──────────────────────────────────────────────── */}
-        {readable.kind === 'fanfic' && readable.publishedAt !== null && (
-          <SectionCard label="PUBLISHED ON AO3" theme={theme}>
-            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
-              {formatDisplayDate(readable.publishedAt)}
-            </Text>
-          </SectionCard>
-        )}
-
-        {/* ── LAST UPDATED ON AO3 ───────────────────────────────────────────── */}
-        {readable.kind === 'fanfic' && readable.ao3UpdatedAt !== null && (
-          <SectionCard label="LAST UPDATED ON AO3" theme={theme}>
-            <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
-              {formatDisplayDate(readable.ao3UpdatedAt)}
-            </Text>
-          </SectionCard>
-        )}
-
-        {/* ── DATE ADDED — always rendered ──────────────────────────────────── */}
-        <SectionCard label="DATE ADDED" theme={theme}>
-          <Text style={[styles.bodyText, { color: theme.colors.textBody }]}>
-            {formatDisplayDate(readable.dateAdded)}
-          </Text>
-        </SectionCard>
-
-        {/* ── Action buttons ────────────────────────────────────────────────── */}
-        <View style={styles.actionsRow}>
-          {/* Edit */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('AddEditReadable', { id })}
+        {/* ── METADATA LIST — single container, label-value rows ───────────────── */}
+        {metadataRows.length > 0 && (
+          <View
             style={[
-              styles.actionButton,
-              {
-                backgroundColor: kindAccentColor,
-                borderColor: kindAccentColor,
-                ...theme.shadows.button,
-              },
-            ]}
-            accessibilityLabel="Edit readable"
-            accessibilityRole="button"
-          >
-            <Text style={[styles.actionButtonText, { color: theme.colors.colorWhite }]}>Edit</Text>
-          </TouchableOpacity>
-
-          {/* Add to shelf */}
-          <TouchableOpacity
-            onPress={() => setShelfPickerVisible(true)}
-            style={[
-              styles.actionButton,
+              styles.metadataList,
               {
                 backgroundColor: theme.colors.backgroundCard,
-                borderColor: theme.colors.backgroundBorder,
+                borderRadius: theme.radii.card,
                 ...theme.shadows.small,
               },
             ]}
-            accessibilityLabel="Add to shelf"
+          >
+            {metadataRows.map((row, i) => (
+              <MetadataRow
+                key={row.label}
+                label={row.label}
+                value={row.value}
+                theme={theme}
+                isLast={i === metadataRows.length - 1}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* ── Action buttons ────────────────────────────────────────────────── */}
+        <View style={styles.actionsContainer}>
+
+          {/* Row 1: Primary action */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('AddEditReadable', { id })}
+            style={[styles.actionPrimary, { backgroundColor: kindAccentColor, ...theme.shadows.button }]}
+            accessibilityLabel="Edit readable"
             accessibilityRole="button"
           >
-            <Text style={[styles.actionButtonText, { color: theme.colors.textBody }]}>
-              Shelves
-            </Text>
+            <Text style={[styles.actionPrimaryText, { color: theme.colors.colorWhite }]}>Edit</Text>
           </TouchableOpacity>
 
-          {/* View on AO3 */}
-          {isAo3FanficWithUrl && (
+          {/* Row 2: Secondary actions */}
+          <View style={styles.actionSecondaryRow}>
             <TouchableOpacity
-              onPress={() => void handleViewOnAo3()}
+              onPress={() => setShelfPickerVisible(true)}
               style={[
-                styles.actionButton,
-                {
-                  backgroundColor: theme.colors.kindFanficSubtle,
-                  borderColor: theme.colors.kindFanficBorder,
-                },
-              ]}
-              accessibilityLabel="View on AO3"
-              accessibilityRole="button"
-            >
-              <Text style={[styles.actionButtonText, { color: theme.colors.kindFanfic }]}>
-                View on AO3
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Refresh */}
-          {isAo3FanficWithUrl && (
-            <TouchableOpacity
-              onPress={() => void handleRefresh()}
-              disabled={isRefreshing}
-              style={[
-                styles.actionButton,
+                styles.actionSecondary,
                 {
                   backgroundColor: theme.colors.backgroundCard,
                   borderColor: theme.colors.backgroundBorder,
                   ...theme.shadows.small,
-                  opacity: isRefreshing ? 0.7 : 1,
                 },
               ]}
-              accessibilityLabel="Refresh AO3 metadata"
+              accessibilityLabel="Add to shelf"
               accessibilityRole="button"
             >
-              {isRefreshing ? (
-                <ActivityIndicator size="small" color={theme.colors.textPrimary} />
-              ) : null}
-              <Text style={[styles.actionButtonText, { color: theme.colors.textPrimary }]}>
-                {isRefreshing ? 'Refreshing…' : 'Refresh'}
-              </Text>
+              <Text style={[styles.actionSecondaryText, { color: theme.colors.textBody }]}>Shelves</Text>
             </TouchableOpacity>
-          )}
 
-          {/* Delete */}
+            {isAo3FanficWithUrl && (
+              <TouchableOpacity
+                onPress={() => void handleViewOnAo3()}
+                style={[
+                  styles.actionSecondary,
+                  {
+                    backgroundColor: theme.colors.kindFanficSubtle,
+                    borderColor: theme.colors.kindFanficBorder,
+                  },
+                ]}
+                accessibilityLabel="View on AO3"
+                accessibilityRole="button"
+              >
+                <Text style={[styles.actionSecondaryText, { color: theme.colors.kindFanfic }]}>
+                  View on AO3
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {isAo3FanficWithUrl && (
+              <TouchableOpacity
+                onPress={() => void handleRefresh()}
+                disabled={isRefreshing}
+                style={[
+                  styles.actionSecondary,
+                  {
+                    backgroundColor: theme.colors.backgroundCard,
+                    borderColor: theme.colors.backgroundBorder,
+                    ...theme.shadows.small,
+                    opacity: isRefreshing ? 0.7 : 1,
+                  },
+                ]}
+                accessibilityLabel="Refresh AO3 metadata"
+                accessibilityRole="button"
+              >
+                {isRefreshing
+                  ? <ActivityIndicator size="small" color={theme.colors.textPrimary} />
+                  : <Text style={[styles.actionSecondaryText, { color: theme.colors.textPrimary }]}>
+                      Refresh
+                    </Text>
+                }
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Row 3: Destructive action — text-only, visually demoted */}
           <TouchableOpacity
             onPress={() => setConfirmDeleteVisible(true)}
             disabled={isDeleting}
-            style={[
-              styles.actionButton,
-              {
-                backgroundColor: theme.colors.dangerSubtle,
-                borderColor: theme.colors.dangerBorder,
-                opacity: isDeleting ? 0.7 : 1,
-              },
-            ]}
+            style={[styles.actionDestructive, { opacity: isDeleting ? 0.5 : 1 }]}
             accessibilityLabel="Delete readable"
             accessibilityRole="button"
           >
-            <Text style={[styles.actionButtonText, { color: theme.colors.danger }]}>Delete</Text>
+            <Text style={[styles.actionDestructiveText, { color: theme.colors.danger }]}>
+              {isDeleting ? 'Deleting…' : 'Delete'}
+            </Text>
           </TouchableOpacity>
+
         </View>
       </ScrollView>
 
@@ -1314,16 +1338,33 @@ const styles = StyleSheet.create({
 
   // Hero gradient band
   hero: { paddingHorizontal: 18, paddingBottom: 20 },
-  heroTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 4 },
+  heroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    marginTop: 4,
+  },
   heroBackButton: {
+    width: 72,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingVertical: 8,
-    paddingRight: 12,
     minHeight: 44,
   },
   heroBackText: { fontSize: 15, fontWeight: '500' },
+  heroTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    lineHeight: 26,
+    // paddingHorizontal intentionally removed — flex: 1 constrains width naturally
+  },
+  heroTitleSpacer: {
+    width: 72, // must match heroBackButton width
+  },
 
   // Kind badge (used in meta row)
   kindBadge: {
@@ -1333,19 +1374,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   kindBadgeText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.1 },
-
-  // Title — absolutely centered in heroTitleRow, paddingHorizontal keeps it clear of back button.
-  // heroTitleContainer fills the row (via absoluteFillObject) and is pointerEvents=none so it
-  // never intercepts touches intended for the back button beneath it.
-  heroTitleContainer: { justifyContent: 'center' },
-  heroTitle: {
-    textAlign: 'center',
-    fontSize: 20,
-    fontWeight: '600',
-    letterSpacing: -0.3,
-    lineHeight: 26,
-    paddingHorizontal: 80,
-  },
 
   // Meta row: author · kind · source
   heroMetaRow: {
@@ -1382,7 +1410,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
-  coverPlaceholderIcon: { fontSize: 28, opacity: 0.5 },
   coverPlaceholderLabel: { fontSize: 12, fontWeight: '500' },
 
   // Progress card
@@ -1400,8 +1427,8 @@ const styles = StyleSheet.create({
   },
   progressCardTitle: { fontSize: 13, fontWeight: '600' },
   progressCardPct: { fontSize: 12 },
-  progressBarTrack: { height: 4, borderRadius: 2, overflow: 'hidden', marginBottom: 6 }, // = theme.metrics.progressBarHeight
-  progressBarFill: { height: 4, borderRadius: 2 },
+  progressBarTrack: { overflow: 'hidden', marginBottom: 6 },
+  progressBarFill: {},
   progressSubtext: { fontSize: 12, marginBottom: 2 },
   editProgressButton: {
     marginTop: 8,
@@ -1412,7 +1439,6 @@ const styles = StyleSheet.create({
   editProgressText: {
     fontSize: 12,
     fontWeight: '600',
-    textDecorationLine: 'underline',
   },
 
   // Section cards
@@ -1456,26 +1482,64 @@ const styles = StyleSheet.create({
   expandButton: { marginTop: 6, alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center' },
   expandText: { fontSize: 12 },
 
-  // Action buttons row
-  actionsRow: {
+  // Status flags (F2 — bare inline chips)
+  statusFlagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
+  },
+
+  // Metadata list (F2)
+  metadataList: {
+    marginHorizontal: 14,
+    marginBottom: 9,
+    paddingHorizontal: 14,
+  },
+
+  // Action buttons (F1)
+  actionsContainer: {
     marginHorizontal: 14,
     marginBottom: 24,
     marginTop: 4,
+    gap: 10,
   },
-  actionButton: {
-    flexDirection: 'row',
+  actionPrimary: {
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 22,
-    minHeight: 44,
-    borderWidth: 1,
+    justifyContent: 'center',
   },
-  actionButtonText: { fontSize: 13, fontWeight: '500' },
+  actionPrimaryText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  actionSecondaryRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionSecondary: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  actionSecondaryText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  actionDestructive: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionDestructiveText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
 
   // Shelf picker modal
   shelfPickerContent: { paddingBottom: 4 },
