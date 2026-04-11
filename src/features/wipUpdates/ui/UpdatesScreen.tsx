@@ -28,6 +28,7 @@ import { useAppTheme } from '../../../app/theme';
 import type { TabParamList } from '../../../app/navigation/types';
 import type { ReadableStatus } from '../../readables';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
+import { ScreenHeader } from '../../../shared/components/ScreenHeader';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 
 import type { WipUpdate } from '../domain/wipUpdate';
@@ -734,6 +735,8 @@ export function UpdatesScreen(_props: Props) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.backgroundPage }]}>
+      <ScreenHeader title="Updates" />
+
       {/* Scope section / progress card — fixed above the list */}
       {isChecking ? renderProgressCard() : renderScopeSection()}
 

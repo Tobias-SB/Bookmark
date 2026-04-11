@@ -54,6 +54,7 @@ import {
   PREVIEW_TAG_COUNT,
   PREVIEW_RELATIONSHIP_COUNT,
   NOTES_COLLAPSE_LINES,
+  getStatusColors,
 } from '../domain/readable';
 import { useReadable } from '../hooks/useReadable';
 import { useUpdateReadable } from '../hooks/useUpdateReadable';
@@ -114,38 +115,6 @@ function formatSeriesDisplay(
   return `Part ${seriesPart} of ${total} in ${seriesName}`;
 }
 
-function getStatusTokens(
-  status: ReadableStatus,
-  theme: AppTheme,
-): { bg: string; text: string; border: string } {
-  switch (status) {
-    case 'reading':
-      return {
-        bg: theme.colors.statusReadingBg,
-        text: theme.colors.statusReadingText,
-        border: theme.colors.statusReadingBorder,
-      };
-    case 'completed':
-      return {
-        bg: theme.colors.statusCompletedBg,
-        text: theme.colors.statusCompletedText,
-        border: theme.colors.statusCompletedBorder,
-      };
-    case 'dnf':
-      return {
-        bg: theme.colors.statusDnfBg,
-        text: theme.colors.statusDnfText,
-        border: theme.colors.statusDnfBorder,
-      };
-    case 'want_to_read':
-    default:
-      return {
-        bg: theme.colors.statusWantBg,
-        text: theme.colors.statusWantText,
-        border: theme.colors.statusWantBorder,
-      };
-  }
-}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -180,6 +149,7 @@ function SectionCard({ label, children, theme, headerRight }: SectionCardProps) 
       style={[
         styles.card,
         {
+          borderRadius: theme.radii.card,
           backgroundColor: theme.colors.backgroundCard,
           ...theme.shadows.card,
         },
@@ -460,7 +430,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
   if (isError) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.backgroundPage }}>
-        <StatusBar style="dark" />
+        <StatusBar style={theme.dark ? 'light' : 'dark'} />
         <MiniBackBar />
         <View style={styles.centered}>
           <Text style={[styles.centeredMessage, { color: theme.colors.textSecondary }]}>
@@ -475,7 +445,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
   if (isLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.backgroundPage }}>
-        <StatusBar style="dark" />
+        <StatusBar style={theme.dark ? 'light' : 'dark'} />
         <MiniBackBar />
         <View style={styles.centered}>
           <ActivityIndicator size="large" />
@@ -487,7 +457,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
   if (!readable) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.backgroundPage }}>
-        <StatusBar style="dark" />
+        <StatusBar style={theme.dark ? 'light' : 'dark'} />
         <MiniBackBar />
         <View style={styles.centered}>
           <Text style={{ color: theme.colors.textSecondary }}>Readable not found.</Text>
@@ -575,7 +545,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.backgroundPage }}>
-      <StatusBar style="dark" />
+      <StatusBar style={theme.dark ? 'light' : 'dark'} />
 
       {/* ── Hero gradient — fixed, not scrollable ──────────────────────────── */}
       <LinearGradient
@@ -658,7 +628,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
         <View style={styles.heroStatusRow}>
           {READABLE_STATUSES.map((s) => {
             const isActive = s === displayStatus;
-            const tok = getStatusTokens(s, theme);
+            const tok = getStatusColors(s, theme.colors);
             return (
               <TouchableOpacity
                 key={s}
@@ -1089,7 +1059,7 @@ export function ReadableDetailScreen({ route, navigation }: Props) {
             accessibilityLabel="Edit readable"
             accessibilityRole="button"
           >
-            <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>Edit</Text>
+            <Text style={[styles.actionButtonText, { color: theme.colors.colorWhite }]}>Edit</Text>
           </TouchableOpacity>
 
           {/* Add to shelf */}
@@ -1393,13 +1363,13 @@ const styles = StyleSheet.create({
   heroStatusRow: { flexDirection: 'row', gap: 6 },
   statusPill: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 44,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
   },
-  statusPillText: { fontSize: 11.5 },
+  statusPillText: { fontSize: 12 },
 
   // ScrollView
   scrollContent: { paddingTop: 12 },
@@ -1418,7 +1388,7 @@ const styles = StyleSheet.create({
   // Progress card
   progressCard: {
     borderRadius: 18,
-    marginHorizontal: 12,
+    marginHorizontal: 14,
     marginBottom: 9,
     padding: 15,
   },
@@ -1430,8 +1400,8 @@ const styles = StyleSheet.create({
   },
   progressCardTitle: { fontSize: 13, fontWeight: '600' },
   progressCardPct: { fontSize: 12 },
-  progressBarTrack: { height: 5, borderRadius: 3, overflow: 'hidden', marginBottom: 6 },
-  progressBarFill: { height: 5, borderRadius: 3 },
+  progressBarTrack: { height: 4, borderRadius: 2, overflow: 'hidden', marginBottom: 6 }, // = theme.metrics.progressBarHeight
+  progressBarFill: { height: 4, borderRadius: 2 },
   progressSubtext: { fontSize: 12, marginBottom: 2 },
   editProgressButton: {
     marginTop: 8,
@@ -1447,7 +1417,6 @@ const styles = StyleSheet.create({
 
   // Section cards
   card: {
-    borderRadius: 16,
     marginHorizontal: 14,
     marginBottom: 9,
     padding: 14,

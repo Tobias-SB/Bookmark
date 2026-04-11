@@ -31,6 +31,7 @@ import { useAppTheme } from '../../../app/theme';
 import type { MetadataResult } from '../../metadata/services/types';
 import { useImportMetadata } from '../../metadata';
 import type { Readable, ReadableStatus } from '../../readables/domain/readable';
+import { getStatusColors } from '../../readables';
 import { useFindAo3Duplicate } from '../../readables/hooks/useFindAo3Duplicate';
 import type { ProcessedAo3Url } from '../../../shared/utils/ao3Url';
 import { useShareSave } from '../hooks/useShareSave';
@@ -137,6 +138,8 @@ export function ShareHandlerScreen({ navigation, route }: Props) {
           {
             backgroundColor: theme.colors.backgroundCard,
             paddingBottom: insets.bottom + 16,
+            borderTopLeftRadius: theme.metrics.bottomSheetRadius,
+            borderTopRightRadius: theme.metrics.bottomSheetRadius,
             ...theme.shadows.card,
           },
         ]}
@@ -334,7 +337,7 @@ function DuplicatePhase({
   onViewInBookmark: () => void;
   onDismiss: () => void;
 }) {
-  const statusColors = getStatusColors(readable.status, theme);
+  const statusColors = getStatusColors(readable.status, theme.colors);
 
   return (
     <View style={styles.phaseContainer}>
@@ -447,21 +450,6 @@ function statusLabel(status: ReadableStatus): string {
   }
 }
 
-function getStatusColors(
-  status: ReadableStatus,
-  theme: ReturnType<typeof useAppTheme>,
-): { text: string; bg: string; border: string } {
-  switch (status) {
-    case 'want_to_read':
-      return { text: theme.colors.statusWantText, bg: theme.colors.statusWantBg, border: theme.colors.statusWantBorder };
-    case 'reading':
-      return { text: theme.colors.statusReadingText, bg: theme.colors.statusReadingBg, border: theme.colors.statusReadingBorder };
-    case 'completed':
-      return { text: theme.colors.statusCompletedText, bg: theme.colors.statusCompletedBg, border: theme.colors.statusCompletedBorder };
-    case 'dnf':
-      return { text: theme.colors.statusDnfText, bg: theme.colors.statusDnfBg, border: theme.colors.statusDnfBorder };
-  }
-}
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -474,8 +462,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    // borderTopLeftRadius / borderTopRightRadius applied inline via theme.metrics.bottomSheetRadius
     paddingTop: 12,
     paddingHorizontal: 20,
   },

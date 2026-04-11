@@ -14,6 +14,7 @@ import type { ColorMode } from '../../../app/theme';
 import { useAo3Session, useAo3Login, useAo3Logout } from '../../ao3Auth';
 import type { RootStackParamList } from '../../../app/navigation/types';
 import { useExportCsv } from '../../import';
+import { ScreenHeader } from '../../../shared/components/ScreenHeader';
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -90,9 +91,11 @@ export function SettingsScreen() {
   const { exportCsv, isExporting, snackbarMessage, hideSnackbar } = useExportCsv();
 
   return (
-    <>
+    <View style={[styles.container, { backgroundColor: theme.colors.backgroundPage }]}>
+      <ScreenHeader title="Settings" />
+
       <ScrollView
-        style={[styles.scroll, { backgroundColor: theme.colors.backgroundPage }]}
+        style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
       >
         {/* ── Appearance ──────────────────────────────────────────────────────── */}
@@ -271,16 +274,19 @@ export function SettingsScreen() {
           {snackbarMessage ?? ''}
         </Snackbar>
       </Portal>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   scroll: {
     flex: 1,
   },
   content: {
-    paddingTop: 14,
+    paddingTop: 4,
   },
   cardBody: {
     paddingHorizontal: 16,

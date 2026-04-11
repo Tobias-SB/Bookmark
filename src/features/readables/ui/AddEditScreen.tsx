@@ -54,6 +54,7 @@ import {
   READABLE_STATUSES,
   STATUS_LABELS_SHORT,
   AO3_RATING_LABELS,
+  getStatusColors,
 } from '../domain/readable';
 import { useReadable } from '../hooks/useReadable';
 import { useReadables } from '../hooks/useReadables';
@@ -184,24 +185,6 @@ function getEditDefaultValues(readable: Readable): AddEditFormValues {
   };
 }
 
-// ── Status token helper ───────────────────────────────────────────────────────
-
-function getStatusTokens(
-  status: ReadableStatus,
-  theme: AppTheme,
-): { bg: string; text: string; border: string } {
-  switch (status) {
-    case 'reading':
-      return { bg: theme.colors.statusReadingBg, text: theme.colors.statusReadingText, border: theme.colors.statusReadingBorder };
-    case 'completed':
-      return { bg: theme.colors.statusCompletedBg, text: theme.colors.statusCompletedText, border: theme.colors.statusCompletedBorder };
-    case 'dnf':
-      return { bg: theme.colors.statusDnfBg, text: theme.colors.statusDnfText, border: theme.colors.statusDnfBorder };
-    case 'want_to_read':
-    default:
-      return { bg: theme.colors.statusWantBg, text: theme.colors.statusWantText, border: theme.colors.statusWantBorder };
-  }
-}
 
 // ── Section card sub-components ───────────────────────────────────────────────
 
@@ -260,6 +243,11 @@ export function AddEditScreen({ route, navigation }: Props) {
   const isEditMode = id !== undefined;
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
+
+  // Chip style — borderRadius uses the theme token so it stays in sync with the
+  // design system. Defined here (not in StyleSheet.create) because StyleSheet.create
+  // runs before useAppTheme() is called.
+  const chipStyle = [styles.statusChip, { borderRadius: theme.radii.chip }];
 
   // Header height — measured via onLayout, used as keyboardVerticalOffset
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -574,7 +562,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                         key={k}
                         onPress={() => field.onChange(k)}
                         style={[
-                          styles.statusChip,
+                          chipStyle,
                           {
                             backgroundColor: isActive ? activeBg : theme.colors.backgroundInput,
                             borderColor: isActive ? activeBorder : theme.colors.backgroundBorder,
@@ -753,13 +741,13 @@ export function AddEditScreen({ route, navigation }: Props) {
               <View style={[styles.chipRow, { flexWrap: 'wrap' }]}>
                 {READABLE_STATUSES.map((s) => {
                   const isActive = field.value === s;
-                  const tok = getStatusTokens(s, theme);
+                  const tok = getStatusColors(s, theme.colors);
                   return (
                     <TouchableOpacity
                       key={s}
                       onPress={() => field.onChange(s)}
                       style={[
-                        styles.statusChip,
+                        chipStyle,
                         {
                           backgroundColor: isActive ? tok.bg : theme.colors.backgroundInput,
                           borderColor: isActive ? tok.border : theme.colors.backgroundBorder,
@@ -956,7 +944,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                     <TouchableOpacity
                       onPress={() => field.onChange(null)}
                       style={[
-                        styles.statusChip,
+                        chipStyle,
                         {
                           backgroundColor:
                             field.value === null
@@ -993,7 +981,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                           key={r}
                           onPress={() => field.onChange(r)}
                           style={[
-                            styles.statusChip,
+                            chipStyle,
                             {
                               backgroundColor: isActive
                                 ? theme.colors.kindBookSubtle
@@ -1049,7 +1037,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                               field.onChange(next);
                             }}
                             style={[
-                              styles.statusChip,
+                              chipStyle,
                               {
                                 backgroundColor: isSelected
                                   ? theme.colors.dangerSubtle
@@ -1123,7 +1111,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                                 field.onChange(confirmed.filter((x) => x !== f))
                               }
                               style={[
-                                styles.statusChip,
+                                chipStyle,
                                 {
                                   backgroundColor: theme.colors.kindFanficSubtle,
                                   borderColor: theme.colors.kindFanficBorder,
@@ -1173,7 +1161,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                               key={f}
                               onPress={() => appendFandom(f)}
                               style={[
-                                styles.statusChip,
+                                chipStyle,
                                 {
                                   backgroundColor: theme.colors.backgroundInput,
                                   borderColor: theme.colors.backgroundBorder,
@@ -1196,7 +1184,7 @@ export function AddEditScreen({ route, navigation }: Props) {
                             <TouchableOpacity
                               onPress={() => appendFandom(trimmedInput)}
                               style={[
-                                styles.statusChip,
+                                chipStyle,
                                 {
                                   backgroundColor: theme.colors.backgroundInput,
                                   borderColor: theme.colors.kindFanficBorder,
@@ -1543,9 +1531,9 @@ export function AddEditScreen({ route, navigation }: Props) {
             accessibilityRole="button"
           >
             {isSaving ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={theme.colors.colorWhite} />
             ) : (
-              <Text style={styles.saveButtonText}>
+              <Text style={[styles.saveButtonText, { color: theme.colors.colorWhite }]}>
                 {isEditMode ? 'Save Changes' : 'Add to Library'}
               </Text>
             )}
@@ -1635,7 +1623,7 @@ const styles = StyleSheet.create({
   statusChip: {
     paddingHorizontal: 13,
     paddingVertical: 8,
-    borderRadius: 12,
+    // borderRadius applied via chipStyle (= theme.radii.chip) in the component body
     borderWidth: 1.5,
     minHeight: 36,
     justifyContent: 'center',
@@ -1656,11 +1644,11 @@ const styles = StyleSheet.create({
 
   // Save button
   saveButton: {
-    height: 50,
-    borderRadius: 25,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
   },
-  saveButtonText: { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
+  saveButtonText: { fontSize: 15, fontWeight: '600' },
 });

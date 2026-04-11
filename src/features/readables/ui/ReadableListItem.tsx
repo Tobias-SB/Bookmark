@@ -10,45 +10,10 @@ import { Text, TouchableRipple } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { useAppTheme } from '../../../app/theme';
-import type { AppTheme } from '../../../app/theme';
-import type { Readable, ReadableStatus } from '../domain/readable';
+import { StatusPill } from '../../../shared/components/StatusPill';
+import type { Readable } from '../domain/readable';
 import { STATUS_LABELS_FULL, formatProgressString } from '../domain/readable';
 import { lighten, darken } from '../../../shared/utils/colorUtils';
-
-// ── Status pill helper ────────────────────────────────────────────────────────
-
-function getPillStyle(status: ReadableStatus, colors: AppTheme['colors']) {
-  switch (status) {
-    case 'reading':
-      return {
-        backgroundColor: colors.statusReadingBg,
-        color: colors.statusReadingText,
-        borderWidth: 1,
-        borderColor: colors.statusReadingBorder,
-      };
-    case 'completed':
-      return {
-        backgroundColor: colors.statusCompletedBg,
-        color: colors.statusCompletedText,
-        borderWidth: 1,
-        borderColor: colors.statusCompletedBorder,
-      };
-    case 'dnf':
-      return {
-        backgroundColor: colors.statusDnfBg,
-        color: colors.statusDnfText,
-        borderWidth: 1,
-        borderColor: colors.statusDnfBorder,
-      };
-    case 'want_to_read':
-      return {
-        backgroundColor: colors.statusWantBg,
-        color: colors.statusWantText,
-        borderWidth: 1,
-        borderColor: colors.statusWantBorder,
-      };
-  }
-}
 
 // ── Progress string ───────────────────────────────────────────────────────────
 
@@ -113,9 +78,6 @@ export const ReadableListItem = React.memo(function ReadableListItem({
     darken(accentColor, 0.12),
   ];
 
-  // Status pill
-  const pillStyle = getPillStyle(item.status, colors);
-
   // Accessible card label
   const cardLabel = [
     item.title,
@@ -178,20 +140,7 @@ export const ReadableListItem = React.memo(function ReadableListItem({
 
             {/* Meta row: status pill + progress string */}
             <View style={styles.metaRow}>
-              <View
-                style={[
-                  styles.pill,
-                  {
-                    backgroundColor: pillStyle.backgroundColor,
-                    borderWidth: pillStyle.borderWidth,
-                    borderColor: pillStyle.borderColor,
-                  },
-                ]}
-              >
-                <Text style={[styles.pillText, { color: pillStyle.color }]}>
-                  {STATUS_LABELS_FULL[item.status]}
-                </Text>
-              </View>
+              <StatusPill status={item.status} />
               {progressText !== '' && (
                 <Text style={[styles.progressText, { color: colors.textMeta }]}>
                   {progressText}
@@ -287,15 +236,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 6,
-  },
-  pill: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  pillText: {
-    fontSize: 11,
-    fontWeight: '600',
   },
   progressText: {
     fontSize: 11,

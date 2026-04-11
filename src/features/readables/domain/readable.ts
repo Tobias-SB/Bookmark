@@ -212,6 +212,46 @@ export const PREVIEW_RELATIONSHIP_COUNT = 3;
 /** Number of lines of notes to show before "Show more" collapse. */
 export const NOTES_COLLAPSE_LINES = 3;
 
+// ── Status colour helpers ─────────────────────────────────────────────────────
+// Single canonical source for mapping ReadableStatus → theme colour tokens.
+// Screens must call getStatusColors() instead of maintaining their own switch.
+
+/** Returned by getStatusColors — the three colour slots for any status badge/chip. */
+export interface StatusColors {
+  bg: string;
+  text: string;
+  border: string;
+}
+
+/**
+ * Structural subset of AppColors that getStatusColors requires.
+ * Typed here (not imported from tokens.ts) so the domain layer stays free of
+ * UI-layer imports. AppTheme['colors'] satisfies this interface structurally;
+ * callers pass theme.colors directly without any cast.
+ */
+export interface StatusColorSource {
+  statusWantBg: string;      statusWantText: string;      statusWantBorder: string;
+  statusReadingBg: string;   statusReadingText: string;   statusReadingBorder: string;
+  statusCompletedBg: string; statusCompletedText: string; statusCompletedBorder: string;
+  statusDnfBg: string;       statusDnfText: string;       statusDnfBorder: string;
+}
+
+export function getStatusColors(
+  status: ReadableStatus,
+  colors: StatusColorSource,
+): StatusColors {
+  switch (status) {
+    case 'want_to_read':
+      return { bg: colors.statusWantBg,      text: colors.statusWantText,      border: colors.statusWantBorder };
+    case 'reading':
+      return { bg: colors.statusReadingBg,   text: colors.statusReadingText,   border: colors.statusReadingBorder };
+    case 'completed':
+      return { bg: colors.statusCompletedBg, text: colors.statusCompletedText, border: colors.statusCompletedBorder };
+    case 'dnf':
+      return { bg: colors.statusDnfBg,       text: colors.statusDnfText,       border: colors.statusDnfBorder };
+  }
+}
+
 // ── Progress formatting ───────────────────────────────────────────────────────
 
 /**

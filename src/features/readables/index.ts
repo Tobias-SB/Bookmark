@@ -12,9 +12,17 @@ export type {
   ReadableFilters,
   AO3Rating,
   AuthorType,
+  StatusColors,
+  StatusColorSource,
 } from './domain/readable';
 
-export { READABLE_STATUSES, AO3_RATING_LABELS } from './domain/readable';
+export {
+  READABLE_STATUSES,
+  AO3_RATING_LABELS,
+  STATUS_LABELS_FULL,
+  STATUS_LABELS_SHORT,
+  getStatusColors,
+} from './domain/readable';
 
 // ── Query key factory ─────────────────────────────────────────────────────────
 export { readableKeys } from './domain/queryKeys';

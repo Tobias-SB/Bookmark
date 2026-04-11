@@ -381,7 +381,7 @@ export function QuickAddScreen({ navigation }: Props) {
                 {isImporting && allResults.length === 0 ? (
                   <ActivityIndicator size="small" color={theme.colors.colorWhite} />
                 ) : (
-                  <Text style={styles.actionButtonText}>Search</Text>
+                  <Text style={[styles.actionButtonText, { color: theme.colors.colorWhite }]}>Search</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -404,6 +404,7 @@ export function QuickAddScreen({ navigation }: Props) {
                     style={[
                       styles.resultItem,
                       {
+                        borderRadius: theme.radii.card,
                         backgroundColor: theme.colors.backgroundCard,
                         ...theme.shadows.small,
                       },
@@ -579,7 +580,7 @@ export function QuickAddScreen({ navigation }: Props) {
                 accessibilityLabel="Import from AO3"
                 accessibilityRole="button"
               >
-                <Text style={styles.actionButtonText}>Import from AO3</Text>
+                <Text style={[styles.actionButtonText, { color: theme.colors.colorWhite }]}>Import from AO3</Text>
               </TouchableOpacity>
             )}
           </>
@@ -659,9 +660,9 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     height: 46,
-    borderRadius: 23,
-    borderWidth: 1,
-    paddingHorizontal: 18,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    paddingHorizontal: 14,
     fontSize: 14,
   },
   actionButton: {
@@ -680,7 +681,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   actionButtonText: {
-    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -711,7 +711,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     padding: 12,
-    borderRadius: 14,
     overflow: 'hidden',
     marginBottom: 8,
     gap: 12,

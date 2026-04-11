@@ -61,6 +61,7 @@ export function TabNavigator() {
         component={UpdatesScreen}
         options={{
           title: 'Updates',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Icon source="bell-outline" size={size} color={color} />
           ),
@@ -72,6 +73,7 @@ export function TabNavigator() {
         component={SettingsScreen}
         options={{
           title: 'Settings',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Icon source="cog-outline" size={size} color={color} />
           ),

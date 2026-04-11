@@ -133,6 +133,16 @@ export interface AppTheme {
     chip: number;   // 12
   };
   /**
+   * Shared UI dimension constants. Use these instead of per-screen magic
+   * numbers so that layout details stay in sync across all screens.
+   */
+  metrics: {
+    /** Height of all progress bar track + fill elements across the app. */
+    progressBarHeight: number;
+    /** Top corner radius for all bottom sheet modals (FilterModal, ShareHandlerScreen). */
+    bottomSheetRadius: number;
+  };
+  /**
    * Named font-size scale. Use these instead of ad-hoc numeric values so
    * that all text sizes across the app remain aligned and easy to audit.
    *
@@ -217,7 +227,7 @@ export function makeTokens(theme: MD3Theme): AppTheme {
       // Fanfic → royal blue (light) / moonlit sapphire (dark)
       kindFanfic:       isDark ? '#8AADEE' : '#1A3370',
       kindFanficSubtle: isDark ? '#0E1A2E' : '#E8F0FA',
-      kindFanficBorder: isDark ? '#4A72C4' : '#4A72C4',
+      kindFanficBorder: isDark ? '#6B90D8' : '#4A72C4',
 
       // ── Status tokens — Scholar's Library ────────────────────────────────────
       // Want to read: warm neutral gray — inert, nothing happening yet
@@ -308,6 +318,10 @@ export function makeTokens(theme: MD3Theme): AppTheme {
       card: 18,
       pill: 22,
       chip: 12,
+    },
+    metrics: {
+      progressBarHeight: 4,
+      bottomSheetRadius: 24,
     },
     typography: {
       badge:   9,

@@ -231,7 +231,7 @@ function FilterBadge({ count }: { count: number }) {
         paddingHorizontal: 3,
       }}
     >
-      <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFFFFF' }}>
+      <Text style={{ fontSize: 9, fontWeight: '700', color: theme.colors.colorWhite }}>
         {count}
       </Text>
     </View>
@@ -709,7 +709,7 @@ export function LibraryScreen() {
       {/* FAB — add new readable */}
       <FAB
         icon="plus"
-        color="#FFFFFF"
+        color={theme.colors.colorWhite}
         style={{
           position: 'absolute',
           right: 16,
