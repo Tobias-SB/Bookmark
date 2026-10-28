@@ -45,7 +45,8 @@ Jest runs `*.test.ts` in Node and `*.test.tsx` in the React Native preset. Test 
 - **This machine is Windows.** Run shell commands through Bash, not PowerShell, or RTK won't compress them.
 - **Graphify:**
   - `graphify-out/` is git-ignored.
-  - Only the main session runs `graphify update .`, and only after merging.
+  - Git hooks rebuild the graph on commit, checkout and merge in the main checkout only. They skip secondary worktrees.
+  - Subagents never run `graphify update`; only the main session does.
   - For a TypeScript symbol, use the LSP first.
   - For cross-cutting questions, run `graphify query`, `graphify path` or `graphify explain` before broad grep.
 # Skills (agent-skills plugin)

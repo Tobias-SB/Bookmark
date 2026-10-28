@@ -1,5 +1,10 @@
 # Bookmark — Changelog
 
+## Phase 0: graphify hooks — 28 October 2026
+
+- The graphify git hooks (post-commit, post-checkout, post-merge) keep rebuilding in the main checkout, so the hub always queries current code. A local guard makes them skip secondary worktrees, so parallel spokes never rebuild over each other. The hooks live in untracked `.git/hooks/`; re-running `graphify hook install` drops the guard, so re-add it then.
+- `CLAUDE.md`: "only after merging" becomes "subagents never run `graphify update`", matching the hooks.
+
 ## Phase 0: npm audit triage — 28 October 2026
 
 - `npm audit` reports three high and thirteen low findings, all from two advisories in build and test tooling. Neither reaches the app bundle, so nothing changes now. Do not run `npm audit fix --force`: it downgrades Expo to 51 and Jest to 25.
