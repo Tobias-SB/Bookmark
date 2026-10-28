@@ -1,6 +1,7 @@
 import '../global.css';
 
 import { PortalHost } from '@rn-primitives/portal';
+import { randomUUID } from 'expo-crypto';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import type { ReactNode } from 'react';
@@ -10,13 +11,18 @@ import { DatabaseErrorScreen } from '@/app/DatabaseErrorScreen';
 import { ThemeProvider } from '@/app/theme';
 import { createExpoDb } from '@/db/createExpoDb';
 import { DatabaseProvider } from '@/db/DatabaseProvider';
+import { runMigrations } from '@/db/migrations';
 
 // Provisional file name; renaming it after release would orphan users' data.
 const DATABASE_NAME = 'bookmark.db';
 
 void SplashScreen.preventAutoHideAsync();
 
-const openAppDatabase = () => createExpoDb(DATABASE_NAME);
+async function openAppDatabase() {
+  const db = await createExpoDb(DATABASE_NAME);
+  await runMigrations(db, { randomUUID });
+  return db;
+}
 const hideSplash = () => {
   SplashScreen.hideAsync().catch(() => undefined);
 };

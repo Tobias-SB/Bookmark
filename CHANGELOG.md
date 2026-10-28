@@ -1,5 +1,16 @@
 # Bookmark — Changelog
 
+## Phase 0 Task 6: initial migration — 28 October 2026
+
+- `001_initial.ts` holds the §8.2 SQL verbatim. A test fails if it drifts from the spec, because pre-release the two are edited together.
+- The Up Next seed follows spec v4.8 (§7.7, §9.2): fixed values, `GENESIS_HLC` as `updated_hlc` and every field clock, and `hlc_last` not seeded. This replaces the per-device values in the Phase 0 plan, which predate v4.8.
+- **Provisional:**
+  - "Every field" in the seed's `field_clocks` means the nine `Shelf` domain fields other than `id` (§6.4, §9.4).
+  - `runMigrations` takes only `randomUUID`; the plan's `clock` became unnecessary once the seed timestamps were fixed.
+  - A database with a `user_version` newer than the app is refused with `unsupported_version`.
+- **New dependency:** `expo-crypto` (already in §4).
+- **Web check:** migrations run on a fresh database and re-run as a no-op after a reload.
+
 ## Phase 0 Task 5: database port — 28 October 2026
 
 - `withWriteQueue` turns an unqueued connection into the `Db` port. Writes and transactions share one promise chain, reads run freely, and every failure becomes an `AppError` (`db`, or `storage_full` when the driver reports a full disk). Inside a transaction, the `tx` handle skips the queue.
