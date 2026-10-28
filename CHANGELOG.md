@@ -1,5 +1,15 @@
 # Bookmark — Changelog
 
+## Phase 0 Task 8: enforcement — 28 October 2026
+
+- `eslint.config.js` enforces the `CLAUDE.md` red flags that lint can express: `Platform.OS`, `fetch`, storage, `DELETE FROM` on synced tables, raw colours, banned libraries, Ko-fi, `any`, `@ts-ignore`, object-literal assertions, and JSX text outside `t()`. Each rule has a flagged fixture and an allowed fixture in `src/__tests__/lint/redFlags.test.ts`.
+- `DELETE FROM` on a synced table is allowed only in `src/features/*/data/*Repository.ts`, following spec v4.8 (§16), rather than the plan's function-name selector. Review still confirms it sits in `purgeTombstonesOlderThan`. `DELETE FROM id_aliases` is flagged everywhere (§8.3).
+- **Provisional:**
+  - `app.config.ts` may hold a raw colour, because the Android adaptive-icon background must be a literal.
+  - Ko-fi is allowed only in `*.web.ts(x)` files, as an approximation of "never reachable from native".
+  - `npm run lint` fails on warnings too (`--max-warnings 0`).
+- **Stop hook:** `.claude/hooks/stop-checks.sh` runs type-check, lint and tests when source or config changed, and blocks (exit 2) on failure. It stays silent on Markdown-, `docs/`- and `tasks/`-only changes. *Provisional:* on a repeat stop it still blocks, with a short message.
+
 ## Phase 0 Task 7: scripts — 28 October 2026
 
 - Scripts: `typecheck`, `lint` (`expo lint`, flat config), `test` and `export:web`. Each exits 0 on a clean tree and non-zero on a planted failure. The `CLAUDE.md` Commands table is filled in.
