@@ -4,9 +4,9 @@ See `tasks/plan.md` for files, acceptance criteria and tests.
 
 ## Part A: Foundation (this pass)
 - [x] Task 1: Spike S17 (web go; Android device checks pending) (scaffold, Uniwind, `@rn-primitives`, web export under COOP/COEP, go/no-go)
-- [ ] **Checkpoint:** S17 result reported to the owner
+- [x] **Checkpoint:** S17 result reported to the owner
 - [x] Task 2: JS tabs layout
-- [ ] Task 3: Theme tokens and `src/app/theme/`
+- [x] Task 3: Theme tokens and `src/app/theme/`
 - [ ] Task 4: `clock.ts`, `errors.ts`, `json.ts` (+ minimal Jest)
 - [ ] Task 5: `Db` port, write queue, `createExpoDb`, `createTestDb`, `DatabaseProvider` / `useDb`
 - [ ] Task 6: `001_initial.ts` and the migration runner; rebuild graphify on `src/`

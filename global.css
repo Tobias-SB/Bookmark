@@ -1,30 +1,52 @@
 @import 'tailwindcss';
 @import 'uniwind';
 
+/* Every theme defines the same tokens; src/app/theme/__tests__/contrast.test.ts checks them against WCAG 2.2 AA. */
 @layer theme {
   :root {
     @variant light {
       --color-surface: #ffffff;
+      --color-surface-variant: #eceef4;
       --color-on-surface: #1b1b1f;
+      --color-on-surface-variant: #44474f;
       --color-primary: #3d5a98;
       --color-on-primary: #ffffff;
       --color-outline: #74777f;
+      --color-warning: #ffdcbe;
+      --color-on-warning: #2c1600;
+      --color-error: #ba1a1a;
+      --color-on-error: #ffffff;
+      --color-focus: #0b57d0;
     }
 
     @variant dark {
       --color-surface: #1b1b1f;
+      --color-surface-variant: #2b2d33;
       --color-on-surface: #e4e2e6;
+      --color-on-surface-variant: #c4c6d0;
       --color-primary: #adc6ff;
       --color-on-primary: #102f60;
       --color-outline: #8e9099;
+      --color-warning: #ffb870;
+      --color-on-warning: #2c1600;
+      --color-error: #ffb4ab;
+      --color-on-error: #690005;
+      --color-focus: #adc6ff;
     }
 
     @variant black {
       --color-surface: #000000;
+      --color-surface-variant: #1b1b1f;
       --color-on-surface: #e4e2e6;
+      --color-on-surface-variant: #c4c6d0;
       --color-primary: #adc6ff;
       --color-on-primary: #102f60;
       --color-outline: #8e9099;
+      --color-warning: #ffb870;
+      --color-on-warning: #2c1600;
+      --color-error: #ffb4ab;
+      --color-on-error: #690005;
+      --color-focus: #adc6ff;
     }
   }
 }

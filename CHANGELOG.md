@@ -1,5 +1,11 @@
 # Bookmark — Changelog
 
+## Phase 0 Task 3: theme — 28 October 2026
+
+- **Provisional token names:** `surface`, `surface-variant`, `on-surface`, `on-surface-variant`, `primary`, `on-primary`, `outline`, `warning`, `on-warning`, `error`, `on-error`, `focus`, for light, dark and black. `contrast.test.ts` parses `global.css` and holds every text pair to 4.5:1, and outline and focus to 3:1 (§14).
+- `ThemeProvider` takes `preference` as a prop. The root passes `'system'` until Phase 1's `SettingsProvider` supplies the stored value. `'system'` reaches Uniwind unchanged, because on native an explicit light or dark pins `Appearance`.
+- Selected tabs use bold text as well as colour (§14).
+
 ## Phase 0 Task 2: tabs layout — 28 October 2026
 
 - `(tabs)/_layout.tsx` uses headless `expo-router/ui` tabs through `<TabList asChild>`, with our `TabBar` below 900 px and `NavRail` at 900 px and wider. `TabItem` is the shared tab button.
