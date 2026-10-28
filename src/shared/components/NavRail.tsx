@@ -11,7 +11,7 @@ export function NavRail({ children }: { children?: ReactNode }) {
     <View
       role="tablist"
       testID="nav-rail"
-      className="w-24 gap-2 border-r border-outline bg-surface px-2"
+      className="min-w-24 gap-2 border-r border-outline bg-surface px-2"
       style={{ paddingTop: top + 8, paddingBottom: bottom + 8, paddingLeft: left + 8 }}
     >
       {children}

@@ -20,7 +20,8 @@ export function TabItem({ label, layout, isFocused = false, onPress, onLongPress
       {...{ href }}
       className={`min-h-12 min-w-12 ${layout === 'bar' ? 'flex-1' : ''} items-center justify-center rounded-lg px-2 py-1 ${isFocused ? 'bg-primary' : ''}`}
     >
-      <Text className={isFocused ? 'text-on-primary' : 'text-on-surface'}>
+      {/* Bold as well as colour, so the selected state never relies on colour alone (spec §14). */}
+      <Text className={isFocused ? 'font-bold text-on-primary' : 'text-on-surface'}>
         {label}
       </Text>
     </Pressable>
