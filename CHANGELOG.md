@@ -1,5 +1,11 @@
 # Bookmark — Changelog
 
+## Phase 0: generated native folders — 28 October 2026
+
+- `expo run:android` generates `android/`. It is build output (spec §2.4: native settings go through `app.config.ts` and config plugins, never the generated projects), so `/android` and `/ios` stay in `.gitignore` and are never committed. Both were already ignored; neither was ever tracked.
+- The build switched the `android` and `ios` npm scripts to `expo run:android` and `expo run:ios`, which build the native app instead of opening Expo Go.
+- **Open:** the build also wrote the app ID `io.github.tobias_sb.bookmark` (`android.package`, `ios.bundleIdentifier`) into `app.config.ts`. It stays uncommitted until the owner decides, before the first Play upload, because a published app ID can never change and the Google Books key restriction (spec §10) is tied to it.
+
 ## Phase 0: graphify hooks — 28 October 2026
 
 - The graphify git hooks (post-commit, post-checkout, post-merge) keep rebuilding in the main checkout, so the hub always queries current code. A local guard makes them skip secondary worktrees, so parallel spokes never rebuild over each other. The hooks live in untracked `.git/hooks/`; re-running `graphify hook install` drops the guard, so re-add it then.
