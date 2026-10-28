@@ -1,1 +1,2 @@
 graphify-out/graph.json merge=graphify
+*.patch text eol=lf

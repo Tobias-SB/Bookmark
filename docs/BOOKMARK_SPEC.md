@@ -215,6 +215,7 @@ Expo managed workflow with development builds. Targets `android` and `web` (`ios
 | HTTP | `fetch` via `httpClient` (§13.1) | AO3 requests always via `politeFetch`. |
 | Tests | Jest (`jest-expo`), Testing Library, `better-sqlite3`, `fast-check`, Maestro (Android E2E), Playwright (web E2E) | Dev dependencies only. |
 | Lint | ESLint with Expo's config | Dev dependency. Carries the architecture lint rules (§16). |
+| Dependency patches | `patch-package` | Dev dependency, run on `postinstall`. Only for upstream bugs with a recorded reason in `CHANGELOG.md`; each patch is removed once the upstream fix ships. |
 
 **Not used:** React Native Paper or any other styled component library; native tabs; blur libraries; chart libraries (the stats bar chart is plain Views).
 

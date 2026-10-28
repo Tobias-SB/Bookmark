@@ -1,0 +1,12 @@
+diff --git a/node_modules/uniwind/dist/metro/transformer.cjs b/node_modules/uniwind/dist/metro/transformer.cjs
+--- a/node_modules/uniwind/dist/metro/transformer.cjs
++++ b/node_modules/uniwind/dist/metro/transformer.cjs
+@@ -1935,7 +1935,7 @@ const getTransformWorker = (isExpoProject) => {
+ const transform = async (config$1, projectRoot, filePath, data, options) => {
+   const worker = getTransformWorker(config$1.uniwind.isExpoProject);
+   const isCss = options.type !== "asset" && path__default.join(process.cwd(), config$1.uniwind.cssEntryFile) === path__default.join(projectRoot, filePath);
+-  if (filePath.endsWith("/components/web/metro-injected.js")) {
++  if (filePath.split(String.fromCharCode(92)).join("/").endsWith("/components/web/metro-injected.js")) {
+     const bundlerConfig2 = config.UniwindBundlerConfig.fromMetroConfig(config$1.uniwind, config.Platform.Web);
+     data = Buffer.from(
+       [
