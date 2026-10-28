@@ -33,6 +33,8 @@ const PAIRS: [string, string, number][] = [
   ['on-surface', 'surface-variant', 4.5],
   ['on-surface-variant', 'surface-variant', 4.5],
   ['primary', 'surface', 4.5],
+  ['primary', 'surface-variant', 4.5],
+  ['error', 'surface-variant', 4.5],
   ['on-primary', 'primary', 4.5],
   ['on-warning', 'warning', 4.5],
   ['error', 'surface', 4.5],
