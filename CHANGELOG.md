@@ -8,7 +8,9 @@
   - `app.config.ts` may hold a raw colour, because the Android adaptive-icon background must be a literal.
   - Ko-fi is allowed only in `*.web.ts(x)` files, as an approximation of "never reachable from native".
   - `npm run lint` fails on warnings too (`--max-warnings 0`).
-- **Stop hook:** `.claude/hooks/stop-checks.sh` runs type-check, lint and tests when source or config changed, and blocks (exit 2) on failure. It stays silent on Markdown-, `docs/`- and `tasks/`-only changes. *Provisional:* on a repeat stop it still blocks, with a short message.
+- **Stop hook:** `.claude/hooks/stop-checks.sh` runs type-check, lint and tests when source or config changed, and blocks (exit 2) on failure. It stays silent on Markdown-, `docs/`- and `tasks/`-only changes. It blocks once per stop; on the repeat stop (`stop_hook_active`) it lets Claude finish, so a failure Claude can't fix never loops.
+- **Review fixes:** a file in two zones (for example `src/platform/x.web.ts`) is exempt from both. Banned-library matching covers package imports only. The colour pattern catches hex inside longer strings and no longer flags words such as "go-to-green". `*.sh` files are checked out with LF.
+- **Not lintable; left to review and tests:** `DELETE FROM` with an interpolated or bracketed table name, `fetch` or `Platform.OS` reached by destructuring or computed access, named colours outside style objects, and `as unknown as X` casts.
 
 ## Phase 0 Task 7: scripts — 28 October 2026
 

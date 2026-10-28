@@ -31,6 +31,9 @@ const COMPONENT = 'src/shared/components/Example.tsx';
 describe.each<[string, string, string, string]>([
   // [red flag, code, flagged path, allowed path]
   ['Platform.OS', "import { Platform } from 'react-native';\nexport const os = Platform.OS;", FEATURE, 'src/platform/capabilities.ts'],
+  // A file in two zones keeps both exemptions.
+  ['Platform.OS in a web adapter', "import { Platform } from 'react-native';\nexport const os = Platform.OS;", 'src/features/x/files.web.ts', 'src/platform/files.web.ts'],
+  ['Ko-fi in a web adapter', "export const link = 'https://ko-fi.com/b';", 'src/platform/support.native.ts', 'src/platform/support.web.ts'],
   ['global fetch', "export const get = () => fetch('https://example.org');", FEATURE, 'src/shared/http/httpClient.ts'],
   ['window.fetch', "export const get = () => window.fetch('https://example.org');", FEATURE, 'src/shared/http/httpClient.ts'],
   [
@@ -48,6 +51,8 @@ describe.each<[string, string, string, string]>([
   ['hex colour', "export const tint = '#ffffff';", COMPONENT, 'src/app/theme/palette.ts'],
   ['rgb colour', "export const tint = 'rgb(0, 0, 0)';", COMPONENT, 'src/app/theme/palette.ts'],
   ['palette class', "export const cls = 'flex-1 bg-red-500';", COMPONENT, 'src/app/theme/palette.ts'],
+  ['palette class with a variant', "export const cls = 'dark:text-white';", COMPONENT, 'src/app/theme/palette.ts'],
+  ['hex inside a longer string', "export const border = '1px solid #fff';", COMPONENT, 'src/app/theme/palette.ts'],
   ['arbitrary colour class', "export const cls = 'text-[#123456]';", COMPONENT, 'src/app/theme/palette.ts'],
   ['named colour on a style key', "export const s = { backgroundColor: 'red' };", COMPONENT, 'src/app/theme/palette.ts'],
   ['Ko-fi link', "export const link = 'https://ko-fi.com/bookmark';", 'src/platform/support.ts', 'src/platform/support.web.ts'],
@@ -98,6 +103,8 @@ describe('does not flag ordinary code', () => {
     ['transparent', "export const s = { backgroundColor: 'transparent' };"],
     ['as const', "export const tabs = ['a', 'b'] as const;"],
     ['a DELETE on a device-local table', "export const sql = 'DELETE FROM wip_updates WHERE is_read = 1';"],
+    ['words that look like palette classes', "export const label = 'Fix the go-to-green flow';"],
+    ['a local module named like a chart', "import { bars } from '@/features/stats/chartData';\nexport default bars;"],
     ['JSX through t()', "import { Text } from 'react-native';\nconst t = (k: string) => k;\nexport const C = () => <Text>{t('k')}</Text>;"],
   ])('%s', async (_label, code) => {
     expect(await redFlags(code, COMPONENT)).toEqual([]);

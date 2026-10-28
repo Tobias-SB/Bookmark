@@ -37,7 +37,8 @@ const syntax = [
     },
     {
       zone: 'theme',
-      selector: `${node}=/(^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$)|\\b(rgba?|hsla?)\\(|\\[#[0-9a-f]+\\]|\\b(${COLOUR_UTILITIES})-(${PALETTE})(-\\d{2,3})?\\b/i]`,
+      // A hex token, rgb()/hsl(), an arbitrary [#…] class, or a palette class (with optional variant: prefix).
+      selector: `${node}=/(^|[\\s(:,])#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\\b|\\b(rgba?|hsla?)\\(|\\[#[0-9a-f]+\\]|(^|[\\s:])(${COLOUR_UTILITIES})-(${PALETTE})(-\\d{2,3})?(\\/\\d+)?(?=\\s|$)/i]`,
       message: 'No raw colours: use semantic token classes (spec §14).',
     },
     {
@@ -68,9 +69,9 @@ const ZONES = {
   web: ['**/*.web.ts', '**/*.web.tsx'],
 };
 
-const restrictedSyntax = (zone) => [
+const restrictedSyntax = (zones) => [
   'error',
-  ...syntax.filter((r) => r.zone !== zone).map(({ selector, message }) => ({ selector, message })),
+  ...syntax.filter((r) => !zones.includes(r.zone)).map(({ selector, message }) => ({ selector, message })),
 ];
 
 const storageGlobals = ['localStorage', 'sessionStorage'].map((name) => ({
@@ -86,7 +87,7 @@ module.exports = defineConfig([
   },
   {
     rules: {
-      'no-restricted-syntax': restrictedSyntax(null),
+      'no-restricted-syntax': restrictedSyntax([]),
       'no-restricted-globals': ['error', fetchGlobal, ...storageGlobals],
       'no-restricted-imports': [
         'error',
@@ -99,7 +100,8 @@ module.exports = defineConfig([
           ],
           patterns: [
             {
-              regex: '^react-native-paper($|/)|blur|^victory|chart|^d3($|-)',
+              // Package imports only: local paths such as '@/features/stats/chartData' stay allowed.
+              regex: '^(?!\\.|@/)(@[^/]+/)?(react-native-paper|[^/]*blur[^/]*|[^/]*charts?[^/]*|victory[^/]*|recharts|d3(-[^/]+)?)(/|$)',
               message: 'No styled component, blur or chart libraries (spec §4).',
             },
           ],
@@ -109,8 +111,17 @@ module.exports = defineConfig([
   },
   ...Object.entries(ZONES).map(([zone, files]) => ({
     files,
-    rules: { 'no-restricted-syntax': restrictedSyntax(zone) },
+    rules: { 'no-restricted-syntax': restrictedSyntax([zone]) },
   })),
+  // A file in two zones (say src/platform/x.web.ts) is exempt from both; a nested files array means "match all".
+  ...Object.keys(ZONES).flatMap((a, i) =>
+    Object.keys(ZONES)
+      .slice(i + 1)
+      .map((b) => ({
+        files: ZONES[a].flatMap((pa) => ZONES[b].map((pb) => [pa, pb])),
+        rules: { 'no-restricted-syntax': restrictedSyntax([a, b]) },
+      })),
+  ),
   {
     files: ZONES.http,
     rules: { 'no-restricted-globals': ['error', ...storageGlobals] },
