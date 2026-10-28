@@ -31,6 +31,8 @@
     "@types/node": "^22.20.5",
     "@types/react": "~19.3.0",
     "better-sqlite3": "^13.0.3",
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "~58.0.4",
     "jest": "~30.5.2",
     "jest-expo": "~58.0.13",
     "patch-package": "^8.0.1",
@@ -41,7 +43,11 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "typecheck": "tsc --noEmit",
+    "lint": "expo lint",
+    "test": "jest",
+    "export:web": "expo export --platform web"
   },
   "private": true
 }

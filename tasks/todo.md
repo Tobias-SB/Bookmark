@@ -10,7 +10,7 @@ See `tasks/plan.md` for files, acceptance criteria and tests.
 - [x] Task 4: `clock.ts`, `errors.ts`, `json.ts` (+ minimal Jest)
 - [x] Task 5: `Db` port, write queue, `createExpoDb`, `createTestDb`, `DatabaseProvider` / `useDb`
 - [x] Task 6: `001_initial.ts` and the migration runner; rebuild graphify on `src/`
-- [ ] Task 7: Scripts and the Commands table
+- [x] Task 7: Scripts and the Commands table
 - [ ] Task 8: ESLint red flags and the `Stop` hook
 - [ ] Task 9: CI (GitHub Actions)
 - [ ] **Checkpoint:** merged to `main`; `/doctor prompt-audit`; Part B go-ahead

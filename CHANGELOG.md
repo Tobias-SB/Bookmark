@@ -1,5 +1,12 @@
 # Bookmark — Changelog
 
+## Phase 0 Task 7: scripts — 28 October 2026
+
+- Scripts: `typecheck`, `lint` (`expo lint`, flat config), `test` and `export:web`. Each exits 0 on a clean tree and non-zero on a planted failure. The `CLAUDE.md` Commands table is filled in.
+- **Provisional:** the Jest projects split by file type, not folder: `*.test.ts` runs in `jest-expo/node` and `*.test.tsx` in `jest-expo`.
+- **New dev dependencies:** `eslint` and `eslint-config-expo` (already in §4).
+- `ThemeProvider` drops its "applied" render gate. Its layout effect already runs before paint, and the gate was a set-state-in-effect lint error.
+
 ## Phase 0 Task 6: initial migration — 28 October 2026
 
 - `001_initial.ts` holds the §8.2 SQL verbatim. A test fails if it drifts from the spec, because pre-release the two are edited together.

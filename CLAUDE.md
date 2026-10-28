@@ -8,16 +8,18 @@ Local-first reading tracker for books and AO3 fanfic. One Expo codebase builds a
 - **History** goes in `CHANGELOG.md`, never in code comments.
 # Commands
  
-Fill these in after scaffolding. Subagents run exactly these.
+Subagents run exactly these.
  
 | Purpose | Command |
 |---|---|
-| Type-check | _to be set after scaffold_ |
-| Lint | _to be set after scaffold_ |
-| Unit tests | _to be set after scaffold_ |
-| Single test file | _to be set after scaffold_ |
-| Web export | _to be set after scaffold_ |
-| Uncompressed output (bypass RTK) | _to be set after checking `rtk --help`_ |
+| Type-check | `npm run typecheck` |
+| Lint | `npm run lint` |
+| Unit tests | `npm test` |
+| Single test file | `npm test -- <path>` |
+| Web export | `npm run export:web` |
+| Uncompressed output (bypass RTK) | `rtk proxy <cmd>` |
+
+Jest runs `*.test.ts` in Node and `*.test.tsx` in the React Native preset. Test files live in `__tests__/` under `src/`, never under `app/`, where they would become routes.
  
 # Decisions
  

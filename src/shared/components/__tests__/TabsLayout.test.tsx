@@ -1,17 +1,18 @@
 import { renderRouter, screen } from 'expo-router/testing-library';
 
-const mockUseWindowDimensions = jest.fn();
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
-  __esModule: true,
-  default: () => mockUseWindowDimensions(),
-}));
-
 import TabsLayout from '../../../../app/(tabs)/_layout';
 import HomeScreen from '../../../../app/(tabs)/index';
 import LibraryScreen from '../../../../app/(tabs)/library';
 import SettingsScreen from '../../../../app/(tabs)/settings';
 import ShelvesScreen from '../../../../app/(tabs)/shelves';
 import UpdatesScreen from '../../../../app/(tabs)/updates';
+
+// jest.mock is hoisted above the imports by babel-jest.
+const mockUseWindowDimensions = jest.fn();
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => mockUseWindowDimensions(),
+}));
 
 const routes = {
   '(tabs)/_layout': TabsLayout,
