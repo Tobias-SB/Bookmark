@@ -18,6 +18,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # Fails if type generation had to rewrite tsconfig.json, which would hide a broken committed config.
+      - run: git diff --exit-code tsconfig.json
       - run: npm run lint
       - run: npm test
       - run: npm run export:web
