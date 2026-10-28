@@ -3,9 +3,10 @@ import '../global.css';
 import { PortalHost } from '@rn-primitives/portal';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Uniwind } from 'uniwind';
 
-// shortcut: spike reads the preset theme from the URL; Task 3 replaces this with ThemeProvider fed by settings.
+// shortcut: reads a preset theme from the URL for S17 checks; Task 3 replaces this with ThemeProvider fed by settings.
 function presetTheme(): 'light' | 'dark' | 'black' | 'system' {
   if (typeof location === 'undefined') return 'system';
   const value = new URLSearchParams(location.search).get('theme');
@@ -24,9 +25,9 @@ export default function RootLayout() {
   if (!themeReady) return null;
 
   return (
-    <>
+    <SafeAreaProvider>
       <Stack screenOptions={{ headerShown: false }} />
       <PortalHost />
-    </>
+    </SafeAreaProvider>
   );
 }

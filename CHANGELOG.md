@@ -1,5 +1,11 @@
 # Bookmark — Changelog
 
+## Phase 0 Task 2: tabs layout — 28 October 2026
+
+- `(tabs)/_layout.tsx` uses headless `expo-router/ui` tabs through `<TabList asChild>`, with our `TabBar` below 900 px and `NavRail` at 900 px and wider. `TabItem` is the shared tab button.
+- **Provisional:** `t()` is a typed lookup over `src/shared/i18n/en.ts` with no dependency. Tabs show labels only, because the spec names no icon set. `@/` maps to `src/`.
+- Jest (`jest-expo`) and Testing Library arrived in Task 2 rather than Task 4, because Task 2 has component tests. TypeScript 6 defaults `types` to `[]`, so `tsconfig.json` names `jest`.
+
 ## Spike S17 — 28 October 2026
 
 **Installed:** Expo SDK 58.0.21 · React Native 0.88.1 · React 19.3.0 · React Native Web 0.21.4 · Uniwind 1.13.1 · Tailwind CSS 4.3.3 · `@rn-primitives` alert-dialog, dropdown-menu, select 1.5.2, portal 1.5.3 · expo-router 58.0.28.
