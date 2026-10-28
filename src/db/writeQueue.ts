@@ -16,6 +16,9 @@ export function createWriteQueue(): Enqueue {
 /**
  * Wraps an unqueued connection into the `Db` port (spec §5.3): writes and transactions go through
  * one queue, reads run freely, and every failure becomes an AppError.
+ *
+ * Inside `transaction(fn)`, use only the `tx` handle: a write on the outer `db` waits behind the
+ * transaction that is waiting for it, and never settles.
  */
 export function withWriteQueue(connection: Db): Db {
   return wrap(connection, createWriteQueue());

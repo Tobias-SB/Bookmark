@@ -16,7 +16,8 @@ function connection(sqlite: SQLiteDatabase): Db {
       // expo-sqlite's transaction helpers resolve void, so the callback's value is carried out here.
       const results: T[] = [];
       if (capabilities.platform === 'web') {
-        // Not exclusive on web; safe only because every write goes through the queue (spec §5.3).
+        // Not exclusive on web; writes stay serial because every write goes through the queue (spec §5.3).
+        // shortcut: unqueued reads on this one connection can see a running transaction's uncommitted rows; queue reads on web if that ever shows.
         await sqlite.withTransactionAsync(async () => {
           results.push(await fn(db));
         });
