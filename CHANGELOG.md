@@ -9,9 +9,11 @@
 - Light, dark and black switch at runtime. A cold load with a preset theme paints only that theme. Before JS runs, the page background follows the system scheme (`html`/`body` use `--color-surface`); an exact pre-JS match is impossible because the saved theme lives in SQLite.
 - AlertDialog: `role="alertdialog"` named by its title, Tab and Shift+Tab stay inside, Escape closes, focus returns to the trigger.
 - **Defect (Uniwind 1.13.1, Windows only):** the web transformer matches `/components/web/metro-injected.js` with forward slashes, so on Windows extra themes are never registered on web and `setTheme('black')` throws. Native and Linux builds (CI, hosting) are unaffected. Fixed by `patches/uniwind+1.13.1.patch`, which normalises the path. Re-verified after a clean `npm ci`.
-- **New dependency: `patch-package`** (dev, `postinstall`), so Windows development matches CI. It was added to the §4 table. Remove the patch when Uniwind ships a fix. The patch was written with `git diff`, because `patch-package`'s own generator fails on this machine.
+- **New dependency: `patch-package`** (dev, `postinstall`), so Windows development matches CI. It was added to the §4 table. `uniwind` is pinned exactly while the patch exists. Remove both when Uniwind ships a fix. The patch was written with `git diff`, because `patch-package`'s own generator fails on this machine.
 
 **Expo Router root:** expo-router 58 uses `src/app/` as the routes root whenever it exists, which collides with `src/app/theme/` (§17). The plugin's `root` is pinned to `./app`.
+
+**Static serving:** `public/serve.json` (not the repo root, as the plan had it) so the export copies it into `dist/`; `npx serve@14 dist` then sends COOP/COEP. The production host sets its own headers (S6).
 
 **Android:** the bundle exports and registers all three themes. Device checks are pending the owner.
 
