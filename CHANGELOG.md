@@ -1,0 +1,57 @@
+# Bookmark — Changelog
+
+## Spec v4.8 — 28 October 2026
+
+Answers questions raised while planning the Phase 0 migration.
+
+- **Up Next seed:** fixed values on every device, with `GENESIS_HLC` as every field's clock, so seeds merge without conflict and any real edit wins (§7.7, §8.2).
+- **HLC:** `GENESIS_HLC` defined. `field_clocks` keys are camelCase domain field names. `hlc_last` is not seeded (§9.2).
+- **Lint:** `DELETE FROM` on synced tables is allowed only in repository files; review confirms it sits in `purgeTombstonesOlderThan` (§16).
+
+**Spec sections changed:** §7.7, §8.2, §9.2, §16, §22 (item 39).
+
+## Spec v4.7 — 28 October 2026
+
+Resolves contradictions between `CLAUDE.md` and the spec, found during the kickoff review.
+
+- **Tombstone purge:** each synced repository except `aliasRepository` exposes `purgeTombstonesOlderThan(db, cutoff)`. A startup service runs them in one transaction, and they are the only hard delete of synced rows. `id_aliases` rows are never purged (§8.3, §8.6, §16, §22.4).
+- **Storage:** `AsyncStorage` and `localStorage` are banned outright, not only "for data" (§4).
+- **Spec gaps:** §0 now matches `CLAUDE.md`. Take a provisional choice and record it; stop and ask first only when the choice is hard to undo.
+- **AO3-owned fields:** §16 now says they are written only by AO3 updates (`applyAo3Fields` with a `planAo3Update` patch), and user patches pass through `stripAo3OwnedFields`. `planAo3Update` itself is pure and writes nothing.
+
+**Spec sections changed:** §0, §4, §8.3, §8.6, §16, §22 (item 4).
+
+## Spec v4.6 — 28 October 2026
+
+**Development workflow**
+- `CLAUDE.md` replaces the old system prompt as the top of the priority order (§0). It and the subagent definitions in `.claude/agents/` point to spec sections instead of repeating them; the spec does not describe the development tooling (§0, §5.2).
+- The version number is removed from the spec's title. Spec versions are tracked only in this changelog.
+- "Full files only — no diffs" is retired. The rule is now "complete code only": partial edits are allowed, placeholder or collapsed code is not (§5.2).
+
+**Quality**
+- ESLint added to the stack table (§4).
+- Architecture lint rules added (§16): ESLint enforces the §5.2 rules it can express (`Platform.OS`, `fetch`, `AsyncStorage`/`localStorage`, raw colours, banned libraries, Ko-fi in native code, `any`, `@ts-ignore`). The rest are covered by repository tests and review. CI lint includes them.
+
+**Roadmap**
+- Phase 0 now runs spike S17 first, because it can change the stack, and includes the architecture lint rules (§19).
+
+**Repository layout**
+- `CLAUDE.md`, `CHANGELOG.md`, `docs/` and `.claude/` added to the folder structure. `.gitignore` excludes `CLAUDE.local.md`, `.claude/settings.local.json` and generated tool output such as `graphify-out/` (§17).
+
+**Spec sections changed:** title, §0, §4, §5.2, §16, §17, §19, §20 (decisions 39–40).
+
+## Spec v4.5 — 26 October 2026
+
+**Tech stack**
+- Baseline set to Expo SDK 58, React Native 0.88, React 19.3, React Native Web 0.21, Node 22.13 or later.
+- React Native Paper removed. Styling is now Uniwind with Tailwind CSS v4; themes (light, dark, black) are CSS variables in `global.css`.
+- Components are our own (`src/shared/components/`, listed in §12.14). `@rn-primitives` is added only for AlertDialog, DropdownMenu, Select and Portal, because focus handling, portals and dismissal are costly to build correctly.
+- `@react-native-community/datetimepicker` added for date input on native, behind a new `dateInput` platform adapter; web uses `<input type="date">`.
+- Tabs: Expo Router headless JS tabs on every platform, including iOS in Phase 6, with a nav rail at 900 px and wider. Native tabs are not used.
+- Forms: `Controller` for every input component (was "every Paper input").
+- Provider order: `ThemeProvider` (Uniwind) replaces `PaperProvider`; `PortalHost` added.
+
+**Scope**
+- Discreet mode removed: `ContentPreferences.discreetMode`, summary blur and cover blur. `coverVisibility` now returns `'show' | 'placeholder'`. Sync import ignores a `discreetMode` field in older files. Content preferences (hidden warnings and ratings) are unchanged.
+
+**Spec sections changed:** §1 (principle 6), §2.1, §2.4, §3.1, §3.2, §4, §5.1, §5.2, §5.4, §5.5, §7.8, §7.12, §8.1, §8.7, §9.3, §10.9, §12.1, §12.4, §12.5, §12.9, §12.10, §12.13, §12.14 (new), §13.2, §14, §16, §17, §18.2, §19, §20 (decisions 34–38), §21 (spike S17), §22 (items 35–38).
