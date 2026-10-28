@@ -198,6 +198,7 @@ Expo managed workflow with development builds. Targets `android` and `web` (`ios
 | Storage | `expo-sqlite` on Android and web, behind the `Db` port (§5.3) | Web support is alpha and needs the WASM Metro config plus COOP/COEP headers; use `require-corp` because Safari does not support `credentialless` (spike S1). No AsyncStorage and no localStorage anywhere: all persistence, settings included, is SQLite. |
 | Server state | TanStack Query v5 | Query keys from factories only. |
 | Forms | React Hook Form + `@hookform/resolvers` + Zod (installed major) | `Controller` for every input component; validate on submit. |
+| Validation | Zod 4.6.6 or later | Required minimum: earlier versions can exhaust memory on an oversized array that fails validation (GHSA-mrhx-c7xc-m3w5). Every array and string schema on untrusted input still carries the `.max()` caps from §9 and §10. |
 | Layout | `react-native-safe-area-context` | `SafeAreaProvider` at root. |
 | IDs and randomness | `expo-crypto` | `randomUUID()`, `getRandomValues()`. |
 | Encryption | `@noble/ciphers`, `@noble/hashes` | Pure JS, same code on Android and web. Backup/sync file encryption only. |

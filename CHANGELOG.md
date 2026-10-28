@@ -1,5 +1,11 @@
 # Bookmark — Changelog
 
+## Phase 0: npm audit triage — 28 October 2026
+
+- `npm audit` reports three high and thirteen low findings, all from two advisories in build and test tooling. Neither reaches the app bundle, so nothing changes now. Do not run `npm audit fix --force`: it downgrades Expo to 51 and Jest to 25.
+- **Zod** (high, GHSA-mrhx-c7xc-m3w5, fixed in 4.6.6): `zod@3.25.76` comes in through `@expo/cli` and `eslint-plugin-react-hooks`, which only read our own config. No override, because Zod 4 changes the API those tools use. It clears when Expo updates. Spec §4 now requires Zod 4.6.6 or later when the app adds Zod itself.
+- **deepmerge** (low, GHSA-gcqx-w48m-w2h4, no fixed release): `deepmerge@4.3.1` comes in through `@expo/config` and `jest-config` and merges only our own config files. Accepted. The app must not use deepmerge on untrusted input.
+
 ## Phase 0 Task 9: CI — 28 October 2026
 
 - `.github/workflows/ci.yml` runs on every push and pull request on `ubuntu-latest`: Node from `.nvmrc` with the npm cache, then `npm ci`, `typecheck`, `lint`, `test` and `export:web`. It has read-only permissions, no deploy and no secrets.
