@@ -12,7 +12,7 @@ See `tasks/plan.md` for files, acceptance criteria and tests.
 - [x] Task 6: `001_initial.ts` and the migration runner; rebuild graphify on `src/`
 - [x] Task 7: Scripts and the Commands table
 - [x] Task 8: ESLint red flags and the `Stop` hook
-- [ ] Task 9: CI (GitHub Actions)
+- [x] Task 9: CI (GitHub Actions)
 - [ ] **Checkpoint:** merged to `main`; `/doctor prompt-audit`; Part B go-ahead
 
 ## Part B: Remainder (needs go-ahead)

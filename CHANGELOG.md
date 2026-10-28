@@ -1,5 +1,11 @@
 # Bookmark — Changelog
 
+## Phase 0 Task 9: CI — 28 October 2026
+
+- `.github/workflows/ci.yml` runs on every push and pull request on `ubuntu-latest`: Node from `.nvmrc` with the npm cache, then `npm ci`, `typecheck`, `lint`, `test` and `export:web`. It has read-only permissions, no deploy and no secrets.
+- **Provisional:** `.nvmrc` pins Node 22, which meets Expo's `^22.13.0`; this machine runs 24.
+- `typecheck` now runs `expo customize tsconfig.json` first. That regenerates the git-ignored `expo-env.d.ts` and typed-route declarations, without which a fresh checkout fails `tsc`. It leaves `tsconfig.json` unchanged.
+
 ## Phase 0 Task 8: enforcement — 28 October 2026
 
 - `eslint.config.js` enforces the `CLAUDE.md` red flags that lint can express: `Platform.OS`, `fetch`, storage, `DELETE FROM` on synced tables, raw colours, banned libraries, Ko-fi, `any`, `@ts-ignore`, object-literal assertions, and JSX text outside `t()`. Each rule has a flagged fixture and an allowed fixture in `src/__tests__/lint/redFlags.test.ts`.
