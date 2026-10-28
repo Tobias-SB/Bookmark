@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+@import 'uniwind';
+
+@layer theme {
+  :root {
+    @variant light {
+      --color-surface: #ffffff;
+      --color-on-surface: #1b1b1f;
+      --color-primary: #3d5a98;
+      --color-on-primary: #ffffff;
+      --color-outline: #74777f;
+    }
+
+    @variant dark {
+      --color-surface: #1b1b1f;
+      --color-on-surface: #e4e2e6;
+      --color-primary: #adc6ff;
+      --color-on-primary: #102f60;
+      --color-outline: #8e9099;
+    }
+
+    @variant black {
+      --color-surface: #000000;
+      --color-on-surface: #e4e2e6;
+      --color-primary: #adc6ff;
+      --color-on-primary: #102f60;
+      --color-outline: #8e9099;
+    }
+  }
+}
+
+/* Paints the pre-JS frame of the static export in the system theme's surface instead of browser white. */
+html,
+body {
+  background-color: var(--color-surface);
+}

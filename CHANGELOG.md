@@ -1,5 +1,21 @@
 # Bookmark — Changelog
 
+## Spike S17 — 28 October 2026
+
+**Installed:** Expo SDK 58.0.21 · React Native 0.88.1 · React 19.3.0 · React Native Web 0.21.4 · Uniwind 1.13.1 · Tailwind CSS 4.3.3 · `@rn-primitives` alert-dialog, dropdown-menu, select 1.5.2, portal 1.5.3 · expo-router 58.0.28.
+
+**Web (static export served with COOP `same-origin` / COEP `require-corp`, checked headless in Chromium):**
+- `crossOriginIsolated === true`, no console errors.
+- Light, dark and black switch at runtime. A cold load with a preset theme paints only that theme. Before JS runs, the page background follows the system scheme (`html`/`body` use `--color-surface`); an exact pre-JS match is impossible because the saved theme lives in SQLite.
+- AlertDialog: `role="alertdialog"` named by its title, Tab and Shift+Tab stay inside, Escape closes, focus returns to the trigger.
+- **Defect (Uniwind 1.13.1, Windows only):** the web transformer matches `/components/web/metro-injected.js` with forward slashes, so on Windows extra themes are never registered on web and `setTheme('black')` throws. Normalising the path fixes it (verified). Native and Linux builds (CI, hosting) are unaffected.
+
+**Expo Router root:** expo-router 58 uses `src/app/` as the routes root whenever it exists, which collides with `src/app/theme/` (§17). The plugin's `root` is pinned to `./app`.
+
+**Android:** the bundle exports and registers all three themes. Device checks are pending the owner.
+
+**Result:** web go. Android pending.
+
 ## Spec v4.8 — 28 October 2026
 
 Answers questions raised while planning the Phase 0 migration.
