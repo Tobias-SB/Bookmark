@@ -1,5 +1,10 @@
 # Bookmark — Changelog
 
+## Phase 0 Task 4: clock, errors, json — 28 October 2026
+
+- **Provisional:** `Clock` is `{ now(): Date }` with `systemClock`. `errors.ts` is §15 verbatim plus `appError()` and `isAppError()`. `parseJsonArray` returns `[]` for anything that is missing, malformed or not an array.
+- The minimal Jest config the plan put here already arrived in Task 2.
+
 ## Phase 0 Task 3: theme — 28 October 2026
 
 - **Provisional token names:** `surface`, `surface-variant`, `on-surface`, `on-surface-variant`, `primary`, `on-primary`, `outline`, `warning`, `on-warning`, `error`, `on-error`, `focus`, for light, dark and black. `contrast.test.ts` parses `global.css` and holds every text pair to 4.5:1, and outline and focus to 3:1 (§14).

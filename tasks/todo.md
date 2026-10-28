@@ -7,7 +7,7 @@ See `tasks/plan.md` for files, acceptance criteria and tests.
 - [x] **Checkpoint:** S17 result reported to the owner
 - [x] Task 2: JS tabs layout
 - [x] Task 3: Theme tokens and `src/app/theme/`
-- [ ] Task 4: `clock.ts`, `errors.ts`, `json.ts` (+ minimal Jest)
+- [x] Task 4: `clock.ts`, `errors.ts`, `json.ts` (+ minimal Jest)
 - [ ] Task 5: `Db` port, write queue, `createExpoDb`, `createTestDb`, `DatabaseProvider` / `useDb`
 - [ ] Task 6: `001_initial.ts` and the migration runner; rebuild graphify on `src/`
 - [ ] Task 7: Scripts and the Commands table
