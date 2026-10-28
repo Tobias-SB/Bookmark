@@ -8,7 +8,7 @@ See `tasks/plan.md` for files, acceptance criteria and tests.
 - [x] Task 2: JS tabs layout
 - [x] Task 3: Theme tokens and `src/app/theme/`
 - [x] Task 4: `clock.ts`, `errors.ts`, `json.ts` (+ minimal Jest)
-- [ ] Task 5: `Db` port, write queue, `createExpoDb`, `createTestDb`, `DatabaseProvider` / `useDb`
+- [x] Task 5: `Db` port, write queue, `createExpoDb`, `createTestDb`, `DatabaseProvider` / `useDb`
 - [ ] Task 6: `001_initial.ts` and the migration runner; rebuild graphify on `src/`
 - [ ] Task 7: Scripts and the Commands table
 - [ ] Task 8: ESLint red flags and the `Stop` hook

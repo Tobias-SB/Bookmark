@@ -1,5 +1,17 @@
 # Bookmark — Changelog
 
+## Phase 0 Task 5: database port — 28 October 2026
+
+- `withWriteQueue` turns an unqueued connection into the `Db` port. Writes and transactions share one promise chain, reads run freely, and every failure becomes an `AppError` (`db`, or `storage_full` when the driver reports a full disk). Inside a transaction, the `tx` handle skips the queue.
+- **Provisional:**
+  - A nested `tx.transaction` joins the outer transaction.
+  - Named params are written expo-sqlite style (`{ $id }`); `createTestDb` strips the prefix for better-sqlite3.
+  - The database file is `bookmark.db`.
+  - `canTipInApp` is `false` until tip build flags exist.
+- **New dev dependencies:** `better-sqlite3` (already in §4) and its types. Metro adds `wasm` as an asset extension for expo-sqlite on web.
+- **Web check (headless Chromium, static export):** the database opens under COOP/COEP, `wa-sqlite.wasm` loads, the app renders, and a reload reopens it.
+- **Deferred to Phase 1:** the database error screen's **Export database file**, because it needs the files adapter.
+
 ## Phase 0 Task 4: clock, errors, json — 28 October 2026
 
 - **Provisional:** `Clock` is `{ now(): Date }` with `systemClock`. `errors.ts` is §15 verbatim plus `appError()` and `isAppError()`. `parseJsonArray` returns `[]` for anything that is missing, malformed or not an array.
