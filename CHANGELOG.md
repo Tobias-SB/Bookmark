@@ -1,5 +1,20 @@
 # Bookmark — Changelog
 
+## Phase 0 desk spikes S5–S8 — 29 October 2026
+
+Desk research only (plan B2). Each result names what a live check still has to confirm.
+
+- **S5 Google Books from the browser: go, pending one live check.** `www.googleapis.com/books/v1/volumes` answers a cross-origin request by echoing the caller's `Origin` in `Access-Control-Allow-Origin` (checked with `curl` and a test origin; the keyless request itself was rate-limited with 429). The Books API takes `key=` on every request, and Google Cloud API keys support HTTP-referrer restrictions, which apply to browser requests. **Owner check:** from the S6 test deploy, a search with a key restricted to that address returns 200, and the same key from `curl` without a referrer returns 403.
+- **S6 Cloudflare Pages: go, pending the curl check.** `_headers` allows up to 100 rules of up to 2,000 characters; its headers apply to static asset responses but not to Pages Functions, so the app stays a pure static export. With no top-level `404.html`, Pages serves the root for unknown paths. The docs do not state the plan, nor that the fallback response carries `_headers`. **Owner check:** `curl -I` of `/` and of an unknown deep path both show COOP `same-origin` and COEP `require-corp`. Never ship a top-level `404.html`.
+- **S7 AO3 cross-origin reads: unknown.** No public documentation was found and AO3 was not contacted. The design does not depend on it (§10.1).
+- **S8 Ko-fi via the project website: no-go; the §21 fallback applies.** Play's Payments policy says apps "may not lead users to a payment method other than Google Play's billing system", including through links, except under region-specific programs that need enrolment. In February 2022 Play rejected StreetComplete for linking to its project home, which listed donation options, and accepted it once the link was removed. The Android app links only to the privacy policy page; Ko-fi stays on the website and web app (§22 item 11).
+
+Device spikes S1–S4 are prepared (`app/spike-s1.tsx`, `tools/spikes/`, `tools/spike-s3/`); none has run.
+- `public/_headers` sets COOP and COEP on every route (§18.2). **Provisional:** the Content-Security-Policy is left out until the app is deployable, so S1 tests storage alone; §18.2 makes its `connect-src` depend on S5 and S9.
+- The owner fills in the site URL and AO3 work IDs in `tools/spikes/S2.md` before running it. Delete `app/spike-s1.tsx` and the `spike.s1.*` keys once S1 is recorded.
+
+Sources: [Google Books API](https://developers.google.com/books/docs/v1/using), [API key restrictions](https://docs.cloud.google.com/api-keys/docs/add-restrictions-api-keys), [Cloudflare Pages headers](https://developers.cloudflare.com/pages/configuration/headers/), [Cloudflare Pages serving](https://developers.cloudflare.com/pages/platform/serving-pages/), [Play Payments policy](https://support.google.com/googleplay/android-developer/answer/9858738), [StreetComplete #3768](https://github.com/streetcomplete/StreetComplete/issues/3768).
+
 ## Phase 0 wave 1: domain functions — 29 October 2026
 
 Owner decisions:
