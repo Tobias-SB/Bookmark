@@ -1,5 +1,11 @@
 # Bookmark — Changelog
 
+## Phase 0 B0: domain types — 29 October 2026
+
+- **`AO3_OWNED_FIELDS`** is the spec §6.5 list as written (21 fields), approved by the owner. `satisfies` ties it to the `FanficPatch` keys, so a misspelt or non-patchable field fails type-check.
+- **`ReadableFilters` and `DEFAULT_FILTERS`** live in `src/features/readables/domain/readableFilters.ts`, as spec §7.2 says, rather than in `readable.ts` as the plan said. W3 adds the filter functions to that file.
+- **`ReadingState` and `ContentPreferences`** live in `readable.ts`, the spec §6 default location, because §6.6 and §7.8 name no file.
+
 ## Phase 0: generated native folders — 28 October 2026
 
 - `expo run:android` generates `android/`. It is build output (spec §2.4: native settings go through `app.config.ts` and config plugins, never the generated projects), so `/android` and `/ios` stay in `.gitignore` and are never committed. Both were already ignored; neither was ever tracked.
