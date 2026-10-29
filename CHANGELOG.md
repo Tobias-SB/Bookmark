@@ -1,5 +1,29 @@
 # Bookmark — Changelog
 
+## Phase 0 wave 1: domain functions — 29 October 2026
+
+Owner decisions:
+- **Fractional keys** are capped at 1,024 characters (`MAX_KEY_LENGTH`). Keys arrive in sync files, so an over-long key is rejected before the recursive midpoint, and no key over the cap is produced. 1,000 inserts into one gap reach 169 characters.
+- **`Ao3Snapshot.series` may be `null`** ("in no series"), which clears all four series fields; `undefined` still leaves them alone (§10.3).
+- **`summarizeChanges`** is deferred to the updates inbox (§11.3), where its output shape will be settled.
+- **Exclusion filters let books through** (§7.2): `excludeWarnings` and `isAbandoned: false` keep books; the positive fanfic-only forms still exclude them. The `kind` filter includes or excludes a whole kind.
+- **"New chapters" stays as §6.6 defines it:** any reading or completed WIP with `chaptersBehind > 0`, so chapter 2 of 5 posted shows "3 new".
+- **Remote clocks** more than 24 hours ahead of local time are rejected (`MAX_REMOTE_DRIFT_MS`), as is any remote at the HLC ceiling, so a crafted file cannot stop a device writing.
+- **Life clock** (`fieldClocks.deletedAt`, §9.3 rule 2): the deleted-or-live state merges by its own clock, stamped by delete, undo and user edits but never by AO3 updates, a `statusPatch` or other system writes (§8.3). An AO3 update or status reversion on another device therefore never restores a deleted work. This adds a key to the `.bookmark` file's `fieldClocks`.
+- **Duplicate `device_id`** after an Android backup restore is handled in the sync service wave: a restored device gets a new id.
+
+Provisional, spec silent:
+- `hlcTick` and `hlcReceive` take a `deviceId`, because `hlc_last` is unseeded on the first tick (§9.2 lists only `last` and `wallMs`). Device ids must be UUIDs, and the nil UUID is reserved for `GENESIS_HLC`.
+- Invalid fractional keys throw a plain `Error`, as caller bugs; the shelf service maps them to `AppError` at the sync boundary.
+- `planAo3Update` sorts changes safety, progress, info; arrays compare as sets but are stored in AO3's order; tag comparison is case-sensitive.
+- When neither side of a merge has a life clock, the row comes back live and reports restored: a wrongly restored row is visible, a wrongly hidden one is purged after 180 days.
+
+For the next waves:
+- The sync service must check every clock in an imported file with `isHlc`, run the drift check on the highest one, require `kind` and `sourceType` on readables rows, drop `values.deletedAt`, and take a cover's `imageData` from the winning row.
+- The readables repository must reject a patch whose kind differs from the stored row; that rejection is what keeps a book-shaped patch from skipping `stripAo3OwnedFields`.
+- Repository tests must cover the §8.3 life-clock stamping rules on every write path.
+- §8.6 gap: live child rows of a purged parent are never purged.
+
 ## Phase 0 B0: domain types — 29 October 2026
 
 - **`AO3_OWNED_FIELDS`** is the spec §6.5 list as written (21 fields), approved by the owner. `satisfies` ties it to the `FanficPatch` keys, so a misspelt or non-patchable field fails type-check.
