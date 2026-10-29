@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookmark spike S3 and S4 bookmarklets</title>
+<style>
+body{font:18px/1.5 sans-serif;max-width:46rem;margin:0 auto;padding:1rem;color:#111;background:#fff}
+a.bm{display:inline-block;margin:.5rem 0;padding:.75rem 1rem;min-height:44px;border:2px solid #111;border-radius:8px;color:#111;font-weight:bold}
+table{border-collapse:collapse;width:100%;margin:1rem 0}
+th,td{border:1px solid #555;padding:.4rem;text-align:left;vertical-align:top}
+</style>
+</head>
+<body>
+<h1>Bookmark spike bookmarklets</h1>
+<p>Throwaway test tools for spikes S3 and S4. They run only in your own browser tab, read the open AO3 page, and send nothing anywhere. This page has no scripts, no tracking and makes no network calls.</p>
+
+<h2>The two links</h2>
+<p><a class="bm" id="link-capture" href="javascript:(function%20()%20%7B%20var%20MODE%20%3D%20%27capture%27%3B%20var%20old%20%3D%20document.getElementById(%27bookmark-spike-overlay%27)%3B%20if%20(old)%20%7B%20old.remove()%3B%20%7D%20function%20show(lines%2C%20manualText)%20%7B%20var%20box%20%3D%20document.createElement(%27div%27)%3B%20box.id%20%3D%20%27bookmark-spike-overlay%27%3B%20box.setAttribute(%27role%27%2C%20%27dialog%27)%3B%20box.style.cssText%20%3D%20%27position%3Afixed%3Btop%3A8px%3Bleft%3A8px%3Bright%3A8px%3Bz-index%3A2147483647%3Bbackground%3A%23fff%3Bcolor%3A%23000%3Bborder%3A3px%20solid%20%23000%3Bpadding%3A12px%3Bfont%3A16px%20sans-serif%3Bmax-height%3A80vh%3Boverflow%3Aauto%27%3B%20lines.forEach(function%20(line)%20%7B%20var%20p%20%3D%20document.createElement(%27p%27)%3B%20p.textContent%20%3D%20line%3B%20p.style.margin%20%3D%20%270%200%208px%27%3B%20box.appendChild(p)%3B%20%7D)%3B%20if%20(manualText)%20%7B%20var%20area%20%3D%20document.createElement(%27textarea%27)%3B%20area.value%20%3D%20manualText%3B%20area.readOnly%20%3D%20true%3B%20area.style.cssText%20%3D%20%27width%3A100%25%3Bheight%3A6em%3Bfont%3A16px%20sans-serif%27%3B%20box.appendChild(area)%3B%20area.focus()%3B%20area.select()%3B%20%7D%20var%20close%20%3D%20document.createElement(%27button%27)%3B%20close.textContent%20%3D%20%27Close%27%3B%20close.style.cssText%20%3D%20%27min-height%3A44px%3Bmin-width%3A44px%3Bmargin-top%3A8px%27%3B%20close.onclick%20%3D%20function%20()%20%7B%20box.remove()%3B%20%7D%3B%20box.appendChild(close)%3B%20document.body.appendChild(box)%3B%20%7D%20if%20(MODE%20%3D%3D%3D%20%27count%27)%20%7B%20var%20heading%20%3D%20document.querySelector(%27h2.heading%27)%20%7C%7C%20document.querySelector(%27h2%27)%20%7C%7C%20document.querySelector(%27h1%27)%3B%20show(%5B%20%27Blurbs%20(li.blurb)%3A%20%27%20%2B%20document.querySelectorAll(%27li.blurb%27).length%2C%20%27Heading%3A%20%27%20%2B%20(heading%20%3F%20heading.textContent.replace(%2F%5Cs%2B%2Fg%2C%20%27%20%27).trim()%20%3A%20%27(none%20found)%27)%2C%20%27Path%3A%20%27%20%2B%20location.pathname%20%2B%20location.search%2C%20%27Tab%20title%3A%20%27%20%2B%20document.title%20%5D%2C%20null)%3B%20return%3B%20%7D%20var%20titleEl%20%3D%20document.querySelector(%27h2.title.heading%27)%3B%20var%20title%20%3D%20titleEl%20%3F%20titleEl.textContent.trim()%20%3A%20%27%27%3B%20if%20(!title)%20%7B%20show(%5B%27No%20work%20title%20found.%20Open%20a%20work%20page%20(archiveofourown.org%2Fworks%2F%3Cid%3E)%20and%20try%20again.%27%5D%2C%20null)%3B%20return%3B%20%7D%20var%20base%20%3D%20%5B%27Bookmarklet%20ran.%20Title%20read%3A%20%27%20%2B%20title%5D%3B%20if%20(!navigator.clipboard%20%7C%7C%20!navigator.clipboard.writeText)%20%7B%20show(base.concat(%5B%27Clipboard%3A%20API%20not%20available.%20Copy%20the%20text%20below%20by%20hand.%27%5D)%2C%20title)%3B%20return%3B%20%7D%20navigator.clipboard.writeText(title).then(%20function%20()%20%7B%20show(base.concat(%5B%27Clipboard%3A%20WRITTEN.%20Now%20paste%20somewhere%20to%20confirm%20it%20holds%20the%20title.%27%5D)%2C%20null)%3B%20%7D%2C%20function%20(err)%20%7B%20show(base.concat(%5B%27Clipboard%3A%20FAILED%20(%27%20%2B%20(err%20%26%26%20err.name%20%3F%20err.name%20%3A%20%27unknown%27)%20%2B%20%27).%20Copy%20the%20text%20below%20by%20hand.%27%5D)%2C%20title)%3B%20%7D%20)%3B%20%7D)()%3B">Spike capture</a><br>Reads the work title, tries to write it to the clipboard, and shows the result.</p>
+<p><a class="bm" id="link-count" href="javascript:(function%20()%20%7B%20var%20MODE%20%3D%20%27count%27%3B%20var%20old%20%3D%20document.getElementById(%27bookmark-spike-overlay%27)%3B%20if%20(old)%20%7B%20old.remove()%3B%20%7D%20function%20show(lines%2C%20manualText)%20%7B%20var%20box%20%3D%20document.createElement(%27div%27)%3B%20box.id%20%3D%20%27bookmark-spike-overlay%27%3B%20box.setAttribute(%27role%27%2C%20%27dialog%27)%3B%20box.style.cssText%20%3D%20%27position%3Afixed%3Btop%3A8px%3Bleft%3A8px%3Bright%3A8px%3Bz-index%3A2147483647%3Bbackground%3A%23fff%3Bcolor%3A%23000%3Bborder%3A3px%20solid%20%23000%3Bpadding%3A12px%3Bfont%3A16px%20sans-serif%3Bmax-height%3A80vh%3Boverflow%3Aauto%27%3B%20lines.forEach(function%20(line)%20%7B%20var%20p%20%3D%20document.createElement(%27p%27)%3B%20p.textContent%20%3D%20line%3B%20p.style.margin%20%3D%20%270%200%208px%27%3B%20box.appendChild(p)%3B%20%7D)%3B%20if%20(manualText)%20%7B%20var%20area%20%3D%20document.createElement(%27textarea%27)%3B%20area.value%20%3D%20manualText%3B%20area.readOnly%20%3D%20true%3B%20area.style.cssText%20%3D%20%27width%3A100%25%3Bheight%3A6em%3Bfont%3A16px%20sans-serif%27%3B%20box.appendChild(area)%3B%20area.focus()%3B%20area.select()%3B%20%7D%20var%20close%20%3D%20document.createElement(%27button%27)%3B%20close.textContent%20%3D%20%27Close%27%3B%20close.style.cssText%20%3D%20%27min-height%3A44px%3Bmin-width%3A44px%3Bmargin-top%3A8px%27%3B%20close.onclick%20%3D%20function%20()%20%7B%20box.remove()%3B%20%7D%3B%20box.appendChild(close)%3B%20document.body.appendChild(box)%3B%20%7D%20if%20(MODE%20%3D%3D%3D%20%27count%27)%20%7B%20var%20heading%20%3D%20document.querySelector(%27h2.heading%27)%20%7C%7C%20document.querySelector(%27h2%27)%20%7C%7C%20document.querySelector(%27h1%27)%3B%20show(%5B%20%27Blurbs%20(li.blurb)%3A%20%27%20%2B%20document.querySelectorAll(%27li.blurb%27).length%2C%20%27Heading%3A%20%27%20%2B%20(heading%20%3F%20heading.textContent.replace(%2F%5Cs%2B%2Fg%2C%20%27%20%27).trim()%20%3A%20%27(none%20found)%27)%2C%20%27Path%3A%20%27%20%2B%20location.pathname%20%2B%20location.search%2C%20%27Tab%20title%3A%20%27%20%2B%20document.title%20%5D%2C%20null)%3B%20return%3B%20%7D%20var%20titleEl%20%3D%20document.querySelector(%27h2.title.heading%27)%3B%20var%20title%20%3D%20titleEl%20%3F%20titleEl.textContent.trim()%20%3A%20%27%27%3B%20if%20(!title)%20%7B%20show(%5B%27No%20work%20title%20found.%20Open%20a%20work%20page%20(archiveofourown.org%2Fworks%2F%3Cid%3E)%20and%20try%20again.%27%5D%2C%20null)%3B%20return%3B%20%7D%20var%20base%20%3D%20%5B%27Bookmarklet%20ran.%20Title%20read%3A%20%27%20%2B%20title%5D%3B%20if%20(!navigator.clipboard%20%7C%7C%20!navigator.clipboard.writeText)%20%7B%20show(base.concat(%5B%27Clipboard%3A%20API%20not%20available.%20Copy%20the%20text%20below%20by%20hand.%27%5D)%2C%20title)%3B%20return%3B%20%7D%20navigator.clipboard.writeText(title).then(%20function%20()%20%7B%20show(base.concat(%5B%27Clipboard%3A%20WRITTEN.%20Now%20paste%20somewhere%20to%20confirm%20it%20holds%20the%20title.%27%5D)%2C%20null)%3B%20%7D%2C%20function%20(err)%20%7B%20show(base.concat(%5B%27Clipboard%3A%20FAILED%20(%27%20%2B%20(err%20%26%26%20err.name%20%3F%20err.name%20%3A%20%27unknown%27)%20%2B%20%27).%20Copy%20the%20text%20below%20by%20hand.%27%5D)%2C%20title)%3B%20%7D%20)%3B%20%7D)()%3B">Spike count blurbs</a><br>Shows how many <code>li.blurb</code> entries the page has, and the page heading.</p>
+
+<h2>Install</h2>
+<h3>Desktop Chrome or Firefox</h3>
+<ol>
+<li>Show the bookmarks bar (Ctrl+Shift+B).</li>
+<li>Drag each link above onto the bar.</li>
+</ol>
+<h3>Android Chrome</h3>
+<ol>
+<li>Long-press a link, choose copy link address (or tap the star after opening it) and add a bookmark; if Chrome refuses, bookmark this page, then edit the bookmark.</li>
+<li>Edit the bookmark: set the name, and paste the copied <code>javascript:</code> address as the URL.</li>
+<li>To run it: open the AO3 page, type the bookmark name in the address bar, and tap the bookmark suggestion that appears (Chrome ignores bookmarklets tapped from the bookmarks list).</li>
+</ol>
+<h3>iOS Safari</h3>
+<ol>
+<li>Tap Share, then Add Bookmark, and save this page as a bookmark.</li>
+<li>Long-press one link, choose Copy Link (if offered).</li>
+<li>Open Bookmarks, tap Edit, open the bookmark you just saved, rename it, and replace its address with the copied <code>javascript:</code> text. Repeat for the second link.</li>
+<li>To run it: open the AO3 page, tap the address bar, then Bookmarks and tap the bookmarklet.</li>
+</ol>
+<p>If nothing appears when you run it, record "nothing happened". That is a valid result (AO3's content security policy or the browser blocked it).</p>
+
+<h2>S3 results</h2>
+<table>
+<tr><th>Browser</th><th>Overlay shown?</th><th>Title read?</th><th>Clipboard written? (paste to check)</th></tr>
+<tr><td>iOS Safari</td><td></td><td></td><td></td></tr>
+<tr><td>Android Chrome</td><td></td><td></td><td></td></tr>
+<tr><td>Desktop Chrome</td><td></td><td></td><td></td></tr>
+<tr><td>Desktop Firefox</td><td></td><td></td><td></td></tr>
+</table>
+
+<h2>S4 results (Spike count blurbs)</h2>
+<table>
+<tr><th>Page type</th><th>Blurb count</th><th>Heading text shown</th><th>Notes (where is the list name?)</th></tr>
+<tr><td>Your bookmarks</td><td></td><td></td><td></td></tr>
+<tr><td>History</td><td></td><td></td><td></td></tr>
+<tr><td>Marked for Later</td><td></td><td></td><td></td></tr>
+<tr><td>Subscriptions</td><td></td><td></td><td></td></tr>
+<tr><td>A series page</td><td></td><td></td><td></td></tr>
+<tr><td>An author's works</td><td></td><td></td><td></td></tr>
+<tr><td>Search results</td><td></td><td></td><td></td></tr>
+<tr><td>A collection</td><td></td><td></td><td></td></tr>
+<tr><td>Another user's bookmarks</td><td></td><td></td><td></td></tr>
+</table>
+</body>
+</html>
