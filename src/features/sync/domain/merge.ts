@@ -1,3 +1,4 @@
+import { AO3_OWNED_FIELDS } from '@/features/ao3/domain/ao3Snapshot';
 import { appError } from '@/shared/types/errors';
 
 // Row shape in a `.bookmark` file (spec §9.4).
@@ -11,7 +12,7 @@ export interface SyncRow {
 
 export interface MergeResult {
   row: SyncRow;
-  /** The local row was a tombstone and the merged row is live (spec §9.3 rule 2 summary). */
+  /** The local row was a tombstone and the other side brought it back (spec §9.3 rule 2 summary). */
   restored: boolean;
 }
 
@@ -38,12 +39,26 @@ function maxClock(clocks: Iterable<string>, floor: string): string {
   return max;
 }
 
-// `updatedHlc` is the row's delete or restore clock when it exceeds every field clock. A tombstone whose
-// field clocks are newer than its delete is live (rule 2); `updatedHlc` is raised to cover every field clock.
-function normalise(row: SyncRow): SyncRow {
+const AO3_OWNED: ReadonlySet<string> = new Set(AO3_OWNED_FIELDS);
+
+// kind and sourceType are immutable (spec §6.2), so every version of a row agrees on this.
+function isAo3Fanfic(values: Record<string, unknown>): boolean {
+  return own(values, 'kind') === 'fanfic' && own(values, 'sourceType') === 'ao3';
+}
+
+// `updatedHlc` is raised to cover every field clock. Outside AO3 fanfic, `updatedHlc` is the delete or
+// restore clock, so a tombstone whose field clocks are newer than its delete is live (rule 2).
+function normalise(row: SyncRow, ao3: boolean): SyncRow {
   const fieldMax = maxClock(Object.values(row.fieldClocks), ABSENT);
   if (fieldMax <= row.updatedHlc) return row;
-  return { ...row, updatedHlc: fieldMax, deletedAt: null };
+  return { ...row, updatedHlc: fieldMax, deletedAt: ao3 ? row.deletedAt : null };
+}
+
+// The clock that decides delete versus live. On AO3 fanfic only user-owned field clocks count, because an
+// AO3 update is not an edit (it never restores); deletes and undos stamp the user-owned `updatedAt` there.
+function lifeClock(row: SyncRow, ao3: boolean): string {
+  if (!ao3) return row.updatedHlc;
+  return maxClock(Object.entries(row.fieldClocks).filter(([key]) => !AO3_OWNED.has(key)).map(([, clock]) => clock), ABSENT);
 }
 
 function mergeFields(a: SyncRow, b: SyncRow): Pick<SyncRow, 'values' | 'fieldClocks'> {
@@ -66,18 +81,22 @@ function mergeFields(a: SyncRow, b: SyncRow): Pick<SyncRow, 'values' | 'fieldClo
 
 /**
  * Field-wise last-writer-wins merge of two versions of one synced row (spec §9.3).
- * Deletion is a register on `updatedHlc`: a tombstone stays deleted only while no field or restore clock
- * is newer than its delete. Commutative and associative on `row`; `mergeRows(x, x).row` is `x` normalised
- * (equal to `x` for well-formed rows), and merging a merged row again changes nothing.
+ * Deletion is a register on the life clock (`lifeClock`): a tombstone stays deleted only while no edit or
+ * undo is newer than its delete; on AO3 fanfic, AO3-owned field clocks are not edits. Commutative and
+ * associative on `row`; `mergeRows(x, x).row` is `x` normalised (equal to `x` for well-formed rows), and
+ * merging a merged row again changes nothing.
  */
 export function mergeRows(local: SyncRow, remote: SyncRow): MergeResult {
   if (local.id !== remote.id) throw appError('validation', 'mergeRows needs two versions of the same row');
-  const a = normalise(local);
-  const b = normalise(remote);
-  const winner = beats(a.updatedHlc, a.deletedAt, b.updatedHlc, b.deletedAt) ? a : b;
-  const row: SyncRow = { id: local.id, ...mergeFields(a, b), updatedHlc: winner.updatedHlc, deletedAt: winner.deletedAt };
+  const ao3 = isAo3Fanfic(local.values) || isAo3Fanfic(remote.values);
+  const a = normalise(local, ao3);
+  const b = normalise(remote, ao3);
+  const lifeA = lifeClock(a, ao3);
+  const winner = beats(lifeA, a.deletedAt, lifeClock(b, ao3), b.deletedAt) ? a : b;
+  const updatedHlc = a.updatedHlc > b.updatedHlc ? a.updatedHlc : b.updatedHlc;
+  const row: SyncRow = { id: local.id, ...mergeFields(a, b), updatedHlc, deletedAt: winner.deletedAt };
   // Restored by the other side only: a malformed local tombstone that normalises to live is not news.
-  const restored = local.deletedAt !== null && row.deletedAt === null && row.updatedHlc !== a.updatedHlc;
+  const restored = local.deletedAt !== null && row.deletedAt === null && lifeClock(row, ao3) !== lifeA;
   return { row, restored };
 }
 

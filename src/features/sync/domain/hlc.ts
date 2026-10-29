@@ -5,7 +5,7 @@ import { appError } from '@/shared/types/errors';
 
 export const GENESIS_HLC = '000000000000000:00000:00000000-0000-0000-0000-000000000000';
 
-// shortcut: provisional 24 h bound on how far a remote clock may run ahead of ours, pending the owner's value.
+// A remote clock more than a day ahead is a broken or hostile device; accepting it would drag ours forward for good.
 export const MAX_REMOTE_DRIFT_MS = 24 * 60 * 60 * 1000;
 
 const WALL_DIGITS = 15;

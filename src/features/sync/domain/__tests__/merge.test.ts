@@ -119,6 +119,56 @@ describe('mergeRows: deletes (rule 2)', () => {
   });
 });
 
+describe('mergeRows: AO3 updates never restore an AO3 fanfic', () => {
+  const deletedAt = '2026-10-01T00:00:00.000Z';
+  const base = (sourceType: string, kind = 'fanfic') =>
+    row({
+      values: { kind, sourceType, title: 'T', availableChapters: 1, userTags: [], updatedAt: 'u1' },
+      fieldClocks: { kind: c(1), sourceType: c(1), title: c(1), availableChapters: c(1), userTags: c(1), updatedAt: c(1) },
+      updatedHlc: c(1),
+    });
+  // Device A deletes at t5, stamping the user-owned updatedAt.
+  const tombstone = (r: SyncRow): SyncRow => ({ ...r, values: { ...r.values, updatedAt: 'u5' }, fieldClocks: { ...r.fieldClocks, updatedAt: c(5) }, updatedHlc: c(5), deletedAt });
+  // Device B, not having seen the delete, writes at t6.
+  const writeAt6 = (r: SyncRow, fields: Record<string, unknown>): SyncRow => ({
+    ...r,
+    values: { ...r.values, ...fields },
+    fieldClocks: { ...r.fieldClocks, ...Object.fromEntries(Object.keys(fields).map((k) => [k, c(6, 'b')])) },
+    updatedHlc: c(6, 'b'),
+  });
+
+  it('stays deleted after an AO3 update, but takes the AO3 values', () => {
+    const ao3 = base('ao3');
+    const updated = writeAt6(ao3, { title: 'T2', availableChapters: 2 });
+    for (const [local, remote] of [[tombstone(ao3), updated], [updated, tombstone(ao3)]]) {
+      const { row: merged, restored } = mergeRows(local, remote);
+      expect(merged.deletedAt).toBe(deletedAt);
+      expect(merged.values).toMatchObject({ title: 'T2', availableChapters: 2 });
+      expect(merged.updatedHlc).toBe(c(6, 'b'));
+      expect(restored).toBe(false);
+    }
+  });
+
+  it('restores after a user edit to a user-owned field', () => {
+    const ao3 = base('ao3');
+    const edited = writeAt6(ao3, { userTags: ['comfort'], updatedAt: 'u6' });
+    expect(mergeRows(tombstone(ao3), edited)).toMatchObject({ row: { deletedAt: null }, restored: true });
+  });
+
+  it('restores after an undo on another device', () => {
+    const undone = writeAt6(tombstone(base('ao3')), { updatedAt: 'u6' });
+    const live = { ...undone, deletedAt: null };
+    expect(mergeRows(tombstone(base('ao3')), live)).toEqual({ row: live, restored: true });
+  });
+
+  it('leaves manual fanfic and books unchanged: any newer write restores', () => {
+    for (const r of [base('manual'), base('google_books', 'book')]) {
+      const updated = writeAt6(r, { title: 'T2' });
+      expect(mergeRows(tombstone(r), updated)).toMatchObject({ row: { deletedAt: null }, restored: true });
+    }
+  });
+});
+
 describe('pickCanonical (rule 3)', () => {
   it('chooses the earlier createdAt', () => {
     const early = { id: 'z', createdAt: '2025-01-01T00:00:00.000Z' };
@@ -140,30 +190,34 @@ describe('pickCanonical (rule 3)', () => {
 // Small pools force equal clocks and equal values, including the "bug" ties of rule 1, and malformed rows.
 const clockArb = fc.constantFrom(c(1), c(2), c(2, 'b'), c(3, 'c'));
 const valueArb = fc.constantFrom<unknown>('x', 'y', 1, 2, 0, -0, null, { a: 1 }, ['l']);
-const arbitraryRow: fc.Arbitrary<SyncRow> = fc.record({
-  id: fc.constant('r1'),
-  values: fc.record({ title: valueArb, progress: valueArb }, { requiredKeys: [] }),
-  fieldClocks: fc.record({ title: clockArb, progress: clockArb }, { requiredKeys: [] }),
-  updatedHlc: clockArb,
-  deletedAt: fc.constantFrom(null, '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z'),
-});
+// sourceType is immutable, so all versions of one row share it; 'ao3' makes title an AO3-owned field.
+const arbitraryRow = (sourceType: 'ao3' | 'manual'): fc.Arbitrary<SyncRow> =>
+  fc.record({
+    id: fc.constant('r1'),
+    values: fc
+      .record({ title: valueArb, progress: valueArb }, { requiredKeys: [] })
+      .map((v) => ({ ...v, kind: 'fanfic', sourceType })),
+    fieldClocks: fc.record({ title: clockArb, progress: clockArb, updatedAt: clockArb }, { requiredKeys: [] }),
+    updatedHlc: clockArb,
+    deletedAt: fc.constantFrom(null, '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z'),
+  });
+const sourceTypeArb = fc.constantFrom<'ao3' | 'manual'>('ao3', 'manual');
+const rows = (n: number) => sourceTypeArb.chain((t) => fc.array(arbitraryRow(t), { minLength: n, maxLength: n }));
 
 const merge = (a: SyncRow, b: SyncRow) => mergeRows(a, b).row;
 
 describe('mergeRows properties on arbitrary rows', () => {
   it('is commutative', () => {
-    fc.assert(fc.property(arbitraryRow, arbitraryRow, (a, b) => expect(merge(a, b)).toEqual(merge(b, a))));
+    fc.assert(fc.property(rows(2), ([a, b]) => expect(merge(a, b)).toEqual(merge(b, a))));
   });
 
   it('is associative', () => {
-    fc.assert(
-      fc.property(arbitraryRow, arbitraryRow, arbitraryRow, (a, b, x) => expect(merge(merge(a, b), x)).toEqual(merge(a, merge(b, x)))),
-    );
+    fc.assert(fc.property(rows(3), ([a, b, x]) => expect(merge(merge(a, b), x)).toEqual(merge(a, merge(b, x)))));
   });
 
   it('is idempotent', () => {
     fc.assert(
-      fc.property(arbitraryRow, arbitraryRow, (a, b) => {
+      fc.property(rows(2), ([a, b]) => {
         const m = merge(a, b);
         expect(merge(m, m)).toEqual(m);
         expect(merge(m, a)).toEqual(m);
@@ -185,15 +239,26 @@ interface Device {
 
 type Op =
   | { kind: 'edit'; device: DeviceId; rowId: string; field: 'title' | 'progress'; value: number; wall: number }
+  | { kind: 'ao3'; device: DeviceId; field: 'title' | 'availableChapters'; value: number; wall: number }
   | { kind: 'delete' | 'restore'; device: DeviceId; rowId: string; wall: number }
   | { kind: 'send'; from: DeviceId; to: DeviceId; wall: number };
 
+// r1 is a book; r2 is an AO3 fanfic, whose title and availableChapters only AO3 updates write.
+const AO3_ROW = 'r2';
+const CREATE_VALUES: Record<string, Record<string, unknown>> = {
+  r1: { kind: 'book', sourceType: 'manual' },
+  r2: { kind: 'fanfic', sourceType: 'ao3' },
+};
+
 const deviceArb = fc.constantFrom<DeviceId>(...DEVICES);
 const wallArb = fc.integer({ min: 1, max: 20 }); // narrow range: walls repeat and go backwards
+const ao3OpArb: fc.Arbitrary<Op> = fc.record({ kind: fc.constant('ao3' as const), device: deviceArb, field: fc.constantFrom('title' as const, 'availableChapters' as const), value: fc.integer({ min: 0, max: 3 }), wall: wallArb });
+const sendOpArb: fc.Arbitrary<Op> = fc.record({ kind: fc.constant('send' as const), from: deviceArb, to: deviceArb, wall: wallArb });
 const opArb: fc.Arbitrary<Op> = fc.oneof(
   fc.record({ kind: fc.constant('edit' as const), device: deviceArb, rowId: fc.constantFrom(...ROW_IDS), field: fc.constantFrom('title' as const, 'progress' as const), value: fc.integer({ min: 0, max: 3 }), wall: wallArb }),
+  ao3OpArb,
   fc.record({ kind: fc.constantFrom('delete' as const, 'restore' as const), device: deviceArb, rowId: fc.constantFrom(...ROW_IDS), wall: wallArb }),
-  fc.record({ kind: fc.constant('send' as const), from: deviceArb, to: deviceArb, wall: wallArb }),
+  sendOpArb,
 );
 
 function newDevices(): Record<DeviceId, Device> {
@@ -225,15 +290,33 @@ function apply(devices: Record<DeviceId, Device>, op: Op) {
     return;
   }
   const device = devices[op.device];
-  const existing = device.rows.get(op.rowId);
-  if (op.kind === 'edit') {
-    const t = tick(device, op.wall, op.device);
-    const base = existing ?? row({ id: op.rowId });
-    device.rows.set(op.rowId, { ...base, values: { ...base.values, [op.field]: op.value }, fieldClocks: { ...base.fieldClocks, [op.field]: t }, updatedHlc: t });
-  } else if (existing && (op.kind === 'delete') === (existing.deletedAt === null)) {
-    const t = tick(device, op.wall, op.device);
-    device.rows.set(op.rowId, { ...existing, updatedHlc: t, deletedAt: op.kind === 'delete' ? `wall-${op.wall}` : null });
+  if (op.kind === 'ao3') {
+    // An AO3 update writes AO3-owned fields only, never updatedAt.
+    const existing = device.rows.get(AO3_ROW);
+    if (existing) write(device, op.device, existing, { [op.field]: op.value }, op.wall);
+    return;
   }
+  const existing = device.rows.get(op.rowId);
+  const stamp = `wall-${op.wall}`;
+  if (op.kind === 'edit') {
+    if (op.rowId === AO3_ROW && op.field === 'title') return; // stripAo3OwnedFields
+    const fields = existing ? { [op.field]: op.value } : { ...CREATE_VALUES[op.rowId], [op.field]: op.value };
+    write(device, op.device, existing ?? row({ id: op.rowId }), { ...fields, updatedAt: stamp }, op.wall);
+  } else if (existing && (op.kind === 'delete') === (existing.deletedAt === null)) {
+    // Tombstone and undo stamp the user-owned updatedAt.
+    write(device, op.device, existing, { updatedAt: stamp }, op.wall, op.kind === 'delete' ? stamp : null);
+  }
+}
+
+// Stamps the given fields with one tick, as a repository write does.
+function write(device: Device, id: DeviceId, base: SyncRow, fields: Record<string, unknown>, wall: number, deletedAt = base.deletedAt) {
+  const t = tick(device, wall, id);
+  const clocks = Object.fromEntries(Object.keys(fields).map((key) => [key, t]));
+  device.rows.set(base.id, { ...base, values: { ...base.values, ...fields }, fieldClocks: { ...base.fieldClocks, ...clocks }, updatedHlc: t, deletedAt });
+}
+
+function exchangeAll(devices: Record<DeviceId, Device>, order: [DeviceId, DeviceId][], wall: number) {
+  for (const [from, to] of order) receive(devices[to], devices[from], wall, to);
 }
 
 const snapshot = (device: Device) => [...device.rows.entries()].sort(([x], [y]) => (x < y ? -1 : 1));
@@ -247,10 +330,35 @@ describe('mergeRows properties on three simulated devices', () => {
         const devices = newDevices();
         for (const op of ops) apply(devices, op);
         // Each device sends to every other once; any order suffices because merge is a join.
-        for (const [from, to] of order) receive(devices[to], devices[from], wall, to);
+        exchangeAll(devices, order, wall);
         expect(snapshot(devices.b)).toEqual(snapshot(devices.a));
         expect(snapshot(devices.c)).toEqual(snapshot(devices.a));
       }),
+    );
+  });
+
+  it('AO3 updates made after a delete never bring the work back', () => {
+    fc.assert(
+      fc.property(
+        fc.array(opArb, { maxLength: 30 }),
+        deviceArb,
+        fc.array(fc.oneof(ao3OpArb, sendOpArb), { maxLength: 20 }),
+        fc.shuffledSubarray(PAIRS, { minLength: PAIRS.length }),
+        wallArb,
+        (before, deleter, after, order, wall) => {
+          const devices = newDevices();
+          for (const op of before) apply(devices, op);
+          // The deleter has seen every earlier edit, so its delete is the newest lifecycle event.
+          exchangeAll(devices, order, wall);
+          apply(devices, { kind: 'edit', device: deleter, rowId: AO3_ROW, field: 'progress', value: 1, wall });
+          apply(devices, { kind: 'restore', device: deleter, rowId: AO3_ROW, wall });
+          apply(devices, { kind: 'delete', device: deleter, rowId: AO3_ROW, wall });
+          // The others may or may not have seen the delete before their AO3 updates.
+          for (const op of after) apply(devices, op);
+          exchangeAll(devices, order, wall);
+          for (const id of DEVICES) expect(devices[id].rows.get(AO3_ROW)?.deletedAt).toBe(`wall-${wall}`);
+        },
+      ),
     );
   });
 
