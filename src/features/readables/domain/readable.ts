@@ -107,3 +107,35 @@ export interface ContentPreferences {
   hiddenWarnings: string[];
   hiddenRatings: AO3Rating[];
 }
+
+export function progressUnitFor(r: Readable): ProgressUnit {
+  return r.kind === 'fanfic' ? 'chapters' : r.progressUnit;
+}
+
+export function progressCeiling(r: Readable): number | null {
+  if (r.kind === 'fanfic') return r.availableChapters ?? r.totalUnits ?? null;
+  return r.progressUnit === 'percent' ? 100 : r.totalUnits;
+}
+
+export function isFinalPosition(r: Readable, p: number): boolean {
+  if (r.kind === 'book') {
+    const ceiling = progressCeiling(r);
+    return ceiling !== null && p === ceiling;
+  }
+  return r.isComplete && r.totalUnits !== null && p === r.totalUnits;
+}
+
+export function chaptersBehind(f: Fanfic): number {
+  if ((f.status !== 'reading' && f.status !== 'completed') || f.availableChapters === null) return 0;
+  return Math.max(0, f.availableChapters - (f.progressCurrent ?? 0));
+}
+
+export function readingStateOf(r: Readable): ReadingState {
+  if (r.status === 'dnf') return 'dnf';
+  if (r.status === 'want_to_read') return 'not_started';
+  const isWip = r.kind === 'fanfic' && !r.isComplete;
+  if (isWip && chaptersBehind(r) > 0) return 'new_chapters';
+  if (r.status === 'completed') return 'finished';
+  if (isWip && r.availableChapters !== null && r.progressCurrent !== null) return 'caught_up';
+  return 'in_progress';
+}
