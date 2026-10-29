@@ -10,6 +10,7 @@ Desk research only (plan B2). Each result names what a live check still has to c
 - **S8 Ko-fi via the project website: no-go; the §21 fallback applies.** Play's Payments policy says apps "may not lead users to a payment method other than Google Play's billing system", including through links, except under region-specific programs that need enrolment. In February 2022 Play rejected StreetComplete for linking to its project home, which listed donation options, and accepted it once the link was removed. The Android app links only to the privacy policy page; Ko-fi stays on the website and web app (§22 item 11).
 
 Device spikes S1–S4 are prepared (`app/spike-s1.tsx`, `tools/spikes/`, `tools/spike-s3/`); none has run.
+
 - `public/_headers` sets COOP and COEP on every route (§18.2). **Provisional:** the Content-Security-Policy is left out until the app is deployable, so S1 tests storage alone; §18.2 makes its `connect-src` depend on S5 and S9.
 - The owner fills in the site URL and AO3 work IDs in `tools/spikes/S2.md` before running it. Delete `app/spike-s1.tsx` and the `spike.s1.*` keys once S1 is recorded.
 
