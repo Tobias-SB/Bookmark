@@ -31,7 +31,7 @@ export interface Ao3Snapshot {
   isComplete?: boolean;
   publishedAt?: string | null;
   ao3UpdatedAt?: string | null;
-  series?: { seriesId: string; name: string; part: number; total?: number | null };
+  series?: { seriesId: string; name: string; part: number; total?: number | null } | null; // null = in no series
   hasAbandonedTag?: boolean; // any freeform tag equal to "abandoned", case-insensitive
   imageUrls?: string[]; // work pages only; https only; at most 10
 }

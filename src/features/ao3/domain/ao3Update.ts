@@ -31,7 +31,12 @@ function incomingValues(current: Fanfic, s: Ao3Snapshot): Partial<Ao3OwnedValues
     totalUnits: s.totalUnits, wordCount: s.wordCount, isComplete: s.isComplete,
     publishedAt: s.publishedAt, ao3UpdatedAt: s.ao3UpdatedAt,
   };
-  if (s.series) {
+  if (s.series === null) {
+    values.seriesKey = null;
+    values.seriesName = null;
+    values.seriesPart = null;
+    values.seriesTotal = null;
+  } else if (s.series) {
     const seriesKey = `ao3:${s.series.seriesId}`;
     values.seriesKey = seriesKey;
     values.seriesName = s.series.name;

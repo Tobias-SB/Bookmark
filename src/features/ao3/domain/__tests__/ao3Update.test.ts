@@ -107,6 +107,20 @@ describe('planAo3Update', () => {
     });
   });
 
+  it('clears every series field when the work has left its series', () => {
+    const current = fanfic({ seriesKey: 'ao3:42', seriesName: 'S', seriesPart: 2, seriesTotal: 7 });
+    const plan = planAo3Update(current, snap({ series: null }), NOW);
+    expect(plan.patch).toEqual({
+      kind: 'fanfic', seriesKey: null, seriesName: null, seriesPart: null, seriesTotal: null,
+    });
+    expect(plan.changes.map((c) => c.severity)).toEqual(['info', 'info', 'info', 'info']);
+  });
+
+  it('keeps stored series fields when the snapshot omits series', () => {
+    const current = fanfic({ seriesKey: 'ao3:42', seriesName: 'S', seriesPart: 2, seriesTotal: 7 });
+    expect(planAo3Update(current, snap(), NOW).changed).toBe(false);
+  });
+
   it('never puts user-owned fields such as isAbandoned in the patch', () => {
     const plan = planAo3Update(fanfic(), snap({ hasAbandonedTag: true, title: 'New' }), NOW);
     expect(plan.patch).toEqual({ kind: 'fanfic', title: 'New' });
@@ -172,8 +186,8 @@ describe('planAo3Update', () => {
       availableChapters: fc.nat(50), totalUnits: fc.option(fc.nat(50)), wordCount: fc.option(fc.nat()),
       isComplete: fc.boolean(), publishedAt: fc.option(fc.string()), ao3UpdatedAt: fc.option(fc.string()),
       hasAbandonedTag: fc.boolean(),
-      series: fc.record({ seriesId: fc.string(), name: fc.string(), part: fc.nat(), total: fc.option(fc.nat()) },
-        { requiredKeys: ['seriesId', 'name', 'part'] }),
+      series: fc.option(fc.record({ seriesId: fc.string(), name: fc.string(), part: fc.nat(), total: fc.option(fc.nat()) },
+        { requiredKeys: ['seriesId', 'name', 'part'] })),
     }, { requiredKeys: ['workId', 'url'] });
     const currentArb = fc.record({
       status: fc.constantFrom('want_to_read' as const, 'reading' as const, 'completed' as const, 'dnf' as const),
