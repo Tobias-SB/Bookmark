@@ -135,7 +135,8 @@ describe('mergeRows: deletes (rule 2)', () => {
     expect(forward.row.updatedHlc).toBe(c(5));
     // The larger JSON value wins: "null" sorts above a quoted date.
     expect(forward.row.deletedAt).toBeNull();
-    expect(forward.restored).toBe(false);
+    // The local delete was lost to the tie, so the user is told.
+    expect(forward.restored).toBe(true);
   });
 
   it('never reports a restore when a tombstone merges with itself', () => {

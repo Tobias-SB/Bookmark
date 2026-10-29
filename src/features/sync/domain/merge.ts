@@ -81,8 +81,8 @@ export function mergeRows(local: SyncRow, remote: SyncRow): MergeResult {
   const fields = mergeFields(local, remote, lifeMerged);
   const updatedHlc = maxClock(Object.values(fields.fieldClocks), local.updatedHlc > remote.updatedHlc ? local.updatedHlc : remote.updatedHlc);
   const row: SyncRow = { id: local.id, ...fields, updatedHlc, deletedAt: winner.deletedAt };
-  // Restored by the other side only, so merging a tombstone with itself is never news.
-  const restored = local.deletedAt !== null && row.deletedAt === null && lifeMerged !== lifeLocal;
+  // A tie (a writer forgot the life stamp) also restores, and the user is told rather than losing it silently.
+  const restored = local.deletedAt !== null && row.deletedAt === null;
   return { row, restored };
 }
 

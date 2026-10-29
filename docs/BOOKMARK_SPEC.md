@@ -822,7 +822,7 @@ The app never records or guesses whether the reader left kudos or a comment.
 
 ### 8.2 Schema (`001_initial.ts`)
 
-Synced tables share three columns: `field_clocks` (JSON map of field → HLC), `updated_hlc` (max clock in the row) and `deleted_at` (tombstone time, null when live). There are **no foreign keys**: sync can deliver a note before its readable, and tombstoned parents keep their children.
+Synced tables share three columns: `field_clocks` (JSON map of field → HLC), `updated_hlc` (max clock in the row) and `deleted_at` (tombstone time, null when live; its clock is the `deletedAt` key in `field_clocks`). There are **no foreign keys**: sync can deliver a note before its readable, and tombstoned parents keep their children.
 
 ```sql
 -- ===== synced =====
@@ -1047,7 +1047,7 @@ Plain async functions taking `db: Db` first; no hooks; return domain objects, ne
 | `syncLogRepository` | `insertSyncLog`, `listSyncLog` |
 | `settingsRepository` | `getSetting`, `setSetting`, `getAllSettings` |
 
-**Bookkeeping in repositories (and nothing more):** generate ids; set `createdAt`/`updatedAt`; tick the HLC (§9.2) and update `field_clocks` for every field written; set `updated_hlc`; write tombstones instead of deleting synced rows. The one exception is `purgeTombstonesOlderThan(db, cutoff)`, which each synced repository except `aliasRepository` exposes for the launch purge (§8.6). `updateReadable` rejects a patch whose `kind` differs from the stored row.
+**Bookkeeping in repositories (and nothing more):** generate ids; set `createdAt`/`updatedAt`; tick the HLC (§9.2) and update `field_clocks` for every field written; set `updated_hlc`; write tombstones instead of deleting synced rows. **Life clock** (`field_clocks.deletedAt`, §9.3 rule 2): stamp it on every write that sets `deleted_at`, whoever makes it (delete, undo, bulk delete, the tombstone of a merged duplicate); on every user edit of the row; and on user-initiated creates (add, capture, import). Never stamp it on writes that leave `deleted_at` alone and are not user edits of that row: `applyAo3Fields`, the `statusPatch` write from `planAo3Update`, cover jobs (including the rows they create), re-pointing a duplicate's children to the canonical id, and sort-key rebalancing. The one exception is `purgeTombstonesOlderThan(db, cutoff)`, which each synced repository except `aliasRepository` exposes for the launch purge (§8.6). `updateReadable` rejects a patch whose `kind` differs from the stored row.
 
 Cross-table writes (for example a progress change plus its events, or an AO3 update plus its inbox entry) are composed by services inside `db.transaction`; a repository never writes another module's table.
 
@@ -1117,7 +1117,7 @@ Location: `src/features/sync/domain/hlc.ts`.
 - Format: `"<wall-ms, 15 digits>:<counter, 5 digits>:<deviceId>"`, so plain string comparison gives a total order, with the device id breaking ties.
 - `hlcTick(last, wallMs)` for local writes; `hlcReceive(last, remote, wallMs)` when merging, so a device's clock never falls behind clocks it has seen.
 - The repository ticks once per write and stamps every field it writes with that clock in `field_clocks`. `hlc_last` is persisted in the same transaction.
-- `field_clocks` keys are the camelCase domain field names, the same keys as `SyncRow.values` and `SyncRow.fieldClocks` (§9.4).
+- `field_clocks` keys are the camelCase domain field names, the same keys as `SyncRow.values` and `SyncRow.fieldClocks` (§9.4), plus `deletedAt`, the row's life clock (§9.3 rule 2).
 - `GENESIS_HLC = '000000000000000:00000:00000000-0000-0000-0000-000000000000'` sorts below every real clock. It is used only for rows seeded identically on every device (the Up Next shelf). `hlc_last` is not seeded; the first `hlcTick` starts from the wall clock.
 
 ### 9.3 Merge rules
@@ -1125,7 +1125,7 @@ Location: `src/features/sync/domain/hlc.ts`.
 `mergeRows(local, remote)` in `src/features/sync/domain/merge.ts`, used for every synced table:
 
 1. **Fields:** for each field, keep the value whose clock is higher. Equal clocks with different values cannot happen except by bug; if they do, the lexicographically larger JSON value wins so all devices still agree.
-2. **Deletes:** a row is deleted if its delete clock is higher than every field clock. If an edit is newer than the delete, the row is restored and the summary says "Restored *Title* — edited on another device after it was deleted".
+2. **Deletes:** `deletedAt` merges like a field, clocked by its life clock `fieldClocks.deletedAt`; the higher life clock wins, ties go to live, and field values merge whether or not the row is deleted. Delete, undo and user edits stamp the life clock; AO3 updates and other system writes do not (§8.3), so an AO3 update never restores a deleted work. When a local tombstone becomes live, the summary says "Restored *Title* — edited on another device after it was deleted".
 3. **Duplicate AO3 works** (same `source_type` + `source_id`, different ids, both live): the canonical id is the one with the earlier `created_at` (ties: lower id). Fields merge by clock; an `id_aliases` row records alias → canonical; notes, shelf items, events and the cover of the alias are re-pointed (if both have a cover, the newer one wins). Aliases are synced as a set, and `resolveId` follows chains, so every device lands on the same canonical row.
 4. **Notes, shelf items, events and covers** merge by id like any row (covers by `readable_id`). Two devices adding notes to the same work keep both. The same shelf membership created on two devices has the same deterministic id and merges into one. A cover replaced on one device replaces it everywhere once merged.
 5. **Settings:** only `content_prefs` travels, as one last-writer-wins value. When importing, unknown keys in the incoming value (such as a `discreetMode` field from an older file) are ignored.
@@ -1154,9 +1154,9 @@ interface BookmarkSyncFile {
 interface SyncRow {
   id: string;
   values: Record<string, unknown>;   // camelCase domain fields, without sync columns
-  fieldClocks: Record<string, string>;
-  updatedHlc: string;
-  deletedAt: string | null;
+  fieldClocks: Record<string, string>; // the keys of values, plus deletedAt (the life clock, §9.3 rule 2)
+  updatedHlc: string;                  // max clock in the row
+  deletedAt: string | null;            // never also a key of values
 }
 
 interface AliasRow { aliasId: string; canonicalId: string; createdHlc: string }
@@ -1664,7 +1664,7 @@ Repositories, services and parsers map raw errors to `AppError`; users never see
   - no `any`, and no `@ts-ignore`;
   - no `DELETE FROM` on a synced table outside repository files (`src/features/*/data/*Repository.ts`). Review confirms each one is inside `purgeTombstonesOlderThan` (§8.6).
 
-  Rules that lint cannot express are covered by repository tests and review: every synced write ticks the HLC and stamps `field_clocks`; synced rows are tombstoned and hard-deleted only by the tombstone purge (§8.6); AO3-owned fields are written only by AO3 updates (`applyAo3Fields` with a `planAo3Update` patch) and user patches pass through `stripAo3OwnedFields`; user-facing text goes through `t()`.
+  Rules that lint cannot express are covered by repository tests and review: every synced write ticks the HLC and stamps `field_clocks`, including the life clock exactly as §8.3 lists; synced rows are tombstoned and hard-deleted only by the tombstone purge (§8.6); AO3-owned fields are written only by AO3 updates (`applyAo3Fields` with a `planAo3Update` patch) and user patches pass through `stripAo3OwnedFields`; user-facing text goes through `t()`.
 - **E2E:** Maestro flows on Android (add by link against a local fixture server, +1 progress, capture paste, export and re-import); Playwright on the web build (install banner, capture paste, sync file import, offline reload, tab bar switching to nav rail at 900 px).
 - **Performance budgets:** cold start to interactive under 2 s with 2,000 readables on a mid-range Android phone; filtering under 100 ms with 5,000.
 - **CI:** typecheck, lint (including the architecture rules), unit tests and the web build on every push (GitHub Actions; free for public repositories).
