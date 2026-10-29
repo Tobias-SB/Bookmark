@@ -98,9 +98,10 @@ function matchesTags(r: Readable, f: ReadableFilters): boolean {
 
 const has = (xs: readonly unknown[] | undefined): boolean => xs !== undefined && xs.length > 0;
 
+// Positive forms exclude books; the exclusion forms (excludeWarnings, isAbandoned:false) let books pass.
 function usesFanficAxes(f: ReadableFilters): boolean {
   return (
-    f.isComplete !== undefined || f.isAbandoned !== undefined || has(f.ratings) || has(f.excludeWarnings) ||
+    f.isComplete !== undefined || f.isAbandoned === true || has(f.ratings) ||
     has(f.fandoms) || has(f.relationships) || has(f.characters) || has(f.categories)
   );
 }

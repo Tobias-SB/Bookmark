@@ -54,7 +54,7 @@ describe('applyFilters: axes', () => {
     expect(ids(run(rs, { isComplete: true }).items)).toEqual(['f-done']);
     expect(ids(run(rs, { isComplete: false }).items)).toEqual(['f-wip']);
     expect(ids(run(rs, { isAbandoned: true }).items)).toEqual(['f-done']);
-    expect(ids(run(rs, { isAbandoned: false }).items)).toEqual(['f-wip']);
+    expect(ids(run(rs, { isAbandoned: false }).items).sort()).toEqual(['b-owned', 'b-unset', 'b-want', 'f-wip']);
   });
   it('ratings OR; null rating never matches', () => {
     expect(ids(run(rs, { ratings: ['mature', 'teen'] }).items)).toEqual(['f-done']);
@@ -79,12 +79,26 @@ describe('applyFilters: fanfic lists and tags', () => {
     expect(ids(run(rs, { characters: ['a'] }).items)).toEqual(['a']);
     expect(ids(run(rs, { categories: ['gen'] }).items)).toEqual(['b']);
   });
-  it('fanfic-only filters never match books, even excludeWarnings', () => {
-    expect(ids(run(rs, { excludeWarnings: ['Nothing'] }).items).sort()).toEqual(['a', 'b']);
-    expect(ids(run(rs, { fandoms: ['Naruto'] }).items)).toEqual(['b']);
+  it('positive fanfic-only filters never match books', () => {
+    const all = [...rs, book('plain')];
+    expect(ids(run(all, { fandoms: ['Naruto'] }).items)).toEqual(['b']);
+    expect(run(all, { isComplete: false }).items.some((r) => r.kind === 'book')).toBe(false);
+    expect(run(all, { isAbandoned: true }).items).toEqual([]);
+    expect(run(all, { relationships: ['C/D'] }).items.some((r) => r.kind === 'book')).toBe(false);
+    expect(run(all, { characters: ['C'] }).items.some((r) => r.kind === 'book')).toBe(false);
+    expect(run(all, { categories: ['Gen'] }).items.some((r) => r.kind === 'book')).toBe(false);
+    expect(run(all, { ratings: ['teen'] }).items.some((r) => r.kind === 'book')).toBe(false);
+  });
+  it('exclusion forms let books pass', () => {
+    const all = [...rs, book('plain')];
+    expect(ids(run(all, { excludeWarnings: ['Nothing'] }).items).sort()).toEqual(['a', 'b', 'bk', 'plain']);
+    expect(ids(run(all, { isAbandoned: false }).items).sort()).toEqual(['a', 'b', 'bk', 'plain']);
+  });
+  it('kind fanfic plus excludeWarnings shows only non-matching fanfic', () => {
+    expect(ids(run(rs, { kind: 'fanfic', excludeWarnings: ['Underage'] }).items)).toEqual(['b']);
   });
   it('excludeWarnings hides works with any listed warning', () => {
-    expect(ids(run(rs, { excludeWarnings: ['underage', 'x'] }).items)).toEqual(['b']);
+    expect(ids(run(rs, { excludeWarnings: ['underage', 'x'] }).items)).toEqual(['b', 'bk']);
   });
   it('includeTags is AND over user and AO3 tags', () => {
     expect(ids(run(rs, { includeTags: ['angst'] }).items).sort()).toEqual(['a', 'b', 'bk']);
