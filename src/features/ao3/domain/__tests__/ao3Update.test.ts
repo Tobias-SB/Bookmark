@@ -80,6 +80,12 @@ describe('planAo3Update', () => {
     ]);
   });
 
+  it('writes a total that becomes unknown (AO3 "?") as null with progress severity', () => {
+    const plan = planAo3Update(fanfic({ totalUnits: 10 }), snap({ totalUnits: null }), NOW);
+    expect(plan.patch).toEqual({ kind: 'fanfic', totalUnits: null });
+    expect(plan.changes).toEqual([{ field: 'totalUnits', before: 10, after: null, severity: 'progress' }]);
+  });
+
   it('maps series to seriesKey, seriesName, seriesPart and seriesTotal', () => {
     const plan = planAo3Update(fanfic(), snap({ series: { seriesId: '42', name: 'S', part: 2, total: 3 } }), NOW);
     expect(plan.patch).toEqual({
@@ -180,6 +186,11 @@ describe('planAo3Update', () => {
       expect(keys.every((k) => owned.has(k))).toBe(true);
       expect(keys.sort()).toEqual(plan.changes.map((c) => c.field).sort());
       expect(plan.changed).toBe(plan.changes.length > 0 || plan.statusReverted);
+      // undefined leaves the stored value alone; seriesTotal alone may clear when the series changes.
+      const source: Record<string, unknown> = { ...incoming };
+      for (const key of keys.filter((k) => k !== 'seriesTotal')) {
+        expect(key.startsWith('series') ? incoming.series : source[key]).not.toBeUndefined();
+      }
       // Applying the patch makes a second plan a no-op on fields.
       const applied = planAo3Update({ ...current, ...plan.patch }, incoming, NOW);
       expect(applied.changes).toEqual([]);
@@ -207,6 +218,11 @@ describe('stripAo3OwnedFields', () => {
 
   it('leaves manual fanfic patches untouched', () => {
     expect(stripAo3OwnedFields(fanfic({ sourceType: 'manual' }), userPatch)).toEqual(userPatch);
+  });
+
+  it('passes a book patch on AO3 fanfic through unchanged (the repository rejects the kind mismatch)', () => {
+    const patch = { kind: 'book' as const, title: 'New', totalUnits: 300 };
+    expect(stripAo3OwnedFields(fanfic(), patch)).toEqual(patch);
   });
 
   it('leaves book patches untouched', () => {
