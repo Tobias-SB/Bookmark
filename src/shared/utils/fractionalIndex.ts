@@ -91,7 +91,7 @@ export function fractionalKeyBetween(a: string | null, b: string | null): string
     if (ib === SMALLEST_INT) throw new Error('cannot go below the smallest fractional key');
     if (ib < b) return ib;
     const res = decrementInteger(ib);
-    if (res === null) throw new Error('cannot decrement any further');
+    if (res === null || res === SMALLEST_INT) throw new Error('cannot go below the smallest key');
     return res;
   }
   const ia = integerPart(a);
