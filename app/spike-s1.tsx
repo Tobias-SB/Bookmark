@@ -8,7 +8,7 @@ import { isAppError } from '@/shared/types/errors';
 
 // Throwaway spike S1 (spec §21): delete this route once the spike result is recorded.
 const SCRATCH_DB = 'spike-s1.db';
-const FIVE_MB = 'x'.repeat(5 * 1024 * 1024);
+const FIVE_MB = 5 * 1024 * 1024;
 
 interface Estimate { usage: string; quota: string }
 
@@ -36,13 +36,15 @@ function Line({ label, value }: { label: string; value: string }) {
   return <Text className="text-on-surface">{text}</Text>;
 }
 
-function ActionButton({ label, onPress }: { label: string; onPress: () => void }) {
+function ActionButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled: boolean }) {
   return (
     <Pressable
       role="button"
       aria-label={label}
+      aria-disabled={disabled}
+      disabled={disabled}
       onPress={onPress}
-      className="min-h-12 items-center justify-center rounded-lg bg-primary px-4"
+      className={`min-h-12 items-center justify-center rounded-lg bg-primary px-4 ${disabled ? 'opacity-50' : ''}`}
     >
       <Text className="font-bold text-on-primary">{label}</Text>
     </Pressable>
@@ -55,6 +57,7 @@ export default function SpikeS1() {
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [persisted, setPersisted] = useState('?');
   const [status, setStatus] = useState(t('spike.s1.opening'));
+  const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async (target: Db) => {
     const count = await target.first<{ n: number }>('SELECT COUNT(*) AS n FROM spike_s1');
@@ -63,12 +66,16 @@ export default function SpikeS1() {
   }, []);
 
   const attempt = useCallback(async (target: Db, action: () => Promise<void>) => {
+    setBusy(true);
+    setStatus(t('spike.s1.running'));
     try {
       await action();
       await refresh(target);
       setStatus(t('spike.s1.ok'));
     } catch (error) {
       setStatus(`${t('spike.s1.failed')}: ${describe(error)}`);
+    } finally {
+      setBusy(false);
     }
   }, [refresh]);
 
@@ -100,10 +107,12 @@ export default function SpikeS1() {
           <ActionButton
             label={t('spike.s1.addRow')}
             onPress={() => void attempt(db, async () => { await db.run('INSERT INTO spike_s1 (payload) VALUES (?)', ['row']); })}
+            disabled={busy}
           />
           <ActionButton
             label={t('spike.s1.write5mb')}
-            onPress={() => void attempt(db, async () => { await db.run('INSERT INTO spike_s1 (payload) VALUES (?)', [FIVE_MB]); })}
+            onPress={() => void attempt(db, async () => { await db.run('INSERT INTO spike_s1 (payload) VALUES (?)', ['x'.repeat(FIVE_MB)]); })}
+            disabled={busy}
           />
         </View>
       )}

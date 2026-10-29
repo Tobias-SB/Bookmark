@@ -13,6 +13,11 @@ function wrap(mode) {
     .filter((line) => line !== '' && !line.startsWith('//'))
     .join(' ')
     .replace('__MODE__', mode);
+  try {
+    new Function(code);
+  } catch (error) {
+    throw new Error(`Generated ${mode} bookmarklet has a syntax error: ${error.message}`);
+  }
   return `javascript:${encodeURIComponent(code).replace(/'/g, '%27')}`;
 }
 

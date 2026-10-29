@@ -37,7 +37,6 @@
     show([
       'Blurbs (li.blurb): ' + document.querySelectorAll('li.blurb').length,
       'Heading: ' + (heading ? heading.textContent.replace(/\s+/g, ' ').trim() : '(none found)'),
-      'Path: ' + location.pathname + location.search,
       'Tab title: ' + document.title
     ], null);
     return;

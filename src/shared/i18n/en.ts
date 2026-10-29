@@ -18,6 +18,7 @@ export const en = {
   'spike.s1.addRow': '+1',
   'spike.s1.write5mb': 'Write 5 MB',
   'spike.s1.status': 'Last action',
+  'spike.s1.running': 'Running…',
   'spike.s1.ok': 'OK',
   'spike.s1.failed': 'Failed',
   'spike.s1.opening': 'Opening the scratch database',
