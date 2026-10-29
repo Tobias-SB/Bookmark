@@ -1,5 +1,5 @@
 import { array, assert, constantFrom, nat, property, tuple } from 'fast-check';
-import { fractionalKeyBetween, fractionalKeysBetween } from '../fractionalIndex';
+import { MAX_KEY_LENGTH, fractionalKeyBetween, fractionalKeysBetween } from '../fractionalIndex';
 
 const isSorted = (keys: string[]) => keys.every((k, i) => i === 0 || (keys[i - 1] ?? '') < k);
 
@@ -140,5 +140,23 @@ describe('fractionalKeysBetween', () => {
   it('rejects an invalid count', () => {
     expect(() => fractionalKeysBetween(null, null, -1)).toThrow();
     expect(() => fractionalKeysBetween(null, null, 1.5)).toThrow();
+  });
+});
+
+describe('key length cap', () => {
+  const longest = 'a0' + 'V'.repeat(MAX_KEY_LENGTH - 2);
+
+  it('accepts a key at the cap', () => {
+    expect(() => fractionalKeyBetween(null, longest)).not.toThrow();
+  });
+
+  it('rejects an incoming key over the cap without recursing on it', () => {
+    expect(() => fractionalKeyBetween('a' + 'z'.repeat(100_000), null)).toThrow('too long');
+    expect(() => fractionalKeyBetween(null, longest + 'V')).toThrow('too long');
+  });
+
+  it('refuses to produce a key over the cap', () => {
+    const next = longest.slice(0, -1) + 'W';
+    expect(() => fractionalKeyBetween(longest, next)).toThrow('too long');
   });
 });

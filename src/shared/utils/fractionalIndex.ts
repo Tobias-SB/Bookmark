@@ -4,6 +4,7 @@ const DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const BASE = DIGITS.length;
 const SMALLEST_INT = 'A' + '0'.repeat(26);
 const LAST_DIGIT = DIGITS.charAt(BASE - 1);
+export const MAX_KEY_LENGTH = 1024;
 
 function digitValue(ch: string): number {
   const v = DIGITS.indexOf(ch);
@@ -24,6 +25,8 @@ function integerPart(key: string): string {
 }
 
 function validateKey(key: string): void {
+  // Keys arrive in sync files; the cap stops a hostile key from exhausting the stack in midpoint.
+  if (key.length > MAX_KEY_LENGTH) throw new Error('fractional key too long');
   if (key === SMALLEST_INT) throw new Error(`invalid fractional key: ${key}`);
   const frac = key.slice(integerPart(key).length);
   if (frac.endsWith('0')) throw new Error(`invalid fractional key: ${key}`);
@@ -82,6 +85,12 @@ function decrementInteger(x: string): string | null {
 
 /** Returns a key k with a < k < b. null means unbounded; both null gives the seed 'a0'. */
 export function fractionalKeyBetween(a: string | null, b: string | null): string {
+  const key = keyBetween(a, b);
+  if (key.length > MAX_KEY_LENGTH) throw new Error('fractional key too long');
+  return key;
+}
+
+function keyBetween(a: string | null, b: string | null): string {
   if (a !== null) validateKey(a);
   if (b !== null) validateKey(b);
   if (a !== null && b !== null && a >= b) throw new Error(`fractional keys out of order: ${a} >= ${b}`);
