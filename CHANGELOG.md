@@ -12,6 +12,7 @@ Desk research only (plan B2). Each result names what a live check still has to c
 Device spikes S1–S4 are prepared (`app/spike-s1.tsx`, `tools/spikes/`, `tools/spike-s3/`); none has run.
 
 - `public/_headers` sets COOP and COEP on every route (§18.2). **Provisional:** the Content-Security-Policy is left out until the app is deployable, so S1 tests storage alone; §18.2 makes its `connect-src` depend on S5 and S9.
+- **S2 burst (owner-approved one-off):** S2's five requests 1 s apart are faster than §10.1's 2 s pacing, run once to see how AO3 rate-limits, and stop at the first 429 or 503. The app itself keeps the §10.1 pacing.
 - The owner fills in the site URL and AO3 work IDs in `tools/spikes/S2.md` before running it. Delete `app/spike-s1.tsx` and the `spike.s1.*` keys once S1 is recorded.
 
 Sources: [Google Books API](https://developers.google.com/books/docs/v1/using), [API key restrictions](https://docs.cloud.google.com/api-keys/docs/add-restrictions-api-keys), [Cloudflare Pages headers](https://developers.cloudflare.com/pages/configuration/headers/), [Cloudflare Pages serving](https://developers.cloudflare.com/pages/platform/serving-pages/), [Play Payments policy](https://support.google.com/googleplay/android-developer/answer/9858738), [StreetComplete #3768](https://github.com/streetcomplete/StreetComplete/issues/3768).

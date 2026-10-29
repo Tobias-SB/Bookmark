@@ -13,11 +13,12 @@ See `tasks/plan.md` for files, acceptance criteria and tests.
 - [x] Task 7: Scripts and the Commands table
 - [x] Task 8: ESLint red flags and the `Stop` hook
 - [x] Task 9: CI (GitHub Actions)
-- [ ] **Checkpoint:** merged to `main`; `/doctor prompt-audit`; Part B go-ahead
+- [ ] **Checkpoint:** merged to `main` (done); `/doctor prompt-audit` (owner, at the terminal); Part B go-ahead (done)
 
-## Part B: Remainder (needs go-ahead)
-- [ ] B0: §6 domain types (hub; `AO3_OWNED_FIELDS` is stop-and-ask)
-- [ ] B1: Wave 1 (W1 fractionalIndex, W2 hlc + merge, W3 progress + filters, W4 `planAo3Update`, W5 shared components)
-- [ ] B2: Desk spikes S5, S6, S7, S8 → `CHANGELOG.md`
-- [ ] B3: Device spikes S1, S2, S3, S4 (owner runs them; never marked passed without evidence)
+## Part B: Remainder
+- [x] B0: §6 domain types
+- [x] B1: Wave 1: W1, W2, W3, W4 merged
+- [ ] B1: W5 shared components (brief: `tasks/briefs/W5.md`; gate: S17 Android go, plus the brief's open decisions)
+- [x] B2: Desk spikes S5, S6, S7, S8 → `CHANGELOG.md` (S5 and S6 still need their live checks)
+- [ ] B3: Device spikes S1, S2, S3, S4: prepared; the owner runs them (never marked passed without evidence)
 - [ ] B4: Owner: Play developer account, 12 testers
