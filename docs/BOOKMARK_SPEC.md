@@ -662,7 +662,7 @@ export interface ReadableFilters {
 export const DEFAULT_FILTERS: ReadableFilters = { version: 1, sortBy: 'dateAdded', sortOrder: 'desc' };
 ```
 
-- `applyFilters(readables, notesByReadable, filters, prefs): FilterResult`, where `FilterResult = { items: Readable[]; matchedIn: Record<string, 'title' | 'authors' | 'tags' | 'summary' | 'notes' | 'other'>; hiddenByPrefsCount: number }`. Axes combine with AND. Fanfic-only filters never match books.
+- `applyFilters(readables, notesByReadable, filters, prefs): FilterResult`, where `FilterResult = { items: Readable[]; matchedIn: Record<string, 'title' | 'authors' | 'tags' | 'summary' | 'notes' | 'other'>; hiddenByPrefsCount: number }`. Axes combine with AND. Fanfic-only filters never match books, except the exclusion forms (`excludeWarnings`, `isAbandoned: false`), which let books through; the `kind` filter includes or excludes a whole kind.
 - **Content preferences apply first** (§7.8), so hidden works never appear unless the user taps "Show hidden".
 - **Search:** case- and diacritic-insensitive (`NFKD`, strip marks); whitespace-separated terms are ANDed; `"quoted phrases"` match exactly. Fields: title, authors, fandoms, relationships, characters, user and AO3 tags, summary, note bodies. Results record which field matched so the list can show "matched in notes".
 - **Sort:** `length` is words for fanfic and pages for books. Nulls sort last in both directions. `chaptersBehind` sorts descending by default.
