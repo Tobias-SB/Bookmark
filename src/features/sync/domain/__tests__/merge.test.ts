@@ -35,6 +35,13 @@ describe('mergeRows: fields (rule 1)', () => {
     expect(mergeRows(b, a).row.values.title).toBe('Beta');
   });
 
+  it('stores -0 as 0 so both merge orders agree', () => {
+    const a = row({ values: { progress: -0 }, fieldClocks: { progress: c(4) }, updatedHlc: c(4) });
+    const b = row({ values: { progress: 0 }, fieldClocks: { progress: c(4) }, updatedHlc: c(4) });
+    expect(Object.is(mergeRows(a, b).row.values.progress, 0)).toBe(true);
+    expect(Object.is(mergeRows(b, a).row.values.progress, 0)).toBe(true);
+  });
+
   it('treats a "__proto__" key from a file as plain data', () => {
     const remote = row({ values: JSON.parse('{"__proto__": {"polluted": true}}'), fieldClocks: JSON.parse('{"__proto__": "000000000000001:00000:b"}'), updatedHlc: c(1, 'b') });
     const merged = mergeRows(row({}), remote).row;
@@ -98,12 +105,11 @@ describe('mergeRows: deletes (rule 2)', () => {
     expect(mergeRows(undone, deletedAgain).row.deletedAt).toBe(deletedAt);
   });
 
-  it('treats a malformed tombstone with a newer field clock as live', () => {
+  it('treats a malformed tombstone with a newer field clock as live, without claiming a restore', () => {
     const malformed = row({ values: { title: 'T' }, fieldClocks: { title: c(9) }, updatedHlc: c(5), deletedAt });
-    expect(mergeRows(malformed, row({}))).toEqual({
-      row: row({ values: { title: 'T' }, fieldClocks: { title: c(9) }, updatedHlc: c(9) }),
-      restored: true,
-    });
+    const live9 = row({ values: { title: 'T' }, fieldClocks: { title: c(9) }, updatedHlc: c(9) });
+    expect(mergeRows(malformed, row({}))).toEqual({ row: live9, restored: false });
+    expect(mergeRows(malformed, malformed)).toEqual({ row: live9, restored: false });
   });
 
   it('breaks an equal delete-clock conflict deterministically', () => {
@@ -133,7 +139,7 @@ describe('pickCanonical (rule 3)', () => {
 
 // Small pools force equal clocks and equal values, including the "bug" ties of rule 1, and malformed rows.
 const clockArb = fc.constantFrom(c(1), c(2), c(2, 'b'), c(3, 'c'));
-const valueArb = fc.constantFrom<unknown>('x', 'y', 1, 2, null, { a: 1 }, ['l']);
+const valueArb = fc.constantFrom<unknown>('x', 'y', 1, 2, 0, -0, null, { a: 1 }, ['l']);
 const arbitraryRow: fc.Arbitrary<SyncRow> = fc.record({
   id: fc.constant('r1'),
   values: fc.record({ title: valueArb, progress: valueArb }, { requiredKeys: [] }),
@@ -194,13 +200,19 @@ function newDevices(): Record<DeviceId, Device> {
   return { a: { hlc: null, rows: new Map() }, b: { hlc: null, rows: new Map() }, c: { hlc: null, rows: new Map() } };
 }
 
+const DEVICE_UUIDS: Record<DeviceId, string> = {
+  a: 'aaaaaaaa-0000-4000-8000-000000000000',
+  b: 'bbbbbbbb-0000-4000-8000-000000000000',
+  c: 'cccccccc-0000-4000-8000-000000000000',
+};
+
 function tick(device: Device, wall: number, id: DeviceId): string {
-  device.hlc = hlcTick(device.hlc, wall, id);
+  device.hlc = hlcTick(device.hlc, wall, DEVICE_UUIDS[id]);
   return device.hlc;
 }
 
 function receive(target: Device, source: Device, wall: number, id: DeviceId) {
-  if (source.hlc !== null) target.hlc = hlcReceive(target.hlc, source.hlc, wall, id);
+  if (source.hlc !== null) target.hlc = hlcReceive(target.hlc, source.hlc, wall, DEVICE_UUIDS[id]);
   for (const [rowId, theirs] of source.rows) {
     const ours = target.rows.get(rowId);
     target.rows.set(rowId, ours ? mergeRows(ours, theirs).row : theirs);

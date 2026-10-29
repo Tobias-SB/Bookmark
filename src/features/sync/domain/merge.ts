@@ -56,7 +56,8 @@ function mergeFields(a: SyncRow, b: SyncRow): Pick<SyncRow, 'values' | 'fieldClo
     const valueA = own(a.values, key);
     const valueB = own(b.values, key);
     const [clock, value] = beats(clockA, valueA, clockB, valueB) ? [clockA, valueA] : [clockB, valueB];
-    if (value !== undefined) values.push([key, value]);
+    // JSON cannot tell -0 from 0, so the tie-break treats them as equal; store 0 so both orders agree.
+    if (value !== undefined) values.push([key, Object.is(value, -0) ? 0 : value]);
     if (clock !== ABSENT) clocks.push([key, clock]);
   }
   // fromEntries defines own properties, so a "__proto__" key from an untrusted file stays plain data.
@@ -66,7 +67,8 @@ function mergeFields(a: SyncRow, b: SyncRow): Pick<SyncRow, 'values' | 'fieldClo
 /**
  * Field-wise last-writer-wins merge of two versions of one synced row (spec §9.3).
  * Deletion is a register on `updatedHlc`: a tombstone stays deleted only while no field or restore clock
- * is newer than its delete. Commutative, associative and idempotent on `row`.
+ * is newer than its delete. Commutative and associative on `row`; `mergeRows(x, x).row` is `x` normalised
+ * (equal to `x` for well-formed rows), and merging a merged row again changes nothing.
  */
 export function mergeRows(local: SyncRow, remote: SyncRow): MergeResult {
   if (local.id !== remote.id) throw appError('validation', 'mergeRows needs two versions of the same row');
@@ -74,7 +76,9 @@ export function mergeRows(local: SyncRow, remote: SyncRow): MergeResult {
   const b = normalise(remote);
   const winner = beats(a.updatedHlc, a.deletedAt, b.updatedHlc, b.deletedAt) ? a : b;
   const row: SyncRow = { id: local.id, ...mergeFields(a, b), updatedHlc: winner.updatedHlc, deletedAt: winner.deletedAt };
-  return { row, restored: local.deletedAt !== null && row.deletedAt === null };
+  // Restored by the other side only: a malformed local tombstone that normalises to live is not news.
+  const restored = local.deletedAt !== null && row.deletedAt === null && row.updatedHlc !== a.updatedHlc;
+  return { row, restored };
 }
 
 export interface CanonicalCandidate {
