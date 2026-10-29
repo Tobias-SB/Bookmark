@@ -80,9 +80,17 @@ function applyProgress(r: Readable, d: Draft, progress: number | null, now: stri
   }
   if (progress !== null && d.status !== 'completed' && isFinalPosition(r, progress)) {
     markFinished(d, now);
-  } else if (d.status === 'completed' && (progress === null || !isFinalPosition(r, progress))) {
+  } else if (d.status === 'completed' && isLoweredBelowFinal(r, progress)) {
     d.status = 'reading';
   }
+}
+
+// A WIP is never "final", so compare with the previous progress and the completion target instead.
+function isLoweredBelowFinal(r: Readable, progress: number | null): boolean {
+  const prev = r.progressCurrent;
+  if (progress === null) return prev !== null;
+  const target = completionTarget(r);
+  return (prev !== null && progress < prev) || (target !== null && progress < target);
 }
 
 // What "completed" snaps progress to: the known ceiling, or what is posted for a WIP.
@@ -115,15 +123,15 @@ function applyReread(d: Draft, now: string): void {
 }
 
 function toResult(r: Readable, d: Draft, now: string): ProgressResult {
-  const patch: ReadablePatch = {
-    kind: r.kind,
-    status: d.status,
-    progressCurrent: d.progressCurrent,
-    startedAt: d.startedAt,
-    finishedAt: d.finishedAt,
-    readCount: d.readCount,
-    lastReadAt: now,
+  const changed = {
+    ...(d.status !== r.status && { status: d.status }),
+    ...(d.progressCurrent !== r.progressCurrent && { progressCurrent: d.progressCurrent }),
+    ...(d.startedAt !== r.startedAt && { startedAt: d.startedAt }),
+    ...(d.finishedAt !== r.finishedAt && { finishedAt: d.finishedAt }),
+    ...(d.readCount !== r.readCount && { readCount: d.readCount }),
   };
+  // Only changed fields: every written field gets a field clock, so unchanged ones would win merges wrongly.
+  const patch: ReadablePatch = { kind: r.kind, ...changed, lastReadAt: now };
   const events = d.events.map((type) => ({
     readableId: r.id,
     type,
@@ -136,6 +144,8 @@ function toResult(r: Readable, d: Draft, now: string): ProgressResult {
 
 export function applyProgressChange(current: Readable, change: ProgressChange, now: string): ProgressResult {
   const d = draftOf(current);
+  const invalid = validate(current, null);
+  if (invalid !== null) return fail(invalid);
   if ('startReread' in change) {
     if (current.status !== 'completed' && current.status !== 'dnf') return fail('re-read starts from completed or dnf');
     applyReread(d, now);
