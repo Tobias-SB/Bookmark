@@ -1,5 +1,26 @@
 # Bookmark — Changelog
 
+## Web hosting moves to Cloudflare Workers static assets — 30 October 2026
+
+Owner decision. Supersedes the hosting choice in the S6 desk spike below.
+- **Host:** Cloudflare Workers static assets with no Worker script (`wrangler.jsonc`, default `workers.dev` subdomain), instead of Cloudflare Pages. Cloudflare now recommends Workers for new projects; Workers static assets supports `_headers` (not served as a file; 100 rules of up to 2,000 characters) and an explicit `not_found_handling: "single-page-application"`. `_headers` does not apply to Worker-generated responses, so the project never adds a Worker script. The docs do not say whether the single-page fallback carries `_headers`; spike S6 checks it with a deep-link reload. A local `wrangler dev` run (4.156.0) returned 200 with COOP and COEP for `/`, `/spike-s1` and `/readable/abc123`, and did not serve `_headers`; the live deploy still has to show the same.
+- **Web output is `single`** (was `static`). Routes such as `readable/[id]` take IDs that exist only on the reader's device and cannot be pre-rendered.
+- **Caching:** Workers' default `Cache-Control: public, max-age=0, must-revalidate` already revalidates `index.html`, so `_headers` adds no cache rules. Stale home-screen builds are a Workbox update question for Phase 2.
+- **Privacy policy** (§18.1) states that the website's host sees requests, including IP addresses, as any website's host does, and Bookmark receives and stores none of them. Cloudflare Web Analytics stays off.
+- **S6 is redefined** (§21): `/` and a deep-link reload both carry COOP/COEP, and `require-corp` works in an iPhone home-screen install. `tools/spikes/S1.md` deploys with `npx wrangler@4.156.0 deploy`.
+
+Spec sections changed: §2.3, §18.1, §18.2, §21 (S6), §22 item 9.
+
+Sources: [Workers static assets headers](https://developers.cloudflare.com/workers/static-assets/headers/), [Workers single-page applications](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/).
+
+## Spike S17 Android device checks — 30 October 2026
+
+Owner, Pixel 10, release build of 666a491 (`/s17`).
+- Pass: themed render; light, dark and black switch without flicker, status bar legible; cold start in system dark mode with no white flash; TalkBack announces the AlertDialog with its title; Back closes it.
+- **Fail: TalkBack focus is not confined to the dialog.** The installed `@rn-primitives/alert-dialog` renders natively through a portal View and sets only `aria-modal`, which Android ignores, so screen-reader focus reaches the content behind. Select and DropdownMenu use the same portal approach.
+- Not run: hardware-keyboard Tab trapping (no keyboard).
+- Decision pending with the owner: keep `@rn-primitives` and render the overlay inside React Native `Modal` on Android, or the §21 fallback (all four components on `Modal`).
+
 ## Phase 0 desk spikes S5–S8 — 29 October 2026
 
 Desk research only (plan B2). Each result names what a live check still has to confirm.

@@ -21,4 +21,4 @@ See `tasks/plan.md` for files, acceptance criteria and tests.
 - [ ] B1: W5 shared components (brief: `tasks/briefs/W5.md`; gate: S17 Android go, plus the brief's open decisions)
 - [x] B2: Desk spikes S5, S6, S7, S8 → `CHANGELOG.md` (S5 and S6 still need their live checks)
 - [ ] B3: Device spikes S1, S2, S3, S4: prepared; the owner runs them (never marked passed without evidence)
-- [ ] B4: Owner: Play developer account, 12 testers
+- [x] B4: Owner: Play developer account, 12 testers

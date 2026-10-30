@@ -67,7 +67,7 @@ Features read these differences from `PlatformCapabilities` (§5.4), never from 
 
 ### 2.3 Web (PWA)
 
-- A static export of the same Expo app, hosted on a free static host that supports custom response headers (needed for COOP/COEP, §18.2). Cloudflare Pages supports a `_headers` file; confirm the free plan includes it (spike S6). The host's default subdomain is used, so there is no domain cost.
+- A single-page export of the same Expo app (`web.output: 'single'`: reader data exists only on the device, so routes such as `readable/[id]` cannot be pre-rendered), hosted as a Cloudflare Workers static-assets project with no Worker script (`wrangler.jsonc`), which supports a `_headers` file (needed for COOP/COEP, §18.2) and a single-page-app fallback. Confirm both on the free plan (spike S6). The default `workers.dev` subdomain is used, so there is no domain cost.
 - The same site serves the privacy policy, help pages, the capture-tool install page, the public costs page and the Ko-fi link (§12.12).
 - **iPhone:** users must use **Add to Home Screen**. Home-screen web apps keep their own storage, separate from Safari, and WebKit does not expect their first-party data to be deleted under its 7-day storage rule. In an ordinary Safari tab, storage can be cleared after 7 days of Safari use without a visit. The web app detects when it runs in a tab (`display-mode` is not `standalone`) and shows a persistent install banner.
 - Because home-screen storage is separate from Safari, a link opened from Safari lands in Safari, not the installed app. All hand-offs into the web app therefore go through the clipboard or a file, never a URL (§10.5).
@@ -1728,7 +1728,7 @@ Confirm each item against the current Play Console help before each release.
 
 - **Account:** personal accounts created after 13 November 2023 need a closed test with at least 12 testers opted in for 14 continuous days before production access. Check the current registration fee when creating the account.
 - **Build:** Android App Bundle via EAS.
-- **Privacy policy and Data safety:** every app completes the Data safety form and links a privacy policy, even when it collects nothing. Host the policy on the app's website (§18.2). It states: data stays on the device; the app contacts AO3 (work URLs you add or check), Google Books (your searches), Open Library (ISBNs of books you want covers for) and any image address you choose for a cover; images you pick from your photos stay on your device; no analytics, ads or accounts; Android Auto Backup is off; feedback is sent only when you send an email.
+- **Privacy policy and Data safety:** every app completes the Data safety form and links a privacy policy, even when it collects nothing. Host the policy on the app's website (§18.2). It states: data stays on the device; the app contacts AO3 (work URLs you add or check), Google Books (your searches), Open Library (ISBNs of books you want covers for) and any image address you choose for a cover; images you pick from your photos stay on your device; no analytics, ads or accounts; the website's host sees requests (including IP addresses) the way any website's host does, and Bookmark receives and stores none of them; Android Auto Backup is off; feedback is sent only when you send an email.
 - **Payments policy:** tips only through Google Play billing; no mention of or link to Ko-fi or any other payment method anywhere in the Android app or its store listing. `canShowSupportLink` is false in Play builds and `KOFI_URL` is not set in the Play build profile.
 - **If Android tips are enabled:** set up a Google payments profile (merchant account) and tax details; enrol in the 15% service-fee programme; accept that **the payments profile's full address is shown publicly on Google Play** (spike S14). Data safety: purchases are handled by Google Play; the app stores no purchase records and sends nothing.
 - **Bookshop links:** they sell physical books outside the app, which Play billing does not cover; confirm before release (spike S13).
@@ -1739,8 +1739,10 @@ Confirm each item against the current Play Console help before each release.
 
 ### 18.2 Web hosting checklist
 
-- `expo export --platform web` (static output) plus the Workbox service worker and `manifest.webmanifest` (`display: standalone`, name, icons, theme colour).
-- Free static host with custom headers (spike S6). The `_headers` file applies to every route:
+- `expo export --platform web` (single-page output) plus the Workbox service worker and `manifest.webmanifest` (`display: standalone`, name, icons, theme colour).
+- Cloudflare Workers static assets, no Worker script: `wrangler.jsonc` sets `assets.directory` to `./dist` and `not_found_handling` to `single-page-application`. Never ship a Worker script: `_headers` does not apply to Worker-generated responses. Leave Cloudflare Web Analytics off.
+- Static responses carry Cloudflare's default `Cache-Control: public, max-age=0, must-revalidate`, so the browser revalidates `index.html` on each load. A stale home-screen build is a service-worker update question (Workbox), settled in Phase 2.
+- The `_headers` file applies to every route (spike S6 confirms it also applies to the single-page fallback):
   - `Cross-Origin-Opener-Policy: same-origin`
   - `Cross-Origin-Embedder-Policy: require-corp` (Safari does not support `credentialless`)
   - a strict `Content-Security-Policy` for the app's own pages: `img-src 'self' blob: data:`; `connect-src 'self'` plus Google Books and Open Library only if spikes S5 and S9 pass
@@ -1846,7 +1848,7 @@ Phase 1 includes `.bookmark` export because it is the only backup; everything el
 | S3 | Does the bookmarklet run on AO3 in iOS Safari, Android Chrome and desktop browsers (AO3's Content Security Policy), and can it write to the clipboard on iPhone? | Phase 2 capture | Show the payload for manual copy; rely on pasted text |
 | S4 | Which AO3 pages render work blurbs (bookmarks, history, Marked for Later, subscriptions, series, author works, search, collections, other users' bookmarks), and where does each page show its list name? | Phase 2 bulk updates; Phase 4 rec lists | Document the supported pages only |
 | S5 | Can the web app call the Google Books API from the browser, and does an HTTP-referrer key restriction work with it? | Web book search | Hide book search on web; manual entry and Android search remain |
-| S6 | Does the chosen free host apply `_headers` (COOP/COEP) on the free plan, with a single-page-app fallback? | Phase 2 hosting | Try another free host with custom headers |
+| S6 | On Cloudflare Workers static assets (free plan): do `/` and a deep-link reload (an unknown path served by the single-page fallback) both carry COOP/COEP from `_headers`, and does `require-corp` work in an iPhone home-screen install? | Phase 2 hosting | Try another free host with custom headers |
 | S7 | Does AO3 allow cross-origin reads from a browser? (Informational; the design does not depend on it.) | — | — |
 | S8 | Is a link from the Android app to the project website (which also hosts the Ko-fi link) acceptable on Play? | Phase 1 About screen | Link only to the privacy policy page, which carries no donation link |
 | S9 | Can the web app download images from `covers.openlibrary.org` and the Google Books thumbnail host (CORS)? | Automatic covers on web | Web uses photos only; Android finds covers and sync files carry them to the web app |
@@ -1871,7 +1873,7 @@ Phase 1 includes `.bookmark` export because it is the only backup; everything el
 6. A check run fetches at most 60 works.
 7. Settings are per device, except content preferences, which sync.
 8. The updates inbox is per device and not synced.
-9. Web hosting on Cloudflare Pages (or another free host with custom headers) using its default subdomain.
+9. Web hosting on Cloudflare Workers static assets (or another free host with custom headers) using its default subdomain.
 10. Book progress units are pages, percent and minutes.
 11. The Ko-fi link appears only on the website and web app; Android tips are off until the owner enables them.
 12. Identifiers use UK spelling to match user-facing copy.

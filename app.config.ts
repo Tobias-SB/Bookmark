@@ -21,7 +21,7 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
   },
   web: {
-    output: 'static',
+    output: 'single',
     favicon: './assets/favicon.png',
   },
   plugins: [
